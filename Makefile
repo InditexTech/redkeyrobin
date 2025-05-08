@@ -235,7 +235,8 @@ debug: ##		Build a new robin binary, copy the file to the pod and run it in debu
 port-forward: ##		Port forwarding of port 40000 for debugging robin with Delve.
 	kubectl port-forward pod/$(REDIS_ROBIN) 40000:40000 -n ${NAMESPACE}
 
-
+port-forward-metrics: ##		Port forwarding of port 8080 for debugging the manager with Delve.
+	kubectl port-forward pod/$(REDIS_ROBIN) 8080:8080 -n ${NAMESPACE}
 
 ##@ Test
 ginkgo:
