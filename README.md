@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Redis Robin
 
-Redis Robin () is a faithful partner who assists the [Redis Operator](https://github.com/InditexTech/redisoperator) in the dangerous Gotham. It is designed to help the Operator (Batman) in its duties and deployed by the Redis Operator as a Deployment.
+Redis Robin is a faithful partner who assists the [Redis Operator](https://github.com/InditexTech/redisoperator) in the dangerous Gotham. It is designed to help the Operator (Batman) in its duties and deployed by the Redis Operator as a Deployment.
 
 ## Features
 
