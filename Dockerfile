@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Use an official Golang image with a specific version
 ARG GO_VERSION=1.24.0
 FROM golang:${GO_VERSION} AS builder

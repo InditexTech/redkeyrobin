@@ -1,8 +1,12 @@
+<!--
+SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Developer Guide
 
-Quickly provision Redis cluster environments in Kubernetes or Openshift.
-
-The operator relies on Redis cluster functionality to serve client requests.
+Quickly provision Redis Robin in Kubernetes.
 
 ## Local development and testing
 
