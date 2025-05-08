@@ -84,6 +84,9 @@ IMAGE_REF ?= $(IMG)
 # Allowed deploying profiles.
 PROFILES := dev debug pro
 
+# Namespace where redis robin is deployed.
+NAMESPACE ?= redis-operator
+
 # Deploying profile used to generate the manifest files to deploy the operator.
 # The files to generate the manifests are kustomized from the directory config/deploy-profile/<PROFILE>.
 # By default, `dev` profile is used. It can be overwritten (e.g. make process-manifests PROFILE=debug).
