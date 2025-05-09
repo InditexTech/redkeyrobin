@@ -17,7 +17,7 @@ import (
 	"maps"
 
 	"github.com/inditextech/redisrobin/metrics"
-	"github.com/inditextech/redisrobin/redisopconf"
+	"github.com/inditextech/redisrobin/config"
 )
 
 // nodeInfoReplacer is used to clean up node info strings.
@@ -28,14 +28,14 @@ var metricNameReplacer = strings.NewReplacer("-", "_")
 
 // RedisPollMetrics is responsible for orchestrating the continuous polling of Redis metrics.
 type RedisPollMetrics struct {
-	conf           *redisopconf.Configuration
+	conf           *config.Configuration
 	metricsManager *metrics.MetricsManager
 	clusterMgr     *ClusterManager
 }
 
 // NewRedisPollMetrics constructs a RedisPollMetrics by delegating the K8s client retrieval,
 // storing the given config & metrics manager, etc.
-func NewRedisPollMetrics(conf *redisopconf.Configuration, metricsManager *metrics.MetricsManager) (*RedisPollMetrics, error) {
+func NewRedisPollMetrics(conf *config.Configuration, metricsManager *metrics.MetricsManager) (*RedisPollMetrics, error) {
 	// Create a cluster manager for IP tracking & reset logic.
 	clusterMgr := NewClusterManager(metricsManager)
 

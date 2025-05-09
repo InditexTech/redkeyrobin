@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"reflect"
 )
 
 // ParseInt safely converts a string to an int.
@@ -55,4 +56,34 @@ func MapToString(m map[string]string) string {
 	}
 	b.WriteString("}")
 	return b.String()
+}
+
+
+func MethodExists(s any, name string) bool {
+	// Get the method by name
+	method := reflect.ValueOf(s).MethodByName(name)
+	return method.IsValid()
+}
+
+
+func Invoke(s any, name string, args... interface{}) []reflect.Value {
+	// Compose the arguments
+    inputs := make([]reflect.Value, len(args)) 
+    for i, _ := range args { 
+        inputs[i] = reflect.ValueOf(args[i]) 
+    } 
+
+	// Call the method
+	method := reflect.ValueOf(s).MethodByName(name)
+    return method.Call(inputs)
+}
+
+
+func StringInSlice(item string, list []string) bool {
+	for _, i := range list {
+		if i == item {
+			return true
+		}
+	}
+	return false
 }

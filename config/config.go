@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redisopconf
+package config
 
 import (
 	"fmt"
@@ -43,10 +43,16 @@ type RedisConfig struct {
 	Metrics  RedisMetricsConfig  `yaml:"metrics"`
 }
 
+// 
+type APIConfig struct {
+	Endpoints map[string]map[string]interface{} `yaml:"endpoints"`
+}
+
 // Configuration is the top-level configuration struct.
 type Configuration struct {
 	Metadata map[string]string `yaml:"metadata"`
 	Redis    RedisConfig       `yaml:"redis"`
+	API      APIConfig         `yaml:"api"`
 }
 
 // String returns a formatted string of the configuration.

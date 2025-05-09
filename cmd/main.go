@@ -15,7 +15,7 @@ import (
 	"github.com/inditextech/redisrobin/httpserver"
 	"github.com/inditextech/redisrobin/metrics"
 	"github.com/inditextech/redisrobin/redis"
-	"github.com/inditextech/redisrobin/redisopconf"
+	"github.com/inditextech/redisrobin/config"
 )
 
 const configmapFilePath = "/opt/conf/configmap/application-configmap.yml"
@@ -24,7 +24,7 @@ func main() {
 	var metricsAddr string
 
 	// Load Redis configuration (e.g., from environment or file) and build a metrics manager.
-	conf := redisopconf.GetConfiguration()
+	conf := config.GetConfiguration()
 	metricsManager := metrics.NewMetricsManager()
 	ctx := context.Background()
 
@@ -54,12 +54,10 @@ func main() {
 	}
 
 	// Build a FileConfigProvider and Server to serve /configmap and /amiga/health.
-	configProvider := &httpserver.FileConfigProvider{
-		Path: configmapFilePath,
-	}
 	serverHandler := &httpserver.Server{
-		ConfigProvider: configProvider,
+		Config: conf.API,
 	}
+	serverHandler.Init(mgr)
 
 	// Attach the Server’s handlers to the manager’s metrics server.
 	// The server’s ServeHTTP method will route /configmap and /amiga/health internally.

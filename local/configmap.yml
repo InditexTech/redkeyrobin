@@ -1,0 +1,24 @@
+api:
+  endpoints:
+    /v1/rediscluster/status:
+      get:
+        operationId: GetRedisClusterStatus
+      put:
+        operationId: UpdateRedisClusterStatus
+    /v1/cluster/replicas:
+      get:
+        operationId: GetClusterReplicas
+      put:
+        operationId: UpdateClusterReplicas
+    /v1/cluster/status:
+      get:
+        operationId: GetClusterStatus
+    /v1/cluster/move:
+      post:
+        operationId: MoveNodeSlots
+    /v1/cluster/check:
+      get:
+        operationId: CheckCluster
+    /v1/cluster/fix:
+      put:
+        operationId: FixCluster

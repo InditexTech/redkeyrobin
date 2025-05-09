@@ -4,9 +4,10 @@
 
 module github.com/inditextech/redisrobin
 
-go 1.24.0
+go 1.24.3
 
 require (
+	github.com/go-logr/logr v1.4.2
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/prometheus/client_golang v1.21.0
 	github.com/redis/go-redis/v9 v9.7.1
@@ -25,7 +26,6 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect

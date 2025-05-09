@@ -7,66 +7,103 @@ package httpserver
 import (
 	"fmt"
 	"log"
+	"strings"
 	"net/http"
-	"os"
+	
+	"github.com/inditextech/redisrobin/config"
+	"github.com/inditextech/redisrobin/util"
+
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-// ConfigProvider defines an interface for retrieving configuration data.
-type ConfigProvider interface {
-	GetConfig() (string, error)
-}
-
-// FileConfigProvider implements ConfigProvider by reading configuration from a file.
-type FileConfigProvider struct {
-	Path string
-}
-
-// GetConfig reads the configuration file and returns its contents as a string.
-func (f *FileConfigProvider) GetConfig() (string, error) {
-	data, err := os.ReadFile(f.Path)
-	if err != nil {
-		return "", fmt.Errorf("error reading config file %s: %w", f.Path, err)
-	}
-	return string(data), nil
-}
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
-	ConfigProvider ConfigProvider
+	Config config.APIConfig
+}
+
+// Init initializes the Server using the Config in the provided Manager.
+func (s *Server) Init(mgr ctrl.Manager) error {
+	// Set up the HTTP server with the provided Config
+	for path, pathConfiguration := range s.Config.Endpoints {
+		// Check the path configuration and delete it if it is invalid
+		if err := s.checkPathConfiguration(pathConfiguration); err != nil {
+			log.Printf("Error checking path %s configuration: %v", path, err)
+			delete(s.Config.Endpoints, path)
+			continue
+		}
+
+		// Attach the handler to the metrics server
+		if err := mgr.AddMetricsServerExtraHandler(path, s); err != nil {
+			return fmt.Errorf("unable to attach %s handler: %v", path, err)
+		}
+	}
+	return nil
 }
 
 // ServeHTTP routes incoming HTTP requests to the appropriate handler methods.
 // It implements the http.Handler interface.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/configmap":
-		s.handleConfigmap(w)
-	case "/amiga/health":
-		s.handleHealth(w)
-	default:
-		http.Error(w, "Unknown path!", http.StatusNotFound)
-	}
-}
+	log.Printf("Received %s request on path %s", r.Method, r.URL.Path)
 
-// handleConfigmap handles requests to the /configmap endpoint.
-// It sets a YAML-related Content-Type and returns the raw config as text.
-// If reading the config fails, it returns a 404 with an error message.
-func (s *Server) handleConfigmap(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
-
-	config, err := s.ConfigProvider.GetConfig()
-	if err != nil {
-		http.Error(w, "File not found (or error reading it)!", http.StatusNotFound)
-		log.Printf("Error reading configmap file: %v", err)
+	// Check if the path is configured
+	pathConfiguration, found := s.Config.Endpoints[r.URL.Path]
+	if !found {
+		s.sendError(w, http.StatusNotFound, fmt.Sprintf("Unknown path %s", r.URL.Path))
 		return
 	}
 
-	fmt.Fprint(w, config)
+	// Check if the method is allowed
+	methodConfiguration, found := pathConfiguration[strings.ToLower(r.Method)].(map[string]interface{})
+	if !found {
+		s.sendError(w, http.StatusMethodNotAllowed, fmt.Sprintf("Method %s not allowed in path %s", r.Method, r.URL.Path))
+		return
+	}
+
+	// Invoke the method that handles the request
+	util.Invoke(s, methodConfiguration["operationId"].(string), w, r)
 }
 
-// handleHealth handles requests to the /amiga/health endpoint.
-// It sets a plain text Content-Type and responds with a basic "ok" status.
-func (s *Server) handleHealth(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintln(w, "ok")
+func (s *Server) checkPathConfiguration(pathConfiguration map[string]interface{}) error {
+	// Path configuration is not empty
+	if len(pathConfiguration) == 0 {
+		return fmt.Errorf("no methods configured for path")
+	}
+
+	for method, methodConfiguration := range pathConfiguration {
+		// Method configuration is a valid map
+		methodConfigurationMap, ok := methodConfiguration.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("invalid method configuration for method %s", method)
+		}
+
+		// Method configuration has an operationId and it is an string
+		operationID, ok := methodConfigurationMap["operationId"].(string)
+		if !ok {
+			return fmt.Errorf("invalid operationId for method %s", method)
+		}
+
+		// Check if Server has the method
+		if !util.MethodExists(s, operationID) {
+			return fmt.Errorf("method %s not found", operationID)
+		}
+	}
+	
+	return nil
+}
+
+func (s *Server) sendResponse(w http.ResponseWriter, code int, object ResponseInterface) {
+	response := Response{
+		Code:    code,
+		Headers: map[string][]string{"Content-Type": {"application/json"}},
+		Object:  object,
+	}
+	response.WriteResponse(w)
+}
+
+func (s *Server) sendError(w http.ResponseWriter, code int, message string) {
+	response := ErrorResponse{
+		Error: message,
+	}
+	s.sendResponse(w, code, response)
 }
