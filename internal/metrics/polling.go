@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package metrics
 
 import (
 	"context"
@@ -16,8 +16,7 @@ import (
 
 	"maps"
 
-	"github.com/inditextech/redisrobin/metrics"
-	"github.com/inditextech/redisrobin/config"
+	"github.com/inditextech/redisrobin/internal/redis"
 )
 
 // nodeInfoReplacer is used to clean up node info strings.
@@ -26,21 +25,23 @@ var nodeInfoReplacer = strings.NewReplacer("{", "", "}", "", "\r", "", "[", "", 
 // metricNameReplacer transforms metric names (e.g., replacing hyphens).
 var metricNameReplacer = strings.NewReplacer("-", "_")
 
-// RedisPollMetrics is responsible for orchestrating the continuous polling of Redis metrics.
+
+
+// RedisPollMetrics is responsible for orchestrating the continuous polling of Redis 
 type RedisPollMetrics struct {
-	conf           *config.Configuration
-	metricsManager *metrics.MetricsManager
+	redisCluster   *redis.RedisCluster
+	metricsManager *MetricsManager
 	clusterMgr     *ClusterManager
 }
 
 // NewRedisPollMetrics constructs a RedisPollMetrics by delegating the K8s client retrieval,
 // storing the given config & metrics manager, etc.
-func NewRedisPollMetrics(conf *config.Configuration, metricsManager *metrics.MetricsManager) (*RedisPollMetrics, error) {
+func NewRedisPollMetrics(redisCluster *redis.RedisCluster, metricsManager *MetricsManager) (*RedisPollMetrics, error) {
 	// Create a cluster manager for IP tracking & reset logic.
 	clusterMgr := NewClusterManager(metricsManager)
 
 	return &RedisPollMetrics{
-		conf:           conf,
+		redisCluster:           redisCluster,
 		metricsManager: metricsManager,
 		clusterMgr:     clusterMgr,
 	}, nil
@@ -49,13 +50,13 @@ func NewRedisPollMetrics(conf *config.Configuration, metricsManager *metrics.Met
 // Start begins the polling loop.
 func (p *RedisPollMetrics) Start(ctx context.Context) {
 	for {
-		log.Printf("Polling metrics %s.", p.conf.Redis.Cluster.Name)
+		log.Printf("Polling metrics %s.", p.redisCluster.Conf.Redis.Cluster.Name)
 
 		err := p.pollRedisMetrics(ctx)
 		if err != nil {
 			log.Printf("Error polling Redis metrics: %v", err)
 		}
-		time.Sleep(time.Second * time.Duration(p.conf.Redis.Operator.CollectionPeriodSeconds))
+		time.Sleep(time.Second * time.Duration(p.redisCluster.Conf.Redis.Metrics.IntervalSeconds))
 	}
 }
 
@@ -103,8 +104,8 @@ func (p *RedisPollMetrics) pollRedisClusterMetrics(ctx context.Context) error {
 
 // pollClusterNodes obtains node information from Redis, updates membership if changed,
 // and then stores each node's data in the metrics manager.
-func (p *RedisPollMetrics) pollClusterNodes(redisClient *RedisClient) error {
-	err := redisClient.CheckConnection(p.conf.Redis.Cluster.MaxRetries, p.conf.Redis.Cluster.BackOff)
+func (p *RedisPollMetrics) pollClusterNodes(redisClient *redis.RedisClient) error {
+	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
 	if err != nil {
 		return fmt.Errorf("error checking connection: %w", err)
 	}
@@ -125,22 +126,22 @@ func (p *RedisPollMetrics) pollClusterNodes(redisClient *RedisClient) error {
 		nodeTags := p.buildCommonMetadataTags()
 		// Add node-specific fields if present
 		if len(nodeInfoStringList) > 0 {
-			nodeTags[metrics.NodeID] = nodeInfoStringList[0]
+			nodeTags[NodeID] = nodeInfoStringList[0]
 		}
 		if len(nodeInfoStringList) > 1 {
-			nodeTags[metrics.NodeIP] = nodeInfoStringList[1]
+			nodeTags[NodeIP] = nodeInfoStringList[1]
 		}
 		if len(nodeInfoStringList) > 2 {
-			nodeTags[metrics.Role] = nodeInfoStringList[2]
+			nodeTags[Role] = nodeInfoStringList[2]
 		}
 		if len(nodeInfoStringList) > 3 {
-			nodeTags[metrics.Slots] = nodeInfoStringList[3]
+			nodeTags[Slots] = nodeInfoStringList[3]
 		}
 		if len(nodeInfoStringList) > 4 {
-			nodeTags[metrics.MasterID] = nodeInfoStringList[4]
+			nodeTags[MasterID] = nodeInfoStringList[4]
 		}
 		if len(nodeInfoStringList) > 5 {
-			nodeTags[metrics.NodeFailures] = nodeInfoStringList[5]
+			nodeTags[NodeFailures] = nodeInfoStringList[5]
 		}
 
 		p.metricsManager.UpdateNodeInfo(nodeTags)
@@ -150,8 +151,8 @@ func (p *RedisPollMetrics) pollClusterNodes(redisClient *RedisClient) error {
 }
 
 // pollClusterInfo obtains overall cluster details from Redis and updates them in the metrics manager.
-func (p *RedisPollMetrics) pollClusterInfo(redisClient *RedisClient) error {
-	err := redisClient.CheckConnection(p.conf.Redis.Cluster.MaxRetries, p.conf.Redis.Cluster.BackOff)
+func (p *RedisPollMetrics) pollClusterInfo(redisClient *redis.RedisClient) error {
+	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
 	if err != nil {
 		return fmt.Errorf("error checking connection: %w", err)
 	}
@@ -163,15 +164,15 @@ func (p *RedisPollMetrics) pollClusterInfo(redisClient *RedisClient) error {
 	// Build standard tags
 	tags := p.buildCommonMetadataTags()
 	// Insert cluster info fields
-	tags[metrics.ClusterState] = clusterInfo.State
-	tags[metrics.ClusterSlotsAssigned] = strconv.Itoa(clusterInfo.SlotsAssigned)
-	tags[metrics.ClusterSlotsOk] = strconv.Itoa(clusterInfo.SlotsOK)
-	tags[metrics.ClusterSlotsPFail] = strconv.Itoa(clusterInfo.SlotsPFail)
-	tags[metrics.ClusterSlotsFail] = strconv.Itoa(clusterInfo.SlotsFail)
-	tags[metrics.ClusterKnownNodes] = strconv.Itoa(clusterInfo.KnownNodes)
-	tags[metrics.ClusterSize] = strconv.Itoa(clusterInfo.ClusterSize)
-	tags[metrics.ClusterCurrentEpoch] = strconv.Itoa(clusterInfo.CurrentEpoch)
-	tags[metrics.ClusterMyEpoch] = strconv.Itoa(clusterInfo.MyEpoch)
+	tags[redis.ClusterState] = clusterInfo.State
+	tags[redis.ClusterSlotsAssigned] = strconv.Itoa(clusterInfo.SlotsAssigned)
+	tags[redis.ClusterSlotsOk] = strconv.Itoa(clusterInfo.SlotsOK)
+	tags[redis.ClusterSlotsPFail] = strconv.Itoa(clusterInfo.SlotsPFail)
+	tags[redis.ClusterSlotsFail] = strconv.Itoa(clusterInfo.SlotsFail)
+	tags[redis.ClusterKnownNodes] = strconv.Itoa(clusterInfo.KnownNodes)
+	tags[redis.ClusterSize] = strconv.Itoa(clusterInfo.ClusterSize)
+	tags[redis.ClusterCurrentEpoch] = strconv.Itoa(clusterInfo.CurrentEpoch)
+	tags[redis.ClusterMyEpoch] = strconv.Itoa(clusterInfo.MyEpoch)
 
 	// Update cluster info in the metrics manager
 	p.metricsManager.UpdateClusterInfo(tags)
@@ -182,14 +183,19 @@ func (p *RedisPollMetrics) pollClusterInfo(redisClient *RedisClient) error {
 // pollRedisNodeLevelMetrics orchestrates node-level metric polling by fetching "info all"
 // from each node in the configured Redis Cluster.
 func (p *RedisPollMetrics) pollRedisNodeLevelMetrics(ctx context.Context) error {
-	for i := range p.conf.Redis.Cluster.Replicas {
-		nodeName := fmt.Sprintf("%s-%d", p.conf.Redis.Cluster.Name, i)
-		nodeAddr := fmt.Sprintf("%s.%s", nodeName, p.conf.Redis.Cluster.Name)
-
-		if err := p.pollRedisInfoAllMetrics(ctx, nodeAddr, nodeName); err != nil {
-			log.Printf("Error polling Redis metrics for node %s: %v", nodeName, err)
+	for _, node := range p.redisCluster.Nodes {
+		if err := p.pollRedisInfoAllMetrics(ctx, node.Addr, node.Name); err != nil {
+			log.Printf("Error polling Redis metrics for node %s: %v", node.Name, err)
 		}
 	}
+	// for i := range p.redisCluster.Conf.Redis.Cluster.Replicas {
+	// 	nodeName := fmt.Sprintf("%s-%d", p.redisCluster.Conf.Redis.Cluster.Name, i)
+	// 	nodeAddr := fmt.Sprintf("%s.%s", nodeName, p.redisCluster.Conf.Redis.Cluster.Name)
+
+	// 	if err := p.pollRedisInfoAllMetrics(ctx, nodeAddr, nodeName); err != nil {
+	// 		log.Printf("Error polling Redis metrics for node %s: %v", nodeName, err)
+	// 	}
+	// }
 	return nil
 }
 
@@ -211,33 +217,33 @@ func (p *RedisPollMetrics) pollRedisInfoAllMetrics(ctx context.Context, nodeAddr
 // buildNodeTags constructs a map of standard config tags plus an instance ID derived from the node.
 func (p *RedisPollMetrics) buildNodeTags(nodeName string) map[string]string {
 	tags := p.buildCommonMetadataTags()
-	tags[metrics.InstanceId] = nodeName
+	tags[InstanceId] = nodeName
 	return tags
 }
 
 // buildCommonMetadataTags returns a shared map of metadata from p.conf.
 func (p *RedisPollMetrics) buildCommonMetadataTags() map[string]string {
 	tags := map[string]string{
-		metrics.Cluster:   p.conf.Redis.Cluster.Name,
-		metrics.Namespace: p.conf.Redis.Cluster.Namespace,
+		Cluster:   p.redisCluster.Conf.Redis.Cluster.Name,
+		Namespace: p.redisCluster.Conf.Redis.Cluster.Namespace,
 	}
-	maps.Copy(tags, p.conf.Metadata)
+	maps.Copy(tags, p.redisCluster.Conf.Metadata)
 	return tags
 }
 
 // createRedisClusterClient abstracts out creating a Redis client for the cluster service address.
-func (p *RedisPollMetrics) createRedisClusterClient(ctx context.Context) *RedisClient {
-	return NewRedisClient(ctx, p.conf.Redis.Cluster.Name, os.Getenv("REDISAUTH"), 0)
+func (p *RedisPollMetrics) createRedisClusterClient(ctx context.Context) *redis.RedisClient {
+	return redis.NewRedisClient(ctx, p.redisCluster.GetAddress(), os.Getenv("REDISAUTH"), 0)
 }
 
 // createRedisClient abstracts Redis client creation for arbitrary addresses.
-func (p *RedisPollMetrics) createRedisClient(ctx context.Context, addr string) *RedisClient {
-	return NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
+func (p *RedisPollMetrics) createRedisClient(ctx context.Context, addr string) *redis.RedisClient {
+	return redis.NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
 }
 
 // fetchRedisInfo retrieves "info all" from the given client.
-func (p *RedisPollMetrics) fetchRedisInfo(redisClient *RedisClient) (*RedisInfo, error) {
-	err := redisClient.CheckConnection(p.conf.Redis.Cluster.MaxRetries, p.conf.Redis.Cluster.BackOff)
+func (p *RedisPollMetrics) fetchRedisInfo(redisClient *redis.RedisClient) (*redis.RedisInfo, error) {
+	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
 	if err != nil {
 		return nil, fmt.Errorf("error checking connection: %w", err)
 	}
@@ -246,7 +252,7 @@ func (p *RedisPollMetrics) fetchRedisInfo(redisClient *RedisClient) (*RedisInfo,
 }
 
 // closeRedisClient safely closes a Redis client, logging any errors.
-func (p *RedisPollMetrics) closeRedisClient(redisClient *RedisClient) error {
+func (p *RedisPollMetrics) closeRedisClient(redisClient *redis.RedisClient) error {
 	if err := redisClient.Close(); err != nil {
 		return fmt.Errorf("error closing Redis client: %w", err)
 	}
@@ -255,17 +261,17 @@ func (p *RedisPollMetrics) closeRedisClient(redisClient *RedisClient) error {
 
 // processPromMetrics handles extra Prometheus-style metrics from the RedisInfo.
 func (p *RedisPollMetrics) processPromMetrics(
-	redisInfo *RedisInfo,
+	redisInfo *redis.RedisInfo,
 	tags map[string]string,
 ) {
-	addPromMetrics(redisInfo, tags, p.conf.Redis.Metrics.RedisInfoKeys, redisInfo.Keyspace, p.metricsManager)
+	addPromMetrics(redisInfo, tags, p.redisCluster.Conf.Redis.Metrics.RedisInfoKeys, redisInfo.Keyspace, p.metricsManager)
 }
 
-// pollClusterCheckMetrics fetches the "redis-cli --cluster check" info and updates metrics.
+// pollClusterCheckMetrics fetches the "redis-cli --cluster check" info and updates 
 func (p *RedisPollMetrics) pollClusterCheckMetrics(ctx context.Context) error {
 	redisClient := p.createRedisClusterClient(ctx)
 	defer p.closeRedisClient(redisClient)
-	err := redisClient.CheckConnection(p.conf.Redis.Cluster.MaxRetries, p.conf.Redis.Cluster.BackOff)
+	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
 	if err != nil {
 		return fmt.Errorf("error checking connection: %w", err)
 	}
@@ -279,7 +285,7 @@ func (p *RedisPollMetrics) pollClusterCheckMetrics(ctx context.Context) error {
 	baseTags := p.buildCommonMetadataTags()
 
 	p.metricsManager.UpdateDynamicMetric(
-		metrics.ClusterCheckErrors,
+		redis.ClusterCheckErrors,
 		baseTags,
 		nil,
 		float64(len(clusterCheck.Errors)),
@@ -287,14 +293,14 @@ func (p *RedisPollMetrics) pollClusterCheckMetrics(ctx context.Context) error {
 
 	// Warnings
 	p.metricsManager.UpdateDynamicMetric(
-		metrics.ClusterCheckWarnings,
+		redis.ClusterCheckWarnings,
 		baseTags,
 		nil,
 		float64(len(clusterCheck.Warnings)),
 	)
 
 	p.metricsManager.UpdateDynamicMetric(
-		metrics.ClusterCheckCommandOutputCode,
+		redis.ClusterCheckCommandOutputCode,
 		baseTags,
 		nil, // no additional labels
 		float64(clusterCheck.CommandCodeOutput),
@@ -310,11 +316,11 @@ func (p *RedisPollMetrics) pollClusterCheckMetrics(ctx context.Context) error {
 // addPromMetrics processes the RedisInfo object, filters the fields by redisInfoKeys,
 // and updates metrics in the provided metricsManager. Then processes the keyspaces map.
 func addPromMetrics(
-	redisInfo *RedisInfo,
+	redisInfo *redis.RedisInfo,
 	tags map[string]string,
 	redisInfoKeys []string,
 	keyspaces map[string]string,
-	metricsManager *metrics.MetricsManager,
+	metricsManager *MetricsManager,
 ) {
 	fields := gatherAllFieldsAsStrings(redisInfo)
 
@@ -358,7 +364,7 @@ func addPromMetrics(
 func processSubmetrics(
 	metricName, rawMetricValue string,
 	tags map[string]string,
-	metricsManager *metrics.MetricsManager,
+	metricsManager *MetricsManager,
 ) {
 	subMetrics := strings.Split(rawMetricValue, ",")
 	for _, metricPart := range subMetrics {
@@ -389,7 +395,7 @@ func processSubmetrics(
 func processSingleMetric(
 	metricName, rawMetricValue string,
 	tags map[string]string,
-	metricsManager *metrics.MetricsManager,
+	metricsManager *MetricsManager,
 ) {
 	additionalTags := make(map[string]string)
 	if intVal, err := strconv.Atoi(rawMetricValue); err == nil {
@@ -405,7 +411,7 @@ func processSingleMetric(
 }
 
 // gatherAllFieldsAsStrings flattens RedisInfo numeric fields into strings.
-func gatherAllFieldsAsStrings(ri *RedisInfo) map[string]string {
+func gatherAllFieldsAsStrings(ri *redis.RedisInfo) map[string]string {
 	allFields := make(map[string]string)
 
 	// Copy maps that are string->string

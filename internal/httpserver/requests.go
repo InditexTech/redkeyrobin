@@ -5,28 +5,13 @@ import(
 	"encoding/json"
 	"net/http"
 
-	"github.com/inditextech/redisrobin/util"
+	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redisrobin/internal/redis"
 )
 
-const (
-	Initializing = "Initializing"
-	Ready = "Ready"
-	Error = "Error"
-	Upgrading = "Upgrading"
-	ScalingDown = "ScalingDown"
-	ScalingUp = "ScalingUp"
-	Maintenance = "Maintenance"
-	Unknown = "Unknown"
-	Meeting = "Meeting"
-	Resharding = "Resharding"
-	Forgetting = "Forgetting"
-	Rebalancing = "Rebalancing"
-	Fixing = "Fixing"
-	EnsuringRatio = "EnsuringRatio"
-)
 
 var (
-	ValidRedisClusterStatus = []string{Initializing, Ready, Error, Upgrading, ScalingDown, ScalingUp, Maintenance, Unknown}
+	ValidRedisClusterStatus = []string{redis.Initializing, redis.Ready, redis.Error, redis.Upgrading, redis.ScalingDown, redis.ScalingUp, redis.Maintenance, redis.Unknown}
 )
 
 type RequestInterface interface {

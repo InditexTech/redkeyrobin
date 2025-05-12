@@ -6,6 +6,7 @@ package redis
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,8 +17,7 @@ import (
 
 	"slices"
 
-	"github.com/inditextech/redisrobin/metrics"
-	"github.com/inditextech/redisrobin/util"
+	"github.com/inditextech/redisrobin/internal/util"
 	redisgo "github.com/redis/go-redis/v9"
 )
 
@@ -38,6 +38,37 @@ const (
 	SectionCmdStats    = "commandstats"
 	SectionErrorStats  = "errorstats"
 	SectionLatency     = "latencystats"
+)
+
+// Label keys for metrics.
+const (
+	ClusterState                       = "cluster_state"
+	ClusterSlotsAssigned               = "cluster_slots_assigned"
+	ClusterSlotsOk                     = "cluster_slots_ok"
+	ClusterSlotsPFail                  = "cluster_slots_pfail"
+	ClusterSlotsFail                   = "cluster_slots_fail"
+	ClusterKnownNodes                  = "cluster_known_nodes"
+	ClusterSize                        = "cluster_size"
+	ClusterCurrentEpoch                = "cluster_current_epoch"
+	ClusterMyEpoch                     = "cluster_my_epoch"
+	ClusterStatsMMS                    = "cluster_stats_messages_meet_sent"
+	ClusterStatsMMR                    = "cluster_stats_messages_meet_received"
+	ClusterStatsMS                     = "cluster_stats_messages_sent"
+	ClusterStatsMR                     = "cluster_stats_messages_received"
+	ClusterStatsMPS                    = "cluster_stats_messages_ping_sent"
+	ClusterStatsMPR                    = "cluster_stats_messages_ping_received"
+	ClusterStatsMPongS                 = "cluster_stats_messages_pong_sent"
+	ClusterStatsMPongR                 = "cluster_stats_messages_pong_received"
+	ClusterCheckErrors                 = "cluster_check_errors"
+	ClusterCheckCommandOutputCode      = "cluster_check_command_output_code"
+	ClusterCheckWarnings               = "cluster_check_warnings"
+	ClusterCheckSlotCoverageMessage    = "cluster_check_slot_coverage_message"
+	ClusterCheckAgreementMessage       = "cluster_check_agreement_message"
+	ClusterCheckPerformedUsingPod      = "cluster_check_performed_using_pod"
+	ClusterStatsMessagesUpdateSent     = "cluster_stats_messages_update_sent"
+	ClusterStatsMessagesUpdateReceived = "cluster_stats_messages_update_received"
+	ClusterStatsMessagesFailReceived   = "cluster_stats_messages_fail_received"
+	TotalClusterLinksBufEx             = "total_cluster_links_buffer_limit_exceeded"
 )
 
 // -----------------------------------------------------------------------------
@@ -61,6 +92,10 @@ func NewRedisClient(ctx context.Context, addr, password string, db int) *RedisCl
 		client: client,
 		ctx:    ctx,
 	}
+}
+
+func (rc *RedisClient) Close() error {
+	return rc.client.Close()
 }
 
 // CheckConnection pings the Redis server until a connection is established.
@@ -238,47 +273,47 @@ func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
 
 		// Map values to struct fields
 		switch key {
-		case metrics.ClusterState:
+		case ClusterState:
 			clusterInfo.State = value
-		case metrics.ClusterSlotsAssigned:
+		case ClusterSlotsAssigned:
 			clusterInfo.SlotsAssigned = util.ParseInt(value)
-		case metrics.ClusterSlotsOk:
+		case ClusterSlotsOk:
 			clusterInfo.SlotsOK = util.ParseInt(value)
-		case metrics.ClusterSlotsPFail:
+		case ClusterSlotsPFail:
 			clusterInfo.SlotsPFail = util.ParseInt(value)
-		case metrics.ClusterSlotsFail:
+		case ClusterSlotsFail:
 			clusterInfo.SlotsFail = util.ParseInt(value)
-		case metrics.ClusterKnownNodes:
+		case ClusterKnownNodes:
 			clusterInfo.KnownNodes = util.ParseInt(value)
-		case metrics.ClusterSize:
+		case ClusterSize:
 			clusterInfo.ClusterSize = util.ParseInt(value)
-		case metrics.ClusterCurrentEpoch:
+		case ClusterCurrentEpoch:
 			clusterInfo.CurrentEpoch = util.ParseInt(value)
-		case metrics.ClusterMyEpoch:
+		case ClusterMyEpoch:
 			clusterInfo.MyEpoch = util.ParseInt(value)
-		case metrics.ClusterStatsMMS:
+		case ClusterStatsMMS:
 			clusterInfo.MessagesMeetSent = util.ParseInt(value)
-		case metrics.ClusterStatsMMR:
+		case ClusterStatsMMR:
 			clusterInfo.MessagesMeetReceived = util.ParseInt(value)
-		case metrics.ClusterStatsMS:
+		case ClusterStatsMS:
 			clusterInfo.MessagesSent = util.ParseInt(value)
-		case metrics.ClusterStatsMR:
+		case ClusterStatsMR:
 			clusterInfo.MessagesReceived = util.ParseInt(value)
-		case metrics.ClusterStatsMPS:
+		case ClusterStatsMPS:
 			clusterInfo.MessagesPingSent = util.ParseInt(value)
-		case metrics.ClusterStatsMPR:
+		case ClusterStatsMPR:
 			clusterInfo.MessagesPingReceived = util.ParseInt(value)
-		case metrics.ClusterStatsMPongS:
+		case ClusterStatsMPongS:
 			clusterInfo.MessagesPongSent = util.ParseInt(value)
-		case metrics.ClusterStatsMPongR:
+		case ClusterStatsMPongR:
 			clusterInfo.MessagesPongReceived = util.ParseInt(value)
-		case metrics.TotalClusterLinksBufEx:
+		case TotalClusterLinksBufEx:
 			clusterInfo.TotalClusterLinksBufferLimit = util.ParseInt(value)
-		case metrics.ClusterStatsMessagesUpdateSent:
+		case ClusterStatsMessagesUpdateSent:
 			clusterInfo.MessagesUpdateSent = util.ParseInt(value)
-		case metrics.ClusterStatsMessagesUpdateReceived:
+		case ClusterStatsMessagesUpdateReceived:
 			clusterInfo.MessagesUpdateReceived = util.ParseInt(value)
-		case metrics.ClusterStatsMessagesFailReceived:
+		case ClusterStatsMessagesFailReceived:
 			clusterInfo.MessagesFailReceived = util.ParseInt(value)
 		default:
 		}
@@ -324,7 +359,6 @@ func (rc *RedisClient) GetNodesInfo() ([]Node, error) {
 		ipPort := fields[1]
 		role := fields[2]     // First flag usually indicates role
 		masterID := fields[3] // "-" if master, otherwise Master ID
-		// connected := fields[7] == "connected"
 
 		// Extract slot information (if available)
 		var slots []string
@@ -355,13 +389,82 @@ func (rc *RedisClient) GetNodesInfo() ([]Node, error) {
 		}
 
 		nodes = append(nodes, node)
-		// Only include connected nodes
-		// if connected {
-		// 	nodes = append(nodes, node)
-		// }
 	}
 
 	return nodes, nil
+}
+
+type RedisCLICommand struct {
+	cmd *exec.Cmd
+	stdout *bytes.Buffer
+	stderr *bytes.Buffer
+	ExitCode int
+	Err error
+}
+
+func NewRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	return &RedisCLICommand{
+		cmd: cmd,
+		stdout: &stdout,
+		stderr: &stderr,
+	}
+}
+
+func (rcc *RedisCLICommand) Run() {
+	rcc.Err = rcc.cmd.Run()
+	rcc.CheckStatusCode()
+} 
+
+func (rcc *RedisCLICommand) Start() {
+	rcc.Err = rcc.cmd.Start()
+}
+
+func (rcc *RedisCLICommand) CheckStatusCode() {
+	exitCode := -1
+	if rcc.cmd.ProcessState != nil {
+		exitCode = rcc.cmd.ProcessState.ExitCode()
+	}
+
+	rcc.ExitCode = exitCode
+}
+
+func (rcc *RedisCLICommand) Wait() {
+	// Wait for command to finish
+	rcc.Err = rcc.cmd.Wait()
+	rcc.CheckStatusCode()
+}
+
+func (rcc *RedisCLICommand) GetStdout() string {
+	return rcc.stdout.String()
+}
+
+func (rcc *RedisCLICommand) GetStderr() string {
+	return rcc.stderr.String()
+}
+
+func (rc *RedisClient) runRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
+	// Build the command
+	cmd := NewRedisCLICommand(ctx, command)
+
+	// Run the command
+	cmd.Run()
+
+	return cmd
+}
+
+func (rc *RedisClient) runRedisCLICommandAsync(ctx context.Context, command string) *RedisCLICommand {
+	// Build the command
+	cmd := NewRedisCLICommand(ctx, command)
+
+	// Run the command asynchronously
+	cmd.Start()
+
+	return cmd
 }
 
 // ClusterCheckResult aggregates the overall cluster state similar to "redis-cli --cluster check".
@@ -376,41 +479,22 @@ type ClusterCheckResult struct {
 // -----------------------------------------------------------------------------
 func (rc *RedisClient) ClusterCheck(ctx context.Context) (*ClusterCheckResult, error) {
 	// Build the command: "redis-cli --cluster check <host:port>"
-	addr := rc.client.Options().Addr // e.g., "host:port"
-	cmd := exec.CommandContext(ctx,
-		"redis-cli",
-		"--cluster",
-		"check",
-		addr,
-	)
+	command := fmt.Sprintf("redis-cli --cluster check %s", rc.client.Options().Addr)
 
-	// Capture combined stdout/stderr so we can parse everything in one pass.
-	output, err := cmd.CombinedOutput()
-
-	// Safely retrieve the exit code, which might be unavailable if the command fails to start.
-	exitCode := -1
-	if cmd.ProcessState != nil {
-		exitCode = cmd.ProcessState.ExitCode()
-	}
-
-	if err != nil {
+	// Execute the command and parse the output
+	cmd := rc.runRedisCLICommand(ctx, command)
+	if cmd.Err != nil {
 		// If the context was canceled or timed out, return immediately.
 		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, fmt.Errorf("redis-cli command canceled or timed out: %w", ctx.Err())
 		}
 
-		// Otherwise, log the error but parse partial output so the caller can decide how to handle it.
-		log.Printf(
-			"Error executing 'redis-cli --cluster check %s': %v. Partial output:\n%s",
-			addr,
-			err,
-			string(output),
-		)
+		log.Printf("Error executing 'redis-cli --cluster check %s': %v. Partial output:\n%s", rc.client.Options().Addr, cmd.Err, cmd.GetStderr())
 	}
 
 	// Parse the CLI output (whether complete or partial) to fill a ClusterCheckResult.
-	result := parseClusterCheckOutput(string(output))
-	result.CommandCodeOutput = exitCode
+	result := parseClusterCheckOutput(cmd.GetStdout())
+	result.CommandCodeOutput = cmd.ExitCode
 
 	return result, nil
 }
@@ -449,6 +533,33 @@ func parseClusterCheckOutput(output string) *ClusterCheckResult {
 	return result
 }
 
-func (rc *RedisClient) Close() error {
-	return rc.client.Close()
+
+func (rc *RedisClient) ReshardNode(ctx context.Context, source, target RedisNode, slots int) (*RedisCLICommand) {
+	if slots == 0 {
+		log.Printf("No slots to reshard")
+		return nil
+	}
+
+	// Build the command: "redis-cli --cluster reshard <host:port>"  
+	command := fmt.Sprintf("redis-cli --cluster reshard %s --cluster-from %s --cluster-to %s --cluster-slots %v --cluster-yes", rc.client.Options().Addr, source.ID, target.ID, slots)
+
+	// Execute the command and return command reference
+	return rc.runRedisCLICommandAsync(ctx, command)
 }
+
+func (rc *RedisClient) ClusterFix(ctx context.Context) (*RedisCLICommand) {
+	// Build the command: "redis-cli --cluster fix <host:port>"
+	command := fmt.Sprintf("redis-cli --cluster fix %s --cluster-yes", rc.client.Options().Addr)
+
+	// Execute the command and return command reference
+	return rc.runRedisCLICommandAsync(ctx, command)
+}
+
+func (rc *RedisClient) ClusterRebalance(ctx context.Context) (*RedisCLICommand) {
+	// Build the command: "redis-cli --cluster rebalance <host:port>"
+	command := fmt.Sprintf("redis-cli --cluster rebalance %s --cluster-use-empty-masters", rc.client.Options().Addr)
+
+	// Execute the command and return command reference
+	return rc.runRedisCLICommandAsync(ctx, command)
+}
+

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/inditextech/redisrobin/config"
+	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/go-logr/logr"

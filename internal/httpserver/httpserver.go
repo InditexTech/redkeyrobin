@@ -10,15 +10,24 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/inditextech/redisrobin/config"
-	"github.com/inditextech/redisrobin/util"
+	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/util"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
+	RedisCluster *redis.RedisCluster
 	Config config.APIConfig
+}
+
+func NewServer(redisCluster *redis.RedisCluster, config config.APIConfig) *Server {
+	return &Server{
+		RedisCluster: redisCluster,
+		Config: config,
+	}
 }
 
 // Init initializes the Server using the Config in the provided Manager.

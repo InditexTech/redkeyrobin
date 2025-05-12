@@ -2,25 +2,25 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package metrics
 
 import (
 	"fmt"
 	"slices"
 	"strings"
 
-	"github.com/inditextech/redisrobin/metrics"
+	"github.com/inditextech/redisrobin/internal/redis"
 )
 
 // ClusterManager encapsulates cluster-level logic such as maintaining an IP list and
 // resetting metrics if the node list changes.
 type ClusterManager struct {
 	ipList         []string
-	metricsManager *metrics.MetricsManager
+	metricsManager *MetricsManager
 }
 
 // NewClusterManager constructs a manager with an empty IP list initially.
-func NewClusterManager(mm *metrics.MetricsManager) *ClusterManager {
+func NewClusterManager(mm *MetricsManager) *ClusterManager {
 	return &ClusterManager{
 		ipList:         make([]string, 0),
 		metricsManager: mm,
@@ -29,7 +29,7 @@ func NewClusterManager(mm *metrics.MetricsManager) *ClusterManager {
 
 // CheckClusterNodes compares known node IPs with the current node list and resets metrics
 // if there is a change. The gatherIPList logic is encapsulated here rather than using a global IpList.
-func (cm *ClusterManager) CheckClusterNodes(nodesInfo []Node) {
+func (cm *ClusterManager) CheckClusterNodes(nodesInfo []redis.Node) {
 	if cm.needsRefresh(nodesInfo) {
 		cm.generateIpList(nodesInfo)
 		cm.metricsManager.ResetMetrics()
@@ -37,7 +37,7 @@ func (cm *ClusterManager) CheckClusterNodes(nodesInfo []Node) {
 }
 
 // generateIpList rebuilds the ipList from the given nodesInfo.
-func (cm *ClusterManager) generateIpList(nodesInfo []Node) {
+func (cm *ClusterManager) generateIpList(nodesInfo []redis.Node) {
 	ipNodes := make([]string, 0, len(nodesInfo))
 	for _, node := range nodesInfo {
 		nodeInfoStringList := strings.Split(nodeInfoReplacer.Replace(fmt.Sprintf("%v", node)), " ")
@@ -49,7 +49,7 @@ func (cm *ClusterManager) generateIpList(nodesInfo []Node) {
 }
 
 // needsRefresh detects if there's a mismatch between the current ipList and the new node set.
-func (cm *ClusterManager) needsRefresh(nodesInfo []Node) bool {
+func (cm *ClusterManager) needsRefresh(nodesInfo []redis.Node) bool {
 	if len(cm.ipList) != len(nodesInfo) {
 		return true
 	}

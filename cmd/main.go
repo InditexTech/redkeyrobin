@@ -12,28 +12,16 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/inditextech/redisrobin/httpserver"
-	"github.com/inditextech/redisrobin/metrics"
-	"github.com/inditextech/redisrobin/redis"
-	"github.com/inditextech/redisrobin/config"
+	"github.com/inditextech/redisrobin/internal/httpserver"
+	"github.com/inditextech/redisrobin/internal/metrics"
+	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/redis"
 )
 
 const configmapFilePath = "/opt/conf/configmap/application-configmap.yml"
 
 func main() {
 	var metricsAddr string
-
-	// Load Redis configuration (e.g., from environment or file) and build a metrics manager.
-	conf := config.GetConfiguration()
-	metricsManager := metrics.NewMetricsManager()
-	ctx := context.Background()
-
-	// Create a new RedisPollMetrics instance to gather metrics in the background.
-	redisPollMetrics, err := redis.NewRedisPollMetrics(conf, metricsManager)
-	if err != nil {
-		log.Fatalf("failed to create Redis metrics poller: %v", err)
-	}
-	go redisPollMetrics.Start(ctx)
 
 	// Parse CLI flags (e.g., --metrics-bind-address :8080).
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -50,22 +38,32 @@ func main() {
 	// Create the manager for metrics and additional HTTP endpoints.
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrlOptions)
 	if err != nil {
-		log.Fatalf("unable to start manager: %v", err)
+		log.Fatalf("unable to create manager: %v", err)
 	}
 
-	// Build a FileConfigProvider and Server to serve /configmap and /amiga/health.
-	serverHandler := &httpserver.Server{
-		Config: conf.API,
-	}
-	serverHandler.Init(mgr)
+	// Load Redis configuration (e.g., from environment or file).
+	conf := config.GetConfiguration()
+	redisCluster := redis.NewRedisCluster(conf)
 
-	// Attach the Server’s handlers to the manager’s metrics server.
-	// The server’s ServeHTTP method will route /configmap and /amiga/health internally.
-	if err := mgr.AddMetricsServerExtraHandler("/configmap", serverHandler); err != nil {
-		log.Fatalf("unable to attach /configmap handler: %v", err)
+	// Create the metrics manager.
+	metricsManager := metrics.NewMetricsManager(conf.Metadata)
+	ctx := context.Background()
+
+	// Create a new RedisPollMetrics instance to gather metrics in the background.
+	redisPollMetrics, err := metrics.NewRedisPollMetrics(redisCluster, metricsManager)
+	if err != nil {
+		log.Fatalf("unable to create Redis metrics poller: %v", err)
 	}
-	if err := mgr.AddMetricsServerExtraHandler("/amiga/health", serverHandler); err != nil {
-		log.Fatalf("unable to attach /amiga/health handler: %v", err)
+	go redisPollMetrics.Start(ctx)
+
+	// Create the redis cluster reconciler
+	redisClusterReconciler := redis.NewRedisClusterReconciler(redisCluster)
+	go redisClusterReconciler.Start(ctx)
+
+	// Build the HTTP server with the provided Config.
+	server := httpserver.NewServer(redisCluster, conf.API)
+	if err := server.Init(mgr); err != nil {
+		log.Fatalf("unable to initialize HTTP server: %v", err)
 	}
 
 	// Start the manager (blocking call until shutdown).

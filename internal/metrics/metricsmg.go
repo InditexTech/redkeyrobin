@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"github.com/inditextech/redisrobin/internal/redis"
 )
 
 // Label keys for metrics.
@@ -25,33 +26,6 @@ const (
 	Service                            = "service"
 	JiraKey                            = "jirakey"
 	InstanceId                         = "instanceId"
-	ClusterState                       = "cluster_state"
-	ClusterSlotsAssigned               = "cluster_slots_assigned"
-	ClusterSlotsOk                     = "cluster_slots_ok"
-	ClusterSlotsPFail                  = "cluster_slots_pfail"
-	ClusterSlotsFail                   = "cluster_slots_fail"
-	ClusterKnownNodes                  = "cluster_known_nodes"
-	ClusterSize                        = "cluster_size"
-	ClusterCurrentEpoch                = "cluster_current_epoch"
-	ClusterMyEpoch                     = "cluster_my_epoch"
-	ClusterStatsMMS                    = "cluster_stats_messages_meet_sent"
-	ClusterStatsMMR                    = "cluster_stats_messages_meet_received"
-	ClusterStatsMS                     = "cluster_stats_messages_sent"
-	ClusterStatsMR                     = "cluster_stats_messages_received"
-	ClusterStatsMPS                    = "cluster_stats_messages_ping_sent"
-	ClusterStatsMPR                    = "cluster_stats_messages_ping_received"
-	ClusterStatsMPongS                 = "cluster_stats_messages_pong_sent"
-	ClusterStatsMPongR                 = "cluster_stats_messages_pong_received"
-	ClusterCheckErrors                 = "cluster_check_errors"
-	ClusterCheckCommandOutputCode      = "cluster_check_command_output_code"
-	ClusterCheckWarnings               = "cluster_check_warnings"
-	ClusterCheckSlotCoverageMessage    = "cluster_check_slot_coverage_message"
-	ClusterCheckAgreementMessage       = "cluster_check_agreement_message"
-	ClusterCheckPerformedUsingPod      = "cluster_check_performed_using_pod"
-	ClusterStatsMessagesUpdateSent     = "cluster_stats_messages_update_sent"
-	ClusterStatsMessagesUpdateReceived = "cluster_stats_messages_update_received"
-	ClusterStatsMessagesFailReceived   = "cluster_stats_messages_fail_received"
-	TotalClusterLinksBufEx             = "total_cluster_links_buffer_limit_exceeded"
 	PendingClusterNodes                = "pending_cluster_nodes"
 	PendingMigrates                    = "pending_migrates"
 	PendingImports                     = "pending_imports"
@@ -66,15 +40,13 @@ const (
 // Predefined label sets for reuse.
 var (
 	clusterInfoLabelKeys = []string{
-		Cluster, Slot, Tenant, Domain, Environment, Namespace, PlatformID,
-		ClusterState, ClusterSlotsAssigned, ClusterSlotsOk,
-		ClusterSlotsFail, ClusterKnownNodes, ClusterSize,
-		ClusterStatsMMS, ClusterStatsMMR, ClusterStatsMS, ClusterStatsMR,
+		redis.ClusterState, redis.ClusterSlotsAssigned, redis.ClusterSlotsOk,
+		redis.ClusterSlotsFail, redis.ClusterKnownNodes, redis.ClusterSize,
+		redis.ClusterStatsMMS, redis.ClusterStatsMMR, redis.ClusterStatsMS, redis.ClusterStatsMR,
 	}
 
 	nodeInfoLabelKeys = []string{
-		Cluster, Slot, Tenant, Domain, Environment, Namespace,
-		PlatformID, NodeID, NodeIP, Role, Slots, MasterID, NodeFailures,
+		NodeID, NodeIP, Role, Slots, MasterID, NodeFailures,
 	}
 )
 
@@ -87,7 +59,12 @@ type MetricsManager struct {
 
 // NewMetricsManager creates a new MetricsManager, registers the base metrics,
 // and returns the instance.
-func NewMetricsManager() *MetricsManager {
+func NewMetricsManager(extraLabels map[string]string) *MetricsManager {
+	for k := range extraLabels {
+		clusterInfoLabelKeys = append(clusterInfoLabelKeys, k)
+		nodeInfoLabelKeys = append(nodeInfoLabelKeys, k)
+	}
+
 	m := &MetricsManager{
 		clusterInfo: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{

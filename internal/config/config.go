@@ -16,15 +16,16 @@ import (
 )
 
 // RedisOperatorConfig holds operator-level Redis configuration.
-type RedisOperatorConfig struct {
-	CollectionPeriodSeconds int `yaml:"collection_interval_seconds"`
+type RedisReconcilerConfig struct {
+	IntervalSeconds int `yaml:"interval_seconds"`
 }
 
 // RedisClusterConfig holds cluster-level Redis configuration.
 type RedisClusterConfig struct {
 	Namespace                string        `yaml:"namespace"`
-	Name                     string        `yaml:"service_name"`
+	Name                     string        `yaml:"name"`
 	Replicas                 int           `yaml:"replicas"`
+	Status 				 	 string        `yaml:"status"`
 	HealthProbePeriodSeconds int           `yaml:"health_probe_interval_seconds"`
 	HealingTimeSeconds       int           `yaml:"healing_time_seconds"`
 	MaxRetries               int           `yaml:"max_retries"`
@@ -33,12 +34,13 @@ type RedisClusterConfig struct {
 
 // RedisMetricsConfig holds metrics-related Redis configuration.
 type RedisMetricsConfig struct {
+	IntervalSeconds int `yaml:"interval_seconds"`
 	RedisInfoKeys []string `yaml:"redis_info_keys"`
 }
 
 // RedisConfig groups all Redis related configuration.
 type RedisConfig struct {
-	Operator RedisOperatorConfig `yaml:"operator"`
+	Reconciler RedisReconcilerConfig `yaml:"reconciler"`
 	Cluster  RedisClusterConfig  `yaml:"cluster"`
 	Metrics  RedisMetricsConfig  `yaml:"metrics"`
 }
@@ -59,15 +61,51 @@ type Configuration struct {
 func (c *Configuration) String() string {
 	return fmt.Sprintf(`Configuration properties:
 Metadata: %s
-CollectionPeriodSeconds: %d
+ReconcilerIntervalSeconds: %d
 ClusterHealthProbePeriodSeconds: %d
 ClusterHealingTimeSeconds: %d
-RedisInfoKeys: %v`,
+RedisInfoKeys: %v
+RedisMetricsIntervalSeconds: %d`,
 		util.MapToString(c.Metadata),
-		c.Redis.Operator.CollectionPeriodSeconds,
+		c.Redis.Reconciler.IntervalSeconds,
 		c.Redis.Cluster.HealthProbePeriodSeconds,
 		c.Redis.Cluster.HealingTimeSeconds,
-		c.Redis.Metrics.RedisInfoKeys)
+		c.Redis.Metrics.RedisInfoKeys,
+		c.Redis.Metrics.IntervalSeconds,)
+}
+
+// validate checks for missing required configuration fields.
+func (cfg *Configuration) validate() []string {
+	var missing []string
+
+	if len(cfg.Metadata) == 0 {
+		missing = append(missing, "metadata")
+	}
+	if cfg.Redis.Reconciler.IntervalSeconds == 0 {
+		missing = append(missing, "redis.reconciler.interval_seconds")
+	}
+	if cfg.Redis.Cluster.Namespace == "" {
+		missing = append(missing, "redis.cluster.namespace")
+	}
+	if cfg.Redis.Cluster.Name == "" {
+		missing = append(missing, "redis.cluster.name")
+	}
+	if cfg.Redis.Cluster.Replicas == 0 {
+		missing = append(missing, "redis.cluster.replicas")
+	}
+	if cfg.Redis.Cluster.Status == "" {
+		missing = append(missing, "redis.cluster.status")
+	}
+	if cfg.Redis.Cluster.HealthProbePeriodSeconds == 0 {
+		missing = append(missing, "redis.cluster.health_probe_interval_seconds")
+	}
+	if cfg.Redis.Cluster.HealingTimeSeconds == 0 {
+		missing = append(missing, "redis.cluster.healing_time_seconds")
+	}
+	if cfg.Redis.Metrics.IntervalSeconds == 0 {
+		missing = append(missing, "redis.metrics.interval_seconds")
+	}
+	return missing
 }
 
 // ConfigLoader defines the interface for loading a configuration.
@@ -88,38 +126,10 @@ func (y *YAMLConfigLoader) LoadConfig(path string) (*Configuration, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal configuration file %s: %w", path, err)
 	}
-	if missing := validateConfiguration(&cfg); len(missing) > 0 {
+	if missing := cfg.validate(); len(missing) > 0 {
 		return nil, fmt.Errorf("missing required configuration fields: %v", missing)
 	}
 	return &cfg, nil
-}
-
-// validateConfiguration checks for missing required configuration fields.
-func validateConfiguration(cfg *Configuration) []string {
-	var missing []string
-
-	if len(cfg.Metadata) == 0 {
-		missing = append(missing, "metadata")
-	}
-	if cfg.Redis.Operator.CollectionPeriodSeconds == 0 {
-		missing = append(missing, "redis.operator.collection_interval_seconds")
-	}
-	if cfg.Redis.Cluster.Namespace == "" {
-		missing = append(missing, "redis.cluster.namespace")
-	}
-	if cfg.Redis.Cluster.Name == "" {
-		missing = append(missing, "redis.cluster.name")
-	}
-	if cfg.Redis.Cluster.Replicas == 0 {
-		missing = append(missing, "redis.cluster.replicas")
-	}
-	if cfg.Redis.Cluster.HealthProbePeriodSeconds == 0 {
-		missing = append(missing, "redis.cluster.health_probe_interval_seconds")
-	}
-	if cfg.Redis.Cluster.HealingTimeSeconds == 0 {
-		missing = append(missing, "redis.cluster.healing_time_seconds")
-	}
-	return missing
 }
 
 // GetConfiguration returns the singleton Configuration loaded from the default file.
