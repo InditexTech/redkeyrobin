@@ -8,8 +8,25 @@ import(
 	"github.com/inditextech/redisrobin/util"
 )
 
+const (
+	Initializing = "Initializing"
+	Ready = "Ready"
+	Error = "Error"
+	Upgrading = "Upgrading"
+	ScalingDown = "ScalingDown"
+	ScalingUp = "ScalingUp"
+	Maintenance = "Maintenance"
+	Unknown = "Unknown"
+	Meeting = "Meeting"
+	Resharding = "Resharding"
+	Forgetting = "Forgetting"
+	Rebalancing = "Rebalancing"
+	Fixing = "Fixing"
+	EnsuringRatio = "EnsuringRatio"
+)
+
 var (
-	ValidRedisClusterStatus = []string{"Ready", "NotReady"}
+	ValidRedisClusterStatus = []string{Initializing, Ready, Error, Upgrading, ScalingDown, ScalingUp, Maintenance, Unknown}
 )
 
 type RequestInterface interface {
@@ -24,7 +41,7 @@ func ParseRequest(input *http.Request, output RequestInterface) error {
 	}
 	// Validate the request
 	if err := output.Validate(); err != nil {
-		return fmt.Errorf("validation error: %v", err)
+		return err
 	}
 	return nil
 }
@@ -35,7 +52,7 @@ type RedisClusterStatusRequest struct {
 
 func (r *RedisClusterStatusRequest) Validate() error {
 	if !util.StringInSlice(r.Status, ValidRedisClusterStatus) {
-		return fmt.Errorf("invalid status: %s", r.Status)
+		return fmt.Errorf("invalid status '%s'", r.Status)
 	}
 	return nil
 }

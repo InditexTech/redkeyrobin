@@ -20,7 +20,7 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 	request := RedisClusterStatusRequest{}
 	if err := ParseRequest(r, &request); err != nil {
 		log.Printf("Invalid request: %v", err)
-		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request"))
+		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}
 

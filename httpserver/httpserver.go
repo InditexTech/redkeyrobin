@@ -7,15 +7,14 @@ package httpserver
 import (
 	"fmt"
 	"log"
-	"strings"
 	"net/http"
-	
+	"strings"
+
 	"github.com/inditextech/redisrobin/config"
 	"github.com/inditextech/redisrobin/util"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 )
-
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
@@ -83,12 +82,12 @@ func (s *Server) checkPathConfiguration(pathConfiguration map[string]interface{}
 			return fmt.Errorf("invalid operationId for method %s", method)
 		}
 
-		// Check if Server has the method
-		if !util.MethodExists(s, operationID) {
-			return fmt.Errorf("method %s not found", operationID)
+		// Check if the method exists and is valid
+		if err := util.MethodIsValid(s, operationID); err != nil {
+			return err
 		}
 	}
-	
+
 	return nil
 }
 

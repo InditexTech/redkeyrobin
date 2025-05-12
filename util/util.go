@@ -6,9 +6,10 @@ package util
 
 import (
 	"fmt"
+	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
-	"reflect"
 )
 
 // ParseInt safely converts a string to an int.
@@ -58,26 +59,32 @@ func MapToString(m map[string]string) string {
 	return b.String()
 }
 
-
-func MethodExists(s any, name string) bool {
+func MethodIsValid(s any, name string) error {
 	// Get the method by name
 	method := reflect.ValueOf(s).MethodByName(name)
-	return method.IsValid()
+	if !method.IsValid() {
+		return fmt.Errorf("method %s not found", name)
+	}
+
+	// Check if the method has the correct signature
+	_, ok := method.Interface().(func(http.ResponseWriter, *http.Request))
+	if !ok {
+		return fmt.Errorf("method %s has invalid signature", name)
+	}
+	return nil
 }
 
-
-func Invoke(s any, name string, args... interface{}) []reflect.Value {
+func Invoke(s any, name string, args ...interface{}) []reflect.Value {
 	// Compose the arguments
-    inputs := make([]reflect.Value, len(args)) 
-    for i, _ := range args { 
-        inputs[i] = reflect.ValueOf(args[i]) 
-    } 
+	inputs := make([]reflect.Value, len(args))
+	for i, _ := range args {
+		inputs[i] = reflect.ValueOf(args[i])
+	}
 
 	// Call the method
 	method := reflect.ValueOf(s).MethodByName(name)
-    return method.Call(inputs)
+	return method.Call(inputs)
 }
-
 
 func StringInSlice(item string, list []string) bool {
 	for _, i := range list {

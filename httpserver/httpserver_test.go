@@ -112,6 +112,15 @@ func TestCheckPathConfiguration(t *testing.T) {
 			err: fmt.Errorf("method InvalidOperationId not found"),
 		},
 		{
+			name: "method has invalid signature",
+			pathConfiguration: map[string]interface{}{
+				"get": map[string]interface{}{
+					"operationId": "Init",
+				},
+			},
+			err: fmt.Errorf("method Init has invalid signature"),
+		},
+		{
 			name: "good request",
 			pathConfiguration: map[string]interface{}{
 				"get": map[string]interface{}{
