@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inditextech/redisrobin/util"
+	"github.com/inditextech/redisrobin/internal/util"
 	"gopkg.in/yaml.v3"
 )
 
@@ -104,6 +104,9 @@ func (cfg *Configuration) validate() []string {
 	}
 	if cfg.Redis.Metrics.IntervalSeconds == 0 {
 		missing = append(missing, "redis.metrics.interval_seconds")
+	}
+	if len(cfg.API.Endpoints) == 0 {
+		missing = append(missing, "api.endpoints")
 	}
 	return missing
 }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package httpserver
 
 import (
@@ -63,19 +67,18 @@ func (m MockedControllerManager) GetControllerOptions() ctrlConfig.Controller {
 	return ctrlConfig.Controller{}
 }
 
-
 var server = Server{}
 
 func TestCheckPathConfiguration(t *testing.T) {
 	tests := []struct {
-		name string
+		name              string
 		pathConfiguration map[string]interface{}
-		err error
+		err               error
 	}{
 		{
-			name: "emtpy path configuration",
+			name:              "emtpy path configuration",
 			pathConfiguration: map[string]interface{}{},
-			err: fmt.Errorf("no methods configured for path"),
+			err:               fmt.Errorf("no methods configured for path"),
 		},
 		{
 			name: "invalid method configuration",
@@ -141,16 +144,16 @@ func TestCheckPathConfiguration(t *testing.T) {
 
 func TestInit(t *testing.T) {
 	tests := []struct {
-		name string
-		endpoints map[string]map[string]interface{}
+		name              string
+		endpoints         map[string]map[string]interface{}
 		expectedEndpoints map[string]map[string]interface{}
-		err error
+		err               error
 	}{
 		{
-			name: "empty endpoints",
-			endpoints: map[string]map[string]interface{}{},
+			name:              "empty endpoints",
+			endpoints:         map[string]map[string]interface{}{},
 			expectedEndpoints: map[string]map[string]interface{}{},
-			err: nil,
+			err:               nil,
 		},
 		{
 			name: "invalid path configuration",
@@ -158,7 +161,7 @@ func TestInit(t *testing.T) {
 				"/rediscluster/status": map[string]interface{}{},
 			},
 			expectedEndpoints: map[string]map[string]interface{}{},
-			err: nil,
+			err:               nil,
 		},
 		{
 			name: "metrics server extra handler error",
@@ -170,7 +173,7 @@ func TestInit(t *testing.T) {
 				},
 			},
 			expectedEndpoints: map[string]map[string]interface{}{},
-			err: fmt.Errorf("unable to attach /error handler: error adding metrics server extra handler"),
+			err:               fmt.Errorf("unable to attach /error handler: error adding metrics server extra handler"),
 		},
 		{
 			name: "one path good, one path bad",
@@ -214,7 +217,7 @@ func TestInit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := Server{
-				Config: config.APIConfig{
+				config: config.APIConfig{
 					Endpoints: tt.endpoints,
 				},
 			}
@@ -226,11 +229,11 @@ func TestInit(t *testing.T) {
 
 func TestServeHTTP(t *testing.T) {
 	tests := []struct {
-		name string
-		config config.APIConfig
-		endpoint string
-		method string
-		expectedBody ResponseInterface
+		name               string
+		config             config.APIConfig
+		endpoint           string
+		method             string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
@@ -245,7 +248,7 @@ func TestServeHTTP(t *testing.T) {
 				},
 			},
 			endpoint: "/notfound",
-			method: "GET",
+			method:   "GET",
 			expectedBody: ErrorResponse{
 				Error: "Unknown path /notfound",
 			},
@@ -263,7 +266,7 @@ func TestServeHTTP(t *testing.T) {
 				},
 			},
 			endpoint: "/rediscluster/status",
-			method: "POST",
+			method:   "POST",
 			expectedBody: ErrorResponse{
 				Error: "Method POST not allowed in path /rediscluster/status",
 			},
@@ -281,7 +284,7 @@ func TestServeHTTP(t *testing.T) {
 				},
 			},
 			endpoint: "/rediscluster/status",
-			method: "GET",
+			method:   "GET",
 			expectedBody: RedisClusterStatusResponse{
 				Status: "OK",
 			},
@@ -292,7 +295,7 @@ func TestServeHTTP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := Server{
-				Config: tt.config,
+				config: tt.config,
 			}
 			testRequest(t, tt.method, tt.endpoint, "", server.ServeHTTP, tt.expectedStatusCode, tt.expectedBody)
 		})

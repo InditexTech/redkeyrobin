@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -19,25 +19,25 @@ import (
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
-	RedisCluster *redis.RedisCluster
-	Config config.APIConfig
+	redisCluster *redis.RedisCluster
+	config       config.APIConfig
 }
 
 func NewServer(redisCluster *redis.RedisCluster, config config.APIConfig) *Server {
 	return &Server{
-		RedisCluster: redisCluster,
-		Config: config,
+		redisCluster: redisCluster,
+		config:       config,
 	}
 }
 
 // Init initializes the Server using the Config in the provided Manager.
 func (s *Server) Init(mgr ctrl.Manager) error {
 	// Set up the HTTP server with the provided Config
-	for path, pathConfiguration := range s.Config.Endpoints {
+	for path, pathConfiguration := range s.config.Endpoints {
 		// Check the path configuration and delete it if it is invalid
 		if err := s.checkPathConfiguration(pathConfiguration); err != nil {
 			log.Printf("Error checking path %s configuration: %v", path, err)
-			delete(s.Config.Endpoints, path)
+			delete(s.config.Endpoints, path)
 			continue
 		}
 
@@ -55,7 +55,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received %s request on path %s", r.Method, r.URL.Path)
 
 	// Check if the path is configured
-	pathConfiguration, found := s.Config.Endpoints[r.URL.Path]
+	pathConfiguration, found := s.config.Endpoints[r.URL.Path]
 	if !found {
 		s.sendError(w, http.StatusNotFound, fmt.Sprintf("Unknown path %s", r.URL.Path))
 		return

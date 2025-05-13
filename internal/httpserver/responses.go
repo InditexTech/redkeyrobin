@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package httpserver
 
 import(
@@ -62,11 +66,26 @@ func (e ErrorResponse) GetKeys() []string {
 	return []string{"error"}
 }
 
-
 type RedisClusterStatusResponse struct {
 	Status string `json:"status"`
 }
 
 func (r RedisClusterStatusResponse) GetKeys() []string {
+	return []string{"status"}
+}
+
+type ClusterReplicasResponse struct {
+	Replicas int `json:"replicas"`
+}
+
+func (r ClusterReplicasResponse) GetKeys() []string {
+	return []string{"replicas"}
+}
+
+type ClusterStatusResponse struct {
+	Status string `json:"status"`
+}
+
+func (r ClusterStatusResponse) GetKeys() []string {
 	return []string{"status"}
 }

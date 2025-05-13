@@ -17,7 +17,7 @@ tags:
     description: Redis cluster status
   - name: replicas
     description: Redis cluster replicas
-  - name: reshard
+  - name: move
     description: Redis cluster reshard
   - name: metrics
     description: Redis cluster metrics

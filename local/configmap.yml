@@ -10,8 +10,8 @@ metadata:
   platformid: "meccanoarteixo2"
   service: "showpaas"
 redis:
-  operator:
-    collection_interval_seconds: 60
+  reconciler:
+    interval_seconds: 60
   cluster:
     replicas: 1
     namespace: redis-operator
@@ -22,6 +22,7 @@ redis:
     max_retries: 2
     back_off: 10s
   metrics:
+    interval_seconds: 60
     version: 0.10.2.0
     redis_info_keys:
       - keyspace_hits

@@ -23,13 +23,14 @@ COPY / .
 RUN go build -ldflags "-X main.version=2.0.0" -o robin ./cmd/
 
 # Use a smaller base image for the final stage
-FROM redhat/ubi9-minimal:9.5.0 AS final
+FROM debian:bookworm-slim AS final
 
 # Install redis-cli by adding the redis package
-RUN microdnf update -y && microdnf install redis
+RUN apt update -y && apt install -y redis-tools curl procps
 
 # Create a non-root user
-RUN addgroup -S robin && adduser -S -u 10000 -G robin robin
+# RUN addgroup -S robin && adduser -S -u 10000 -G robin robin
+RUN addgroup robin && adduser --uid 10000 --ingroup robin robin
 
 # Copy the Go binary from the builder stage
 COPY --from=builder /app/robin /robin

@@ -434,6 +434,8 @@ func (rcc *RedisCLICommand) CheckStatusCode() {
 }
 
 func (rcc *RedisCLICommand) Wait() {
+	rcc.Err = nil
+
 	// Wait for command to finish
 	rcc.Err = rcc.cmd.Wait()
 	rcc.CheckStatusCode()
@@ -445,6 +447,10 @@ func (rcc *RedisCLICommand) GetStdout() string {
 
 func (rcc *RedisCLICommand) GetStderr() string {
 	return rcc.stderr.String()
+}
+
+func (rcc *RedisCLICommand) GetCombinedOutput() string {
+	return rcc.GetStdout() + rcc.GetStderr()
 }
 
 func (rc *RedisClient) runRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
@@ -489,7 +495,7 @@ func (rc *RedisClient) ClusterCheck(ctx context.Context) (*ClusterCheckResult, e
 			return nil, fmt.Errorf("redis-cli command canceled or timed out: %w", ctx.Err())
 		}
 
-		log.Printf("Error executing 'redis-cli --cluster check %s': %v. Partial output:\n%s", rc.client.Options().Addr, cmd.Err, cmd.GetStderr())
+		log.Printf("Error executing 'redis-cli --cluster check %s': %v. Partial output:\n%s", rc.client.Options().Addr, cmd.Err, cmd.GetCombinedOutput())
 	}
 
 	// Parse the CLI output (whether complete or partial) to fill a ClusterCheckResult.

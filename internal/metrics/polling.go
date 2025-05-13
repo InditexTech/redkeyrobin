@@ -50,13 +50,13 @@ func NewRedisPollMetrics(redisCluster *redis.RedisCluster, metricsManager *Metri
 // Start begins the polling loop.
 func (p *RedisPollMetrics) Start(ctx context.Context) {
 	for {
-		log.Printf("Polling metrics %s.", p.redisCluster.Conf.Redis.Cluster.Name)
+		log.Printf("Polling metrics %s.", p.redisCluster.GetName())
 
 		err := p.pollRedisMetrics(ctx)
 		if err != nil {
 			log.Printf("Error polling Redis metrics: %v", err)
 		}
-		time.Sleep(time.Second * time.Duration(p.redisCluster.Conf.Redis.Metrics.IntervalSeconds))
+		time.Sleep(time.Second * time.Duration(p.redisCluster.GetMetricsInterval()))
 	}
 }
 
@@ -105,7 +105,7 @@ func (p *RedisPollMetrics) pollRedisClusterMetrics(ctx context.Context) error {
 // pollClusterNodes obtains node information from Redis, updates membership if changed,
 // and then stores each node's data in the metrics manager.
 func (p *RedisPollMetrics) pollClusterNodes(redisClient *redis.RedisClient) error {
-	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
+	err := redisClient.CheckConnection(p.redisCluster.GetClusterMaxRetries(), p.redisCluster.GetClusterBackOff())
 	if err != nil {
 		return fmt.Errorf("error checking connection: %w", err)
 	}
@@ -152,7 +152,7 @@ func (p *RedisPollMetrics) pollClusterNodes(redisClient *redis.RedisClient) erro
 
 // pollClusterInfo obtains overall cluster details from Redis and updates them in the metrics manager.
 func (p *RedisPollMetrics) pollClusterInfo(redisClient *redis.RedisClient) error {
-	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
+	err := redisClient.CheckConnection(p.redisCluster.GetClusterMaxRetries(), p.redisCluster.GetClusterBackOff())
 	if err != nil {
 		return fmt.Errorf("error checking connection: %w", err)
 	}
@@ -183,7 +183,7 @@ func (p *RedisPollMetrics) pollClusterInfo(redisClient *redis.RedisClient) error
 // pollRedisNodeLevelMetrics orchestrates node-level metric polling by fetching "info all"
 // from each node in the configured Redis Cluster.
 func (p *RedisPollMetrics) pollRedisNodeLevelMetrics(ctx context.Context) error {
-	for _, node := range p.redisCluster.Nodes {
+	for _, node := range p.redisCluster.GetNodes() {
 		if err := p.pollRedisInfoAllMetrics(ctx, node.Addr, node.Name); err != nil {
 			log.Printf("Error polling Redis metrics for node %s: %v", node.Name, err)
 		}
@@ -224,10 +224,10 @@ func (p *RedisPollMetrics) buildNodeTags(nodeName string) map[string]string {
 // buildCommonMetadataTags returns a shared map of metadata from p.conf.
 func (p *RedisPollMetrics) buildCommonMetadataTags() map[string]string {
 	tags := map[string]string{
-		Cluster:   p.redisCluster.Conf.Redis.Cluster.Name,
-		Namespace: p.redisCluster.Conf.Redis.Cluster.Namespace,
+		Cluster:   p.redisCluster.GetName(),
+		Namespace: p.redisCluster.GetNamespace(),
 	}
-	maps.Copy(tags, p.redisCluster.Conf.Metadata)
+	maps.Copy(tags, p.redisCluster.GetMetadata())
 	return tags
 }
 
@@ -243,7 +243,7 @@ func (p *RedisPollMetrics) createRedisClient(ctx context.Context, addr string) *
 
 // fetchRedisInfo retrieves "info all" from the given client.
 func (p *RedisPollMetrics) fetchRedisInfo(redisClient *redis.RedisClient) (*redis.RedisInfo, error) {
-	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
+	err := redisClient.CheckConnection(p.redisCluster.GetClusterMaxRetries(), p.redisCluster.GetClusterBackOff())
 	if err != nil {
 		return nil, fmt.Errorf("error checking connection: %w", err)
 	}
@@ -264,14 +264,14 @@ func (p *RedisPollMetrics) processPromMetrics(
 	redisInfo *redis.RedisInfo,
 	tags map[string]string,
 ) {
-	addPromMetrics(redisInfo, tags, p.redisCluster.Conf.Redis.Metrics.RedisInfoKeys, redisInfo.Keyspace, p.metricsManager)
+	addPromMetrics(redisInfo, tags, p.redisCluster.GetMetricsRedisInfoKeys(), redisInfo.Keyspace, p.metricsManager)
 }
 
 // pollClusterCheckMetrics fetches the "redis-cli --cluster check" info and updates 
 func (p *RedisPollMetrics) pollClusterCheckMetrics(ctx context.Context) error {
 	redisClient := p.createRedisClusterClient(ctx)
 	defer p.closeRedisClient(redisClient)
-	err := redisClient.CheckConnection(p.redisCluster.Conf.Redis.Cluster.MaxRetries, p.redisCluster.Conf.Redis.Cluster.BackOff)
+	err := redisClient.CheckConnection(p.redisCluster.GetClusterMaxRetries(), p.redisCluster.GetClusterBackOff())
 	if err != nil {
 		return fmt.Errorf("error checking connection: %w", err)
 	}

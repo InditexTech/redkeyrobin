@@ -44,6 +44,7 @@ func main() {
 	// Load Redis configuration (e.g., from environment or file).
 	conf := config.GetConfiguration()
 	redisCluster := redis.NewRedisCluster(conf)
+	redisCluster.Init()
 
 	// Create the metrics manager.
 	metricsManager := metrics.NewMetricsManager(conf.Metadata)
