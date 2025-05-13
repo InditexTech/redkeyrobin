@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 
@@ -43,12 +42,12 @@ func main() {
 
 	// Load Redis configuration (e.g., from environment or file).
 	conf := config.GetConfiguration()
+	ctx := ctrl.SetupSignalHandler()
 	redisCluster := redis.NewRedisCluster(conf)
 	redisCluster.Init()
 
 	// Create the metrics manager.
 	metricsManager := metrics.NewMetricsManager(conf.Metadata)
-	ctx := context.Background()
 
 	// Create a new RedisPollMetrics instance to gather metrics in the background.
 	redisPollMetrics, err := metrics.NewRedisPollMetrics(redisCluster, metricsManager)
@@ -68,7 +67,7 @@ func main() {
 	}
 
 	// Start the manager (blocking call until shutdown).
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		log.Fatalf("problem running manager: %v", err)
 	}
 }

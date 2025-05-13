@@ -322,14 +322,15 @@ func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
 	return clusterInfo, nil
 }
 
-// Node represents a Redis cluster node.
-type Node struct {
-	ID       string
-	IP       string
-	Role     string
-	Slots    []string
-	MasterID string
-	Failures int
+
+func (rc *RedisClient) GetMyID() (string, error) {
+	result, err := rc.client.Do(rc.ctx, "CLUSTER", "MYID").Result()
+	if err != nil {
+		log.Printf("Error fetching cluster nodes: %v", err)
+		return "", err
+	}
+
+	return result.(string), nil
 }
 
 // GetNodesInfo retrieves and parses the cluster nodes information.
@@ -361,9 +362,9 @@ func (rc *RedisClient) GetNodesInfo() ([]Node, error) {
 		masterID := fields[3] // "-" if master, otherwise Master ID
 
 		// Extract slot information (if available)
-		var slots []string
+		var slots [][]int
 		if len(fields) > 8 {
-			slots = fields[8:]
+			slots = util.ParseSlotRange(fields[8:]...)
 		}
 
 		// Validate role
@@ -540,7 +541,7 @@ func parseClusterCheckOutput(output string) *ClusterCheckResult {
 }
 
 
-func (rc *RedisClient) ReshardNode(ctx context.Context, source, target RedisNode, slots int) (*RedisCLICommand) {
+func (rc *RedisClient) ReshardNode(ctx context.Context, source, target Node, slots int) (*RedisCLICommand) {
 	if slots == 0 {
 		log.Printf("No slots to reshard")
 		return nil

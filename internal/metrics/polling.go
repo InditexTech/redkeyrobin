@@ -49,7 +49,7 @@ func NewRedisPollMetrics(redisCluster *redis.RedisCluster, metricsManager *Metri
 
 // Start begins the polling loop.
 func (p *RedisPollMetrics) Start(ctx context.Context) {
-	for {
+	for ctx.Err() == nil {
 		log.Printf("Polling metrics %s.", p.redisCluster.GetName())
 
 		err := p.pollRedisMetrics(ctx)
@@ -105,44 +105,32 @@ func (p *RedisPollMetrics) pollRedisClusterMetrics(ctx context.Context) error {
 // pollClusterNodes obtains node information from Redis, updates membership if changed,
 // and then stores each node's data in the metrics manager.
 func (p *RedisPollMetrics) pollClusterNodes(redisClient *redis.RedisClient) error {
-	err := redisClient.CheckConnection(p.redisCluster.GetClusterMaxRetries(), p.redisCluster.GetClusterBackOff())
-	if err != nil {
-		return fmt.Errorf("error checking connection: %w", err)
-	}
+	// err := redisClient.CheckConnection(p.redisCluster.GetClusterMaxRetries(), p.redisCluster.GetClusterBackOff())
+	// if err != nil {
+	// 	return fmt.Errorf("error checking connection: %w", err)
+	// }
 
-	nodesInfo, err := redisClient.GetNodesInfo()
-	if err != nil {
-		return fmt.Errorf("error getting nodes info: %w", err)
-	}
+	// nodesInfo, err := redisClient.GetNodesInfo()
+	// if err != nil {
+	// 	return fmt.Errorf("error getting nodes info: %w", err)
+	// }
+
+	nodesInfo := p.redisCluster.GetNodes()
 
 	// Check if cluster membership changed; reset metrics if needed
 	p.clusterMgr.CheckClusterNodes(nodesInfo)
 
 	// For each node, generate relevant tags and update node info metrics
-	for _, v := range nodesInfo {
-		nodeInfoStringList := strings.Split(nodeInfoReplacer.Replace(fmt.Sprintf("%v", v)), " ")
-
+	for _, node := range nodesInfo {
 		// Build standard tags
 		nodeTags := p.buildCommonMetadataTags()
-		// Add node-specific fields if present
-		if len(nodeInfoStringList) > 0 {
-			nodeTags[NodeID] = nodeInfoStringList[0]
-		}
-		if len(nodeInfoStringList) > 1 {
-			nodeTags[NodeIP] = nodeInfoStringList[1]
-		}
-		if len(nodeInfoStringList) > 2 {
-			nodeTags[Role] = nodeInfoStringList[2]
-		}
-		if len(nodeInfoStringList) > 3 {
-			nodeTags[Slots] = nodeInfoStringList[3]
-		}
-		if len(nodeInfoStringList) > 4 {
-			nodeTags[MasterID] = nodeInfoStringList[4]
-		}
-		if len(nodeInfoStringList) > 5 {
-			nodeTags[NodeFailures] = nodeInfoStringList[5]
-		}
+
+		nodeTags[NodeID] = node.ID
+		nodeTags[NodeIP] = node.IP
+		nodeTags[Role] = node.Role
+		nodeTags[Slots] = fmt.Sprintf("%v", node.Slots)
+		nodeTags[MasterID] = node.MasterID
+		nodeTags[NodeFailures] = fmt.Sprintf("%v", node.Failures)
 
 		p.metricsManager.UpdateNodeInfo(nodeTags)
 	}
@@ -184,18 +172,10 @@ func (p *RedisPollMetrics) pollClusterInfo(redisClient *redis.RedisClient) error
 // from each node in the configured Redis Cluster.
 func (p *RedisPollMetrics) pollRedisNodeLevelMetrics(ctx context.Context) error {
 	for _, node := range p.redisCluster.GetNodes() {
-		if err := p.pollRedisInfoAllMetrics(ctx, node.Addr, node.Name); err != nil {
+		if err := p.pollRedisInfoAllMetrics(ctx, node.IP, node.Name); err != nil {
 			log.Printf("Error polling Redis metrics for node %s: %v", node.Name, err)
 		}
 	}
-	// for i := range p.redisCluster.Conf.Redis.Cluster.Replicas {
-	// 	nodeName := fmt.Sprintf("%s-%d", p.redisCluster.Conf.Redis.Cluster.Name, i)
-	// 	nodeAddr := fmt.Sprintf("%s.%s", nodeName, p.redisCluster.Conf.Redis.Cluster.Name)
-
-	// 	if err := p.pollRedisInfoAllMetrics(ctx, nodeAddr, nodeName); err != nil {
-	// 		log.Printf("Error polling Redis metrics for node %s: %v", nodeName, err)
-	// 	}
-	// }
 	return nil
 }
 

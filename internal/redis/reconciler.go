@@ -20,8 +20,8 @@ func NewRedisClusterReconciler(redisCluster *RedisCluster) *RedisClusterReconcil
 	}
 }
 
-func (r *RedisClusterReconciler) Start(ctx context.Context) error {
-	for {
+func (r *RedisClusterReconciler) Start(ctx context.Context) {
+	for ctx.Err() == nil {
 		log.Printf("Reconcilling cluster %s.", r.redisCluster.GetName())
 
 		err := r.Reconcile(ctx)

@@ -296,7 +296,7 @@ components:
           type: integer
           description: Slots to move. If not provided, all slots will be moved
           example: 0
-          default: -1
+          default: 0
     ClusterMoveSlotsResponse:
       type: object
       properties:

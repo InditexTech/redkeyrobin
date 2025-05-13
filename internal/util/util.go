@@ -45,6 +45,39 @@ func ParseFloat(value string) float64 {
 	return num
 }
 
+
+func ParseSlotRange(values ...string) ([][]int) {
+	slots := [][]int{}
+
+	for _, value := range values {
+		for _, slotRange := range strings.Split(value, " ") {
+			if strings.Contains(slotRange, "-") {
+				splitSlotRange := strings.Split(slotRange, "-")
+				start, err := strconv.Atoi(splitSlotRange[0])
+				if err != nil {
+					fmt.Printf("could not parse int from %q: %v\n", slotRange, err)
+					continue
+				}
+				end, err := strconv.Atoi(splitSlotRange[1])
+				if err != nil {
+					fmt.Printf("could not parse int from %q: %v\n", slotRange, err)
+					continue
+				}
+				slots = append(slots, []int{start, end})
+			} else {
+				slot, err := strconv.Atoi(slotRange)
+				if err != nil {
+					fmt.Printf("could not parse int from %q: %v\n", slotRange, err)
+					continue
+				}
+				slots = append(slots, []int{slot, slot})
+			}
+		}
+	}
+
+	return slots
+}
+
 // MapToString converts a map[string]string to a string.
 func MapToString(m map[string]string) string {
 	var b strings.Builder

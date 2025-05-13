@@ -74,6 +74,47 @@ func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
+	// Parse the request body
+	request := ClusterMoveRequest{}
+	if err := ParseRequest(r, &request); err != nil {
+		log.Printf("Invalid request: %v", err)
+		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
+		return
+	}
+
+	// Get the nodes
+	from := s.redisCluster.GetNode(request.From)
+	if from == nil {
+		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node %s not found", request.From))
+		return
+	}
+	to := s.redisCluster.GetNode(request.To)
+	if to == nil {
+		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node %s not found", request.To))
+		return
+	}
+
+	// Get the slots
+	slots := request.Slots
+	if slots == 0 {
+		slots = from.GetNumberOfSlots()
+	}
+
+	// Do the move
+	err := s.redisCluster.MoveSlots(from, to, slots)
+	if err != nil {
+		if _, ok := err.(*redis.OperationInProgressError); ok {
+			s.sendResponse(w, http.StatusAccepted, nil)
+			return
+		} else if _, ok := err.(*redis.OperationAlreadyDoneError); ok {
+			s.sendResponse(w, http.StatusOK, nil)
+			return
+		}
+
+		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error rebalancing cluster: %v", err))
+		return
+	}
+	s.sendResponse(w, http.StatusCreated, nil)
 
 }
 
@@ -82,7 +123,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
-	err := s.redisCluster.Rebalance()
+	err := s.redisCluster.Rebalance(true)
 	if err != nil {
 		if _, ok := err.(*redis.OperationInProgressError); ok {
 			s.sendResponse(w, http.StatusAccepted, nil)

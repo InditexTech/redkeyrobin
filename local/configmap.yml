@@ -59,7 +59,7 @@ api:
       get:
         operationId: GetClusterStatus
     /v1/cluster/move:
-      post:
+      put:
         operationId: MoveNodeSlots
     /v1/cluster/check:
       get:
