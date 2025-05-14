@@ -47,6 +47,15 @@ func NewRedisCluster(conf *config.Configuration) *RedisCluster {
 	}
 }
 
+func NewFakeRedisCluster(conf *config.Configuration, status string, nodes map[string]*RedisNode, operations map[string][]*RedisOperation) *RedisCluster {
+	return &RedisCluster{
+		conf:       conf,
+		status:     status,
+		nodes:      nodes,
+		operations: operations,
+	}
+}
+
 // RedisCluster represents a Redis cluster
 type RedisCluster struct {
 	conf       *config.Configuration
@@ -209,7 +218,7 @@ func (rc *RedisCluster) SetReplicas(replicas int) error {
 	redisClientLogger.Info("Changing Redis Cluster replicas", "current", currentReplicas, "desired", replicas)
 
 	if replicas == currentReplicas {
-		return &OperationAlreadyDoneError{Operation: "SetReplicas"}
+		return &OperationCompletedError{Operation: "SetReplicas"}
 	}
 
 	rc.conf.Redis.Cluster.Replicas = replicas
@@ -249,7 +258,7 @@ func (rc *RedisCluster) Rebalance(async bool) error {
 		return &OperationInProgressError{Operation: "Rebalance"}
 	} else if rc.HasBeenRebalanced() {
 		redisClientLogger.Info("Cluster has already been rebalanced")
-		return &OperationAlreadyDoneError{Operation: "Rebalance"}
+		return &OperationCompletedError{Operation: "Rebalance"}
 	}
 
 	// Get Redis client and check connection
@@ -283,7 +292,7 @@ func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
 		return &OperationInProgressError{Operation: "Resharding"}
 	} else if rc.HasBeenResharded(*from, *to) {
 		redisClientLogger.Info("Slots have already been moved between nodes", "from", from.Name, "to", to.Name)
-		return &OperationAlreadyDoneError{Operation: "Resharding"}
+		return &OperationCompletedError{Operation: "Resharding"}
 	}
 
 	// Get Redis client and check connection

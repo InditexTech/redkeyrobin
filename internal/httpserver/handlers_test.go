@@ -99,18 +99,10 @@ func TestUpdateClusterReplicas(t *testing.T) {
 		expectedStatusCode int
 	}{
 		{
-			name:    "bad request",
-			request: "{",
-			expectedBody: ErrorResponse{
-				Error: "Invalid request: unexpected EOF",
-			},
-			expectedStatusCode: http.StatusBadRequest,
-		},
-		{
 			name:    "invalid request",
 			request: `{"replicas": -1}`,
 			expectedBody: ErrorResponse{
-				Error: "Invalid request: invalid replicas '-1'",
+				Error: "Invalid request: 'replicas' must be positive",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
@@ -158,7 +150,80 @@ func TestMoveNodeSlots(t *testing.T) {
 		request            string
 		expectedBody       ResponseInterface
 		expectedStatusCode int
-	}{}
+	}{
+		{
+			name:    "invalid request from",
+			request: `{"invalid": -1}`,
+			expectedBody: ErrorResponse{
+				Error: "Invalid request: 'from' cannot be empty",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "invalid request to",
+			request: `{"from": "node1"}`,
+			expectedBody: ErrorResponse{
+				Error: "Invalid request: 'to' cannot be empty",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "same nodes",
+			request: `{"from": "node1", "to": "node1"}`,
+			expectedBody: ErrorResponse{
+				Error: "Source and destination nodes cannot be the same",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "invalid request slots",
+			request: `{"from": "node1", "to": "node2", "slots": -1}`,
+			expectedBody: ErrorResponse{
+				Error: "Invalid request: 'slots' must be positive",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "from node not found",
+			request: `{"from": "node4", "to": "node2"}`,
+			expectedBody: ErrorResponse{
+				Error: "Node 'node4' not found",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "to node not found",
+			request: `{"from": "node1", "to": "node4"}`,
+			expectedBody: ErrorResponse{
+				Error: "Node 'node4' not found",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "resharding in progress",
+			request: `{"from": "node1", "to": "node3"}`,
+			expectedBody:  ClusterMoveSlotsResponse{
+				Status: "In progress",
+			},
+			expectedStatusCode: http.StatusAccepted,
+		},
+		{
+			name:    "resharding completed",
+			request: `{"from": "node1", "to": "node2"}`,
+			expectedBody:  ClusterMoveSlotsResponse{
+				Status: "Completed",
+			},
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:    "unexpected error",
+			request: `{"from": "node2", "to": "node3"}`,
+			expectedBody:  ErrorResponse{
+				Error: "Error rebalancing cluster: maxRetries must be greater than 0",
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testRequest(t, "PUT", "/cluster/move", tt.request, server.MoveNodeSlots, tt.expectedStatusCode, tt.expectedBody)

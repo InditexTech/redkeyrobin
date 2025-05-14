@@ -12,10 +12,10 @@ func (e *OperationInProgressError) Error() string {
 	return "operation in progress: " + e.Operation
 }
 
-type OperationAlreadyDoneError struct {
+type OperationCompletedError struct {
 	Operation string
 }
 
-func (e *OperationAlreadyDoneError) Error() string {
+func (e *OperationCompletedError) Error() string {
 	return "operation already done: " + e.Operation
 }

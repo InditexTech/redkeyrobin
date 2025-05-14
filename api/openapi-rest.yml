@@ -288,9 +288,9 @@ components:
         status:
           type: string
           description: Move operation status
-          example: InProgress
+          example: In progress
           enum:
-            - InProgress
+            - In progress
             - Completed
             - Error
     ClusterCheckResponse:

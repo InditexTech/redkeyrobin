@@ -89,3 +89,11 @@ type ClusterStatusResponse struct {
 func (r ClusterStatusResponse) GetKeys() []string {
 	return []string{"status"}
 }
+
+type ClusterMoveSlotsResponse struct {
+	Status string `json:"status"`
+}
+
+func (r ClusterMoveSlotsResponse) GetKeys() []string {
+	return []string{"status"}
+}

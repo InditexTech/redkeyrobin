@@ -74,7 +74,7 @@ func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	// Parse the request body
-	request := ClusterMoveRequest{}
+	request := ClusterMoveSlotsRequest{}
 	if err := ParseRequest(r, &request); err != nil {
 		s.logger.Info("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
@@ -82,14 +82,19 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the nodes
+	if request.From == request.To {
+		s.sendError(w, http.StatusBadRequest, "Source and destination nodes cannot be the same")
+		return
+	}
+
 	from := s.redisCluster.GetNode(request.From)
 	if from == nil {
-		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node %s not found", request.From))
+		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node '%s' not found", request.From))
 		return
 	}
 	to := s.redisCluster.GetNode(request.To)
 	if to == nil {
-		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node %s not found", request.To))
+		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node '%s' not found", request.To))
 		return
 	}
 
@@ -101,20 +106,23 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 
 	// Do the move
 	err := s.redisCluster.MoveSlots(from, to, slots)
+	response := ClusterMoveSlotsResponse{}
 	if err != nil {
 		if _, ok := err.(*redis.OperationInProgressError); ok {
-			s.sendResponse(w, http.StatusAccepted, nil)
+			response.Status = "In progress"
+			s.sendResponse(w, http.StatusAccepted, response)
 			return
-		} else if _, ok := err.(*redis.OperationAlreadyDoneError); ok {
-			s.sendResponse(w, http.StatusOK, nil)
+		} else if _, ok := err.(*redis.OperationCompletedError); ok {
+			response.Status = "Completed"
+			s.sendResponse(w, http.StatusOK, response)
 			return
 		}
 
 		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error rebalancing cluster: %v", err))
 		return
 	}
-	s.sendResponse(w, http.StatusCreated, nil)
-
+	response.Status = "In progress"
+	s.sendResponse(w, http.StatusCreated, response)
 }
 
 func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +135,7 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 		if _, ok := err.(*redis.OperationInProgressError); ok {
 			s.sendResponse(w, http.StatusAccepted, nil)
 			return
-		} else if _, ok := err.(*redis.OperationAlreadyDoneError); ok {
+		} else if _, ok := err.(*redis.OperationCompletedError); ok {
 			s.sendResponse(w, http.StatusOK, nil)
 			return
 		}

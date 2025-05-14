@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"strconv"
 
 	"slices"
 
@@ -362,9 +363,9 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 		masterID := fields[3] // "-" if master, otherwise Master ID
 
 		// Extract slot information (if available)
-		var slots [][]int
+		var slots []RedisSlotRange
 		if len(fields) > 8 {
-			slots = util.ParseSlotRange(fields[8:]...)
+			slots = parseRedisSlotRange(fields[8:]...)
 		}
 
 		// Validate role
@@ -567,4 +568,37 @@ func (rc *RedisClient) ClusterRebalance(ctx context.Context) *RedisCLICommand {
 
 	// Execute the command and return command reference
 	return rc.runRedisCLICommandAsync(ctx, command)
+}
+
+
+func parseRedisSlotRange(values ...string) []RedisSlotRange {
+	slots := []RedisSlotRange{}
+
+	for _, value := range values {
+		for _, slotRange := range strings.Split(value, " ") {
+			if strings.Contains(slotRange, "-") {
+				splitSlotRange := strings.Split(slotRange, "-")
+				start, err := strconv.Atoi(splitSlotRange[0])
+				if err != nil {
+					fmt.Printf("could not parse int from %q: %v\n", slotRange, err)
+					continue
+				}
+				end, err := strconv.Atoi(splitSlotRange[1])
+				if err != nil {
+					fmt.Printf("could not parse int from %q: %v\n", slotRange, err)
+					continue
+				}
+				slots = append(slots, RedisSlotRange{Start: start, End: end})
+			} else {
+				slot, err := strconv.Atoi(slotRange)
+				if err != nil {
+					fmt.Printf("could not parse int from %q: %v\n", slotRange, err)
+					continue
+				}
+				slots = append(slots, RedisSlotRange{Start: slot, End: slot})
+			}
+		}
+	}
+
+	return slots
 }

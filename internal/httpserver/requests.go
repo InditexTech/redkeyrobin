@@ -51,26 +51,26 @@ type ClusterReplicasRequest struct {
 
 func (r *ClusterReplicasRequest) Validate() error {
 	if r.Replicas < 0 {
-		return fmt.Errorf("invalid replicas '%d'", r.Replicas)
+		return fmt.Errorf("'replicas' must be positive")
 	}
 	return nil
 }
 
-type ClusterMoveRequest struct {
+type ClusterMoveSlotsRequest struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Slots int    `json:"slots"`
 }
 
-func (r *ClusterMoveRequest) Validate() error {
+func (r *ClusterMoveSlotsRequest) Validate() error {
 	if r.From == "" {
-		return fmt.Errorf("from cannot be empty")
+		return fmt.Errorf("'from' cannot be empty")
 	}
 	if r.To == "" {
-		return fmt.Errorf("to cannot be empty")
+		return fmt.Errorf("'to' cannot be empty")
 	}
 	if r.Slots < 0 {
-		return fmt.Errorf("slots must be positive")
+		return fmt.Errorf("'slots' must be positive")
 	}
 
 	return nil

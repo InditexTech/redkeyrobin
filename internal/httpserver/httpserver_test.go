@@ -68,14 +68,81 @@ func (m MockedControllerManager) GetControllerOptions() ctrlConfig.Controller {
 	return ctrlConfig.Controller{}
 }
 
-var server = Server{
-	redisCluster: redis.NewRedisCluster(&config.Configuration{
-		Redis: config.RedisConfig{
-			Cluster: config.RedisClusterConfig{
-				Status: "Ready",
+var node1 = &redis.RedisNode{
+	Name: "node1",
+	ID: "1234567890",
+	Addr: "node1",
+	IP: "1.1.1.1",
+	Role: "master",
+	Slots: []redis.RedisSlotRange{
+			{
+				Start: 0,
+				End: 4,
 			},
 		},
-	}),
+	MasterID: "",
+}
+var node2 = &redis.RedisNode{
+	Name: "node2",
+	ID: "0987654321",
+	Addr: "node2",
+	IP: "2.2.2.2",
+	Role: "master",
+	Slots: []redis.RedisSlotRange{
+			{
+				Start: 5,
+				End: 7,
+			},
+		},
+	MasterID: "",
+}
+var node3 = &redis.RedisNode{
+	Name: "node3",
+	ID: "0987654321",
+	Addr: "node2",
+	IP: "2.2.2.2",
+	Role: "master",
+	Slots: []redis.RedisSlotRange{
+			{
+				Start: 7,
+				End: 10,
+			},
+		},
+	MasterID: "",
+}
+
+var server = Server{
+	redisCluster: redis.NewFakeRedisCluster(
+		&config.Configuration{
+			Redis: config.RedisConfig{
+				Cluster: config.RedisClusterConfig{
+					Status: "Ready",
+				},
+			},
+		},
+		"Unknown",
+		map[string]*redis.RedisNode{
+			"node1": node1,
+			"node2": node2,
+			"node3": node3,
+		},
+		map[string][]*redis.RedisOperation{
+			"Resharding": {
+				{
+					Name:  "Resharding",
+					Status: "Running",
+					NodeFrom: node1,
+					NodeTo: node3,					
+				},
+				{
+					Name:  "Resharding",
+					Status: "Finished",
+					NodeFrom: node1,
+					NodeTo: node2,					
+				},
+			},
+		},
+	),
 }
 
 func TestCheckPathConfiguration(t *testing.T) {

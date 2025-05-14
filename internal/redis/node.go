@@ -17,16 +17,21 @@ type RedisNode struct {
 	Addr     string
 	IP       string
 	Role     string
-	Slots    [][]int
+	Slots    []RedisSlotRange
 	MasterID string
 	Failures int
+}
+
+type RedisSlotRange struct {
+	Start int
+	End   int
 }
 
 func (rn *RedisNode) GetNumberOfSlots() int {
 	slots := 0
 
 	for _, slotRange := range rn.Slots {
-		slots += slotRange[1] - slotRange[0] + 1
+		slots += slotRange.End - slotRange.Start + 1
 	}
 
 	return slots
