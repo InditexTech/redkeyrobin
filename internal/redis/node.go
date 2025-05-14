@@ -37,12 +37,12 @@ func (rn *RedisNode) GetNumberOfSlots() int {
 	return slots
 }
 
-func (rn *RedisNode) Init() error {
+func (rn *RedisNode) Init(maxRetries int, backoff time.Duration) error {
 	redisClient := NewRedisClient(context.Background(), rn.Addr, os.Getenv("REDISAUTH"), 0)
 	defer redisClient.Close()
 
 	// Check connection
-	if err := redisClient.CheckConnection(3, 1*time.Second); err != nil {
+	if err := redisClient.CheckConnection(maxRetries, backoff); err != nil {
 		return err
 	}
 

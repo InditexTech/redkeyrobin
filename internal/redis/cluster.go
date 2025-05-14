@@ -157,7 +157,7 @@ func (rc *RedisCluster) Init() error {
 		nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
 		node := rc.addNode(nodeName, nodeAddr)
 
-		if err := node.Init(); err != nil {
+		if err := node.Init(rc.GetClusterMaxRetries(), rc.GetClusterBackOff()); err != nil {
 			redisClientLogger.Info("Error initializing node", "error", err, "node", nodeName)
 			continue
 		}
@@ -190,26 +190,6 @@ func (rc *RedisCluster) RefreshNodes() error {
 	return nil
 }
 
-func (rc *RedisCluster) updateNodesInfo(nodesInfo []RedisNode) {
-	for _, nodeInfo := range nodesInfo {
-		node := rc.getNodeFromID(nodeInfo.ID)
-		if node == nil {
-			redisClientLogger.Info("Node not found in Redis cluster", "nodeId", nodeInfo.ID)
-			continue
-		}
-		node.UpdateInfo(nodeInfo)
-	}
-}
-
-func (rc *RedisCluster) getNodeFromID(nodeID string) *RedisNode {
-	for _, node := range rc.nodes {
-		if node.ID == nodeID {
-			return node
-		}
-	}
-	return nil
-}
-
 // SetReplicas sets the number of replicas in the Redis cluster.
 // It adds or removes nodes to match the desired number of replicas.
 // It returns an OperationAlreadyDoneError if the current number of replicas is equal to the desired number of replicas.
@@ -230,7 +210,7 @@ func (rc *RedisCluster) SetReplicas(replicas int) error {
 			rc.addNode(nodeName, nodeAddr)
 		}
 	} else {
-		for i := currentReplicas; i > replicas; i-- {
+		for i := currentReplicas-1; i > replicas - 1; i-- {
 			nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
 			rc.removeNode(nodeName)
 		}
@@ -264,13 +244,13 @@ func (rc *RedisCluster) Rebalance(async bool) error {
 	// Get Redis client and check connection
 	ctx, redisClient, err := rc.getAndCheckRedisClient(true)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
 
 	// Launch cluster rebalance
 	cmd := redisClient.ClusterRebalance(ctx)
 	if cmd.Err != nil {
-		return cmd.Err
+		return fmt.Errorf("error rebalancing cluster: %v", cmd.Err)
 	}
 
 	// Launch wait for rebalance to finish synchronously or asynchronously depending on the async flag
@@ -298,13 +278,13 @@ func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
 	// Get Redis client and check connection
 	ctx, redisClient, err := rc.getAndCheckRedisClient(true)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
 
 	// Launch node reshard
 	cmd := redisClient.ReshardNode(ctx, *from, *to, slots)
 	if cmd.Err != nil {
-		return cmd.Err
+		return fmt.Errorf("error moving slots: %v", cmd.Err)
 	}
 
 	// Wait for reshard to finish asynchronously
@@ -326,25 +306,9 @@ func (rc *RedisCluster) IsRebalancing() bool {
 	return rc.hasOperation(Rebalancing, "Running")
 }
 
+// IsResharding returns true if there is a reshard operation between the specified nodes
 func (rc *RedisCluster) IsResharding(from, to RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Running", from, to)
-}
-
-// IsForgetting returns true if the cluster is forgetting a node right now
-func (rc *RedisCluster) IsForgetting(node RedisNode) bool {
-	return rc.hasOperationInNode(Forgetting, "Running", node)
-}
-
-func (rc *RedisCluster) IsMeeting(from, to RedisNode) bool {
-	return rc.hasOperation(Meeting, "Running")
-}
-
-func (rc *RedisCluster) IsEnsuringRatio() bool {
-	return rc.hasOperation(EnsuringRatio, "Running")
-}
-
-func (rc *RedisCluster) IsFixing() bool {
-	return rc.hasOperation(Fixing, "Running")
 }
 
 // HasBeenRebalanced returns true if the cluster has been rebalanced recently
@@ -352,89 +316,9 @@ func (rc *RedisCluster) HasBeenRebalanced() bool {
 	return rc.hasOperation(Rebalancing, "Finished")
 }
 
+// HasBeenResharded returns true if there is a reshard operation between the specified nodes that has finished
 func (rc *RedisCluster) HasBeenResharded(from, to RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Finished", from, to)
-}
-
-// addNode adds a new Redis node to the cluster
-func (rc *RedisCluster) addNode(name, addr string) *RedisNode {
-	node := &RedisNode{
-		Name: name,
-		Addr: addr,
-	}
-
-	// TODO: cluster meet, cluster rebalance, etc.
-
-	rc.nodes[name] = node
-	return node
-}
-
-// removeNode removes a Redis node from the cluster
-func (rc *RedisCluster) removeNode(name string) {
-	// TODO: cluster forget, cluster rebalance, etc.
-
-	delete(rc.nodes, name)
-}
-
-// hasOperation returns true if the cluster has an operation with the specified name and status
-func (rc *RedisCluster) hasOperation(name string, status string) bool {
-	operations, ok := rc.operations[name]
-	if !ok {
-		return false
-	}
-
-	for _, operation := range operations {
-		if operation.Status == status {
-			return true
-		}
-	}
-	return false
-}
-
-// hasOperationInNode returns true if the cluster has an operation with the specified name and status in the specified node
-func (rc *RedisCluster) hasOperationInNode(name string, status string, node RedisNode) bool {
-	operations, ok := rc.operations[name]
-	if !ok {
-		return false
-	}
-
-	for _, operation := range operations {
-		if operation.Status != status {
-			continue
-		}
-
-		if operation.NodeFrom == nil || operation.NodeTo == nil {
-			continue
-		}
-
-		if operation.NodeFrom.Name == node.Name {
-			return true
-		}
-	}
-	return false
-}
-
-// hasOperationBetweenNodes returns true if the cluster has an operation with the specified name and status between the specified nodes
-func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, from RedisNode, to RedisNode) bool {
-	operations, ok := rc.operations[name]
-	if !ok {
-		return false
-	}
-
-	for _, operation := range operations {
-		if operation.Status != status {
-			continue
-		}
-
-		if operation.NodeFrom == nil || operation.NodeTo == nil {
-			continue
-		}
-
-		if operation.NodeFrom.Name == from.Name && operation.NodeTo.Name == to.Name {
-			return true
-		}
-	}
-	return false
 }
 
 func (rc *RedisCluster) waitForReshardToFinish(cmd *RedisCLICommand, from, to *RedisNode) {
@@ -499,6 +383,87 @@ func (rc *RedisCluster) getAndCheckRedisClient(close bool) (context.Context, *Re
 	return ctx, redisClient, nil
 }
 
+// addNode adds a new Redis node to the cluster
+func (rc *RedisCluster) addNode(name, addr string) *RedisNode {
+	node := &RedisNode{
+		Name: name,
+		Addr: addr,
+	}
+
+	// TODO: cluster meet, cluster rebalance, etc.
+
+	rc.nodes[name] = node
+	return node
+}
+
+// removeNode removes a Redis node from the cluster
+func (rc *RedisCluster) removeNode(name string) {
+	// TODO: cluster forget, cluster rebalance, etc.
+
+	delete(rc.nodes, name)
+}
+
+// hasOperation returns true if the cluster has an operation with the specified name and status
+func (rc *RedisCluster) hasOperation(name string, status string) bool {
+	operations, ok := rc.operations[name]
+	if !ok {
+		return false
+	}
+
+	for _, operation := range operations {
+		if operation.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+// hasOperationInNode returns true if the cluster has an operation with the specified name and status in the specified node
+func (rc *RedisCluster) hasOperationInNode(name string, status string, node RedisNode) bool {
+	operations, ok := rc.operations[name]
+	if !ok {
+		return false
+	}
+
+	for _, operation := range operations {
+		if operation.Status != status {
+			continue
+		}
+
+		if operation.NodeFrom == nil {
+			continue
+		}
+
+		if operation.NodeFrom.Name == node.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// hasOperationBetweenNodes returns true if the cluster has an operation with the specified name and status between the specified nodes
+func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, from RedisNode, to RedisNode) bool {
+	operations, ok := rc.operations[name]
+	if !ok {
+		return false
+	}
+
+	for _, operation := range operations {
+		if operation.Status != status {
+			continue
+		}
+
+		if operation.NodeFrom == nil || operation.NodeTo == nil {
+			continue
+		}
+
+		if operation.NodeFrom.Name == from.Name && operation.NodeTo.Name == to.Name {
+			return true
+		}
+	}
+	return false
+}
+
 // addOperation adds a new operation to the cluster operations map
 func (rc *RedisCluster) addOperation(operationName string, cmd *RedisCLICommand, nodeFrom, nodeTo *RedisNode) *RedisOperation {
 	operation := &RedisOperation{
@@ -515,4 +480,23 @@ func (rc *RedisCluster) addOperation(operationName string, cmd *RedisCLICommand,
 
 	rc.operations[operationName] = append(rc.operations[operationName], operation)
 	return operation
+}
+
+func (rc *RedisCluster) updateNodesInfo(nodesInfo []RedisNode) {
+	for _, nodeInfo := range nodesInfo {
+		node := rc.getNodeFromID(nodeInfo.ID)
+		if node == nil {
+			continue
+		}
+		node.UpdateInfo(nodeInfo)
+	}
+}
+
+func (rc *RedisCluster) getNodeFromID(nodeID string) *RedisNode {
+	for _, node := range rc.nodes {
+		if node.ID == nodeID {
+			return node
+		}
+	}
+	return nil
 }

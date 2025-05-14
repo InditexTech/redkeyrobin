@@ -219,7 +219,7 @@ func TestMoveNodeSlots(t *testing.T) {
 			name:    "unexpected error",
 			request: `{"from": "node2", "to": "node3"}`,
 			expectedBody:  ErrorResponse{
-				Error: "Error rebalancing cluster: maxRetries must be greater than 0",
+				Error: "Error rebalancing cluster: error getting and checking Redis client: maxRetries must be greater than 0",
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 		},
