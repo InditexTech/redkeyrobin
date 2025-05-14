@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/util"
 )
 
 const (
@@ -33,13 +34,15 @@ const (
 	EnsuringRatio    = "EnsuringRatio"
 )
 
+var redisClusterLogger log.Logger
 
 // NewRedisCluster creates a new Redis cluster
 func NewRedisCluster(conf *config.Configuration) *RedisCluster {
+	redisClientLogger = util.GetLogger("redis-cluster")
 	return &RedisCluster{
 		conf:       conf,
 		status:     Unknown,
-		nodes:      make(map[string]*Node),
+		nodes:      make(map[string]*RedisNode),
 		operations: make(map[string][]*RedisOperation),
 	}
 }
@@ -48,7 +51,7 @@ func NewRedisCluster(conf *config.Configuration) *RedisCluster {
 type RedisCluster struct {
 	conf       *config.Configuration
 	status     string
-	nodes      map[string]*Node
+	nodes      map[string]*RedisNode
 	operations map[string][]*RedisOperation
 }
 
@@ -118,8 +121,8 @@ func (rc *RedisCluster) GetMetricsInterval() int {
 }
 
 // GetNodes returns the Redis nodes in the cluster
-func (rc *RedisCluster) GetNodes() []*Node {
-	nodes := []*Node{}
+func (rc *RedisCluster) GetNodes() []*RedisNode {
+	nodes := []*RedisNode{}
 	for _, node := range rc.nodes {
 		nodes = append(nodes, node)
 	}
@@ -132,11 +135,11 @@ func (rc *RedisCluster) GetMetadata() map[string]string {
 	return rc.conf.Metadata
 }
 
-func (rc *RedisCluster) GetNode(name string) *Node {
+func (rc *RedisCluster) GetNode(name string) *RedisNode {
 	return rc.nodes[name]
 }
 
-// Init initializes the Redis cluster. It should be called after creating a new Redis cluster. 
+// Init initializes the Redis cluster. It should be called after creating a new Redis cluster.
 // It sets the Robin status from the Redis Cluster status and creates the nodes and initializes them.
 func (rc *RedisCluster) Init() error {
 	// Initialize nodes
@@ -146,11 +149,20 @@ func (rc *RedisCluster) Init() error {
 		node := rc.addNode(nodeName, nodeAddr)
 
 		if err := node.Init(); err != nil {
-			log.Printf("Error initializing node %s: %v", nodeName, err)
+			redisClientLogger.Info("Error initializing node", "error", err, "node", nodeName)
 			continue
 		}
 	}
 
+	// Refresh nodes info
+	if err := rc.RefreshNodes(); err != nil {
+		return fmt.Errorf("Error refreshing nodes info: %v", err)
+	}
+
+	return nil
+}
+
+func (rc *RedisCluster) RefreshNodes() error {
 	// Get Redis client and check connection
 	_, redisClient, err := rc.getAndCheckRedisClient(false)
 	if err != nil {
@@ -166,22 +178,21 @@ func (rc *RedisCluster) Init() error {
 
 	// Update nodes info
 	rc.updateNodesInfo(nodesInfo)
-
 	return nil
 }
 
-func (rc *RedisCluster) updateNodesInfo(nodesInfo []Node) {
+func (rc *RedisCluster) updateNodesInfo(nodesInfo []RedisNode) {
 	for _, nodeInfo := range nodesInfo {
 		node := rc.getNodeFromID(nodeInfo.ID)
 		if node == nil {
-			log.Printf("Node with ID %s not found in Redis cluster", nodeInfo.ID)
+			redisClientLogger.Info("Node not found in Redis cluster", "nodeId", nodeInfo.ID)
 			continue
 		}
 		node.UpdateInfo(nodeInfo)
 	}
 }
 
-func (rc *RedisCluster) getNodeFromID(nodeID string) *Node {
+func (rc *RedisCluster) getNodeFromID(nodeID string) *RedisNode {
 	for _, node := range rc.nodes {
 		if node.ID == nodeID {
 			return node
@@ -195,8 +206,8 @@ func (rc *RedisCluster) getNodeFromID(nodeID string) *Node {
 // It returns an OperationAlreadyDoneError if the current number of replicas is equal to the desired number of replicas.
 func (rc *RedisCluster) SetReplicas(replicas int) error {
 	currentReplicas := rc.GetReplicas()
-	log.Printf("Changing Redis Cluster replicas from %d to %d", currentReplicas, replicas)
-	
+	redisClientLogger.Info("Changing Redis Cluster replicas", "current", currentReplicas, "desired", replicas)
+
 	if replicas == currentReplicas {
 		return &OperationAlreadyDoneError{Operation: "SetReplicas"}
 	}
@@ -220,7 +231,7 @@ func (rc *RedisCluster) SetReplicas(replicas int) error {
 }
 
 func (rc *RedisCluster) SetRedisClusterStatus(status string) error {
-	log.Printf("Changing Redis Cluster status from %s to %s", rc.GetStatus(), status)
+	redisClientLogger.Info("Changing Redis Cluster status", "current", rc.GetRedisClusterStatus(), "desired", status)
 	rc.conf.Redis.Cluster.Status = status
 	return nil
 }
@@ -230,14 +241,14 @@ func (rc *RedisCluster) SetRedisClusterStatus(status string) error {
 // It returns an OperationInProgressError if the cluster is already rebalancing
 // It returns an OperationAlreadyDoneError if the cluster has already been rebalanced
 func (rc *RedisCluster) Rebalance(async bool) error {
-	log.Printf("Rebalancing cluster %s", rc.GetName())
+	redisClientLogger.Info("Rebalancing cluster")
 
 	// Check if the cluster is already rebalancing or has been rebalanced
 	if rc.IsRebalancing() {
-		log.Printf("Cluster is already rebalancing")
+		redisClientLogger.Info("Cluster is already rebalancing")
 		return &OperationInProgressError{Operation: "Rebalance"}
 	} else if rc.HasBeenRebalanced() {
-		log.Printf("Cluster has already been rebalanced")
+		redisClientLogger.Info("Cluster has already been rebalanced")
 		return &OperationAlreadyDoneError{Operation: "Rebalance"}
 	}
 
@@ -263,15 +274,15 @@ func (rc *RedisCluster) Rebalance(async bool) error {
 	return nil
 }
 
-func (rc *RedisCluster) MoveSlots(from, to *Node, slots int) error {
-	log.Printf("Moving %v slots from %s to %s", slots, from.Name, to.Name)
+func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
+	redisClientLogger.Info("Moving slots", "slots", slots, "from", from.Name, "to", to.Name)
 
 	// Check if there is an ongoing reshard between the specified nodes
 	if rc.IsResharding(*from, *to) {
-		log.Printf("There is already a reshard operation between nodes %s and %s", from.Name, to.Name)
+		redisClientLogger.Info("There is already a reshard operation between nodes", "from", from.Name, "to", to.Name)
 		return &OperationInProgressError{Operation: "Resharding"}
 	} else if rc.HasBeenResharded(*from, *to) {
-		log.Printf("Slots have already been moved from node %s to node %s", from.Name, to.Name)
+		redisClientLogger.Info("Slots have already been moved between nodes", "from", from.Name, "to", to.Name)
 		return &OperationAlreadyDoneError{Operation: "Resharding"}
 	}
 
@@ -306,16 +317,16 @@ func (rc *RedisCluster) IsRebalancing() bool {
 	return rc.hasOperation(Rebalancing, "Running")
 }
 
-func (rc *RedisCluster) IsResharding(from, to Node) bool {
+func (rc *RedisCluster) IsResharding(from, to RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Running", from, to)
 }
 
 // IsForgetting returns true if the cluster is forgetting a node right now
-func (rc *RedisCluster) IsForgetting(node Node) bool {
+func (rc *RedisCluster) IsForgetting(node RedisNode) bool {
 	return rc.hasOperationInNode(Forgetting, "Running", node)
 }
 
-func (rc *RedisCluster) IsMeeting(from, to Node) bool {
+func (rc *RedisCluster) IsMeeting(from, to RedisNode) bool {
 	return rc.hasOperation(Meeting, "Running")
 }
 
@@ -332,15 +343,15 @@ func (rc *RedisCluster) HasBeenRebalanced() bool {
 	return rc.hasOperation(Rebalancing, "Finished")
 }
 
-func (rc *RedisCluster) HasBeenResharded(from, to Node) bool {
+func (rc *RedisCluster) HasBeenResharded(from, to RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Finished", from, to)
 }
 
 // addNode adds a new Redis node to the cluster
-func (rc *RedisCluster) addNode(name, addr string) *Node {
-	node := &Node{
-		Name:     name,
-		Addr:     addr,
+func (rc *RedisCluster) addNode(name, addr string) *RedisNode {
+	node := &RedisNode{
+		Name: name,
+		Addr: addr,
 	}
 
 	// TODO: cluster meet, cluster rebalance, etc.
@@ -372,7 +383,7 @@ func (rc *RedisCluster) hasOperation(name string, status string) bool {
 }
 
 // hasOperationInNode returns true if the cluster has an operation with the specified name and status in the specified node
-func (rc *RedisCluster) hasOperationInNode(name string, status string, node Node) bool {
+func (rc *RedisCluster) hasOperationInNode(name string, status string, node RedisNode) bool {
 	operations, ok := rc.operations[name]
 	if !ok {
 		return false
@@ -395,7 +406,7 @@ func (rc *RedisCluster) hasOperationInNode(name string, status string, node Node
 }
 
 // hasOperationBetweenNodes returns true if the cluster has an operation with the specified name and status between the specified nodes
-func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, from Node, to Node) bool {
+func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, from RedisNode, to RedisNode) bool {
 	operations, ok := rc.operations[name]
 	if !ok {
 		return false
@@ -417,7 +428,7 @@ func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, fro
 	return false
 }
 
-func (rc *RedisCluster) waitForReshardToFinish(cmd *RedisCLICommand, from, to *Node) {
+func (rc *RedisCluster) waitForReshardToFinish(cmd *RedisCLICommand, from, to *RedisNode) {
 	rc.status = Resharding
 	operation := rc.addOperation(Resharding, cmd, from, to)
 
@@ -427,13 +438,16 @@ func (rc *RedisCluster) waitForReshardToFinish(cmd *RedisCLICommand, from, to *N
 	// Reshard failed
 	if err != nil {
 		rc.status = ReshardingError
-		log.Printf("Error resharding cluster: %v", err)
+		redisClientLogger.Info("Error resharding node", "error", err, "from", from.Name, "to", to.Name)
 		return
 	}
 
 	// Reshard finished successfully
 	rc.status = Ready
-	log.Printf("Slots of node %v moved successfully to node %v", from.Name, to.Name)
+	redisClientLogger.Info("Slots moved successfully between nodes", "from", from.Name, "to", to.Name)
+
+	// Update nodes info
+	rc.RefreshNodes()
 }
 
 // waitForRebalanceToFinish waits for the cluster rebalance to finish and updates the status
@@ -447,13 +461,16 @@ func (rc *RedisCluster) waitForRebalanceToFinish(cmd *RedisCLICommand) {
 	// Rebalance failed
 	if err != nil {
 		rc.status = RebalancingError
-		log.Printf("Error rebalancing cluster: %v", err)
+		redisClientLogger.Info("Error rebalancing cluster", "error", err)
 		return
 	}
 
 	// Rebalance finished successfully
 	rc.status = Ready
-	log.Printf("Cluster rebalanced successfully")
+	redisClientLogger.Info("Cluster rebalanced successfully")
+
+	// Update nodes info
+	rc.RefreshNodes()
 }
 
 // getAndCheckRedisClient creates a Redis client and checks the connection
@@ -464,7 +481,7 @@ func (rc *RedisCluster) getAndCheckRedisClient(close bool) (context.Context, *Re
 	if close {
 		defer redisClient.Close()
 	}
-	
+
 	// Check connection
 	if err := redisClient.CheckConnection(rc.GetClusterMaxRetries(), rc.GetClusterBackOff()); err != nil {
 		return nil, nil, err
@@ -474,14 +491,14 @@ func (rc *RedisCluster) getAndCheckRedisClient(close bool) (context.Context, *Re
 }
 
 // addOperation adds a new operation to the cluster operations map
-func (rc *RedisCluster) addOperation(operationName string, cmd *RedisCLICommand, nodeFrom, nodeTo *Node) *RedisOperation {
+func (rc *RedisCluster) addOperation(operationName string, cmd *RedisCLICommand, nodeFrom, nodeTo *RedisNode) *RedisOperation {
 	operation := &RedisOperation{
 		Name:          operationName,
 		Status:        "Running",
 		InitTimestamp: time.Now(),
 		Cmd:           cmd,
-		NodeFrom: 	nodeFrom,
-		NodeTo: 	nodeTo,
+		NodeFrom:      nodeFrom,
+		NodeTo:        nodeTo,
 	}
 	if rc.operations[operationName] == nil {
 		rc.operations[operationName] = make([]*RedisOperation, 0)

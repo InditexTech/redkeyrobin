@@ -6,35 +6,36 @@ package metrics
 
 import (
 	"fmt"
-	"log"
 	"sort"
 
+	"github.com/go-logr/logr"
+	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
-	"github.com/inditextech/redisrobin/internal/redis"
 )
 
 // Label keys for metrics.
 const (
-	Cluster                            = "cluster"
-	Slot                               = "slot"
-	Tenant                             = "tenant"
-	Domain                             = "domain"
-	Environment                        = "environment"
-	Namespace                          = "namespace"
-	PlatformID                         = "platformid"
-	Service                            = "service"
-	JiraKey                            = "jirakey"
-	InstanceId                         = "instanceId"
-	PendingClusterNodes                = "pending_cluster_nodes"
-	PendingMigrates                    = "pending_migrates"
-	PendingImports                     = "pending_imports"
-	NodeID                             = "nodeId"
-	NodeIP                             = "nodeIp"
-	Role                               = "role"
-	Slots                              = "slots"
-	MasterID                           = "masterId"
-	NodeFailures                       = "nodeFailures"
+	Cluster             = "cluster"
+	Slot                = "slot"
+	Tenant              = "tenant"
+	Domain              = "domain"
+	Environment         = "environment"
+	Namespace           = "namespace"
+	PlatformID          = "platformid"
+	Service             = "service"
+	JiraKey             = "jirakey"
+	InstanceId          = "instanceId"
+	PendingClusterNodes = "pending_cluster_nodes"
+	PendingMigrates     = "pending_migrates"
+	PendingImports      = "pending_imports"
+	NodeID              = "nodeId"
+	NodeIP              = "nodeIp"
+	Role                = "role"
+	Slots               = "slots"
+	MasterID            = "masterId"
+	NodeFailures        = "nodeFailures"
 )
 
 // Predefined label sets for reuse.
@@ -52,6 +53,7 @@ var (
 
 // MetricsManager encapsulates Prometheus metrics for Redis.
 type MetricsManager struct {
+	logger         logr.Logger
 	clusterInfo    *prometheus.GaugeVec
 	nodeInfo       *prometheus.GaugeVec
 	dynamicMetrics map[string]*prometheus.GaugeVec
@@ -66,6 +68,7 @@ func NewMetricsManager(extraLabels map[string]string) *MetricsManager {
 	}
 
 	m := &MetricsManager{
+		logger: util.GetLogger("manager"),
 		clusterInfo: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "redis_cluster_metrics",
@@ -132,7 +135,7 @@ func (m *MetricsManager) UpdateDynamicMetric(
 			sortedLabelKeys,
 		)
 		if err := metrics.Registry.Register(gaugeVec); err != nil {
-			log.Printf("Error registering dynamic metric '%s': %v", name, err)
+			m.logger.Error(err, "Error registering dynamic metric", "name", name)
 			return
 		}
 		m.dynamicMetrics[name] = gaugeVec

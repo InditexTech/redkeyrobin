@@ -312,8 +312,8 @@ db0:keys=30,expires=0,avg_ttl=0
 	}{
 		{"server", "redis_version", "7.2.4"},
 		{"clients", "connected_clients", int64(1)},
-		{"memory", "used_memory", 2092160},
-		{"stats", "total_connections_received", int64(14633)},
+		{"memory", "used_memory", "2092160"},
+		{"stats", "total_connections_received", "14633"},
 		{"replication", "role", "master"},
 		{"cpu", "used_cpu_sys", 27.747819},
 		{"cluster", "cluster_enabled", "1"},
@@ -472,7 +472,7 @@ e420256dda2dbfb8db95658397ca8af3c3889b31 10.253.21.209:6379@16379 master - 0 174
 	assert.Equal(t, "0d691cdfe68b44134f8cdbca0d81563754a5aa6f", cNodes[4].ID)
 	assert.Equal(t, "10.253.43.143", cNodes[0].IP)
 	assert.Equal(t, "master", cNodes[0].Role)
-	assert.Equal(t, []string([]string{"9828-10923", "12560-13103", "14744-16383"}), cNodes[0].Slots)
+	assert.Equal(t, [][]int([][]int{[]int{9828, 10923}, []int{12560, 13103}, []int{14744, 16383}}), cNodes[0].Slots)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -10,13 +10,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os/exec"
 	"strings"
 	"time"
 
 	"slices"
 
+	"github.com/go-logr/logr"
 	"github.com/inditextech/redisrobin/internal/util"
 	redisgo "github.com/redis/go-redis/v9"
 )
@@ -71,6 +71,8 @@ const (
 	TotalClusterLinksBufEx             = "total_cluster_links_buffer_limit_exceeded"
 )
 
+var redisClientLogger logr.Logger
+
 // -----------------------------------------------------------------------------
 // Redis Client
 // -----------------------------------------------------------------------------
@@ -83,6 +85,7 @@ type RedisClient struct {
 
 // NewRedisClient creates a new RedisClient for the given address.
 func NewRedisClient(ctx context.Context, addr, password string, db int) *RedisClient {
+	redisClientLogger = util.GetLogger("redis-cluster")
 	client := redisgo.NewClient(&redisgo.Options{
 		Addr:     fmt.Sprintf("%s:%d", addr, RedisPort),
 		Password: password,
@@ -178,7 +181,7 @@ func parseRedisInfo(info string) *RedisInfo {
 		// Parse "key:value" structure
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
-			log.Printf("Skipping malformed line: %s", line)
+			redisClientLogger.Info("Skipping malformed line", "line", line)
 			continue
 		}
 
@@ -214,7 +217,7 @@ func parseRedisInfo(info string) *RedisInfo {
 		case SectionLatency:
 			parsedInfo.LatencyStats[key] = value
 		default:
-			log.Printf("Ignoring unknown info section '%s', key: '%s'", section, key)
+			redisClientLogger.Info("Ignoring unknown redis info", "section", section, "key", key)
 		}
 	}
 
@@ -250,7 +253,7 @@ type ClusterInfo struct {
 func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
 	info, err := rc.client.ClusterInfo(rc.ctx).Result()
 	if err != nil {
-		log.Printf("Error fetching cluster info: %v", err)
+		redisClientLogger.Error(err, "Error fetching cluster info")
 		return nil, err
 	}
 
@@ -264,7 +267,7 @@ func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
 	for _, line := range lines {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
-			log.Printf("Skipping malformed cluster info line: %s", line)
+			redisClientLogger.Info("Skipping malformed cluster info", "line", line)
 			continue
 		}
 
@@ -322,11 +325,9 @@ func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
 	return clusterInfo, nil
 }
 
-
 func (rc *RedisClient) GetMyID() (string, error) {
 	result, err := rc.client.Do(rc.ctx, "CLUSTER", "MYID").Result()
 	if err != nil {
-		log.Printf("Error fetching cluster nodes: %v", err)
 		return "", err
 	}
 
@@ -334,10 +335,9 @@ func (rc *RedisClient) GetMyID() (string, error) {
 }
 
 // GetNodesInfo retrieves and parses the cluster nodes information.
-func (rc *RedisClient) GetNodesInfo() ([]Node, error) {
+func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 	result, err := rc.client.ClusterNodes(rc.ctx).Result()
 	if err != nil {
-		log.Printf("Error fetching cluster nodes: %v", err)
 		return nil, err
 	}
 
@@ -347,11 +347,11 @@ func (rc *RedisClient) GetNodesInfo() ([]Node, error) {
 		return nil, fmt.Errorf("empty cluster nodes response")
 	}
 
-	var nodes []Node
+	var nodes []RedisNode
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 8 {
-			log.Printf("Skipping malformed line: %s", line)
+			redisClientLogger.Info("Skipping malformed", "line", line)
 			continue
 		}
 
@@ -380,7 +380,7 @@ func (rc *RedisClient) GetNodesInfo() ([]Node, error) {
 		}
 
 		// Construct Node struct
-		node := Node{
+		node := RedisNode{
 			ID:       nodeID,
 			IP:       strings.Split(ipPort, ":")[0], // Extract only IP
 			Role:     role,
@@ -396,11 +396,11 @@ func (rc *RedisClient) GetNodesInfo() ([]Node, error) {
 }
 
 type RedisCLICommand struct {
-	cmd *exec.Cmd
-	stdout *bytes.Buffer
-	stderr *bytes.Buffer
+	cmd      *exec.Cmd
+	stdout   *bytes.Buffer
+	stderr   *bytes.Buffer
 	ExitCode int
-	Err error
+	Err      error
 }
 
 func NewRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
@@ -410,7 +410,7 @@ func NewRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
 	cmd.Stderr = &stderr
 
 	return &RedisCLICommand{
-		cmd: cmd,
+		cmd:    cmd,
 		stdout: &stdout,
 		stderr: &stderr,
 	}
@@ -419,7 +419,7 @@ func NewRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
 func (rcc *RedisCLICommand) Run() {
 	rcc.Err = rcc.cmd.Run()
 	rcc.CheckStatusCode()
-} 
+}
 
 func (rcc *RedisCLICommand) Start() {
 	rcc.Err = rcc.cmd.Start()
@@ -496,7 +496,7 @@ func (rc *RedisClient) ClusterCheck(ctx context.Context) (*ClusterCheckResult, e
 			return nil, fmt.Errorf("redis-cli command canceled or timed out: %w", ctx.Err())
 		}
 
-		log.Printf("Error executing 'redis-cli --cluster check %s': %v. Partial output:\n%s", rc.client.Options().Addr, cmd.Err, cmd.GetCombinedOutput())
+		redisClientLogger.Error(cmd.Err, "Error executing 'redis-cli --cluster check'", "output", cmd.GetCombinedOutput())
 	}
 
 	// Parse the CLI output (whether complete or partial) to fill a ClusterCheckResult.
@@ -534,27 +534,26 @@ func parseClusterCheckOutput(output string) *ClusterCheckResult {
 
 	// Check for any scanning error.
 	if err := scanner.Err(); err != nil {
-		log.Printf("Error reading cluster check output: %v", err)
+		redisClientLogger.Error(err, "Error reading cluster check output")
 	}
 
 	return result
 }
 
-
-func (rc *RedisClient) ReshardNode(ctx context.Context, source, target Node, slots int) (*RedisCLICommand) {
+func (rc *RedisClient) ReshardNode(ctx context.Context, source, target RedisNode, slots int) *RedisCLICommand {
 	if slots == 0 {
-		log.Printf("No slots to reshard")
+		redisClientLogger.Info("No slots to reshard")
 		return nil
 	}
 
-	// Build the command: "redis-cli --cluster reshard <host:port>"  
+	// Build the command: "redis-cli --cluster reshard <host:port>"
 	command := fmt.Sprintf("redis-cli --cluster reshard %s --cluster-from %s --cluster-to %s --cluster-slots %v --cluster-yes", rc.client.Options().Addr, source.ID, target.ID, slots)
 
 	// Execute the command and return command reference
 	return rc.runRedisCLICommandAsync(ctx, command)
 }
 
-func (rc *RedisClient) ClusterFix(ctx context.Context) (*RedisCLICommand) {
+func (rc *RedisClient) ClusterFix(ctx context.Context) *RedisCLICommand {
 	// Build the command: "redis-cli --cluster fix <host:port>"
 	command := fmt.Sprintf("redis-cli --cluster fix %s --cluster-yes", rc.client.Options().Addr)
 
@@ -562,11 +561,10 @@ func (rc *RedisClient) ClusterFix(ctx context.Context) (*RedisCLICommand) {
 	return rc.runRedisCLICommandAsync(ctx, command)
 }
 
-func (rc *RedisClient) ClusterRebalance(ctx context.Context) (*RedisCLICommand) {
+func (rc *RedisClient) ClusterRebalance(ctx context.Context) *RedisCLICommand {
 	// Build the command: "redis-cli --cluster rebalance <host:port>"
 	command := fmt.Sprintf("redis-cli --cluster rebalance %s --cluster-use-empty-masters", rc.client.Options().Addr)
 
 	// Execute the command and return command reference
 	return rc.runRedisCLICommandAsync(ctx, command)
 }
-

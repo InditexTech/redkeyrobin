@@ -275,5 +275,5 @@ test-cov: ## Execute the application test with coverage
 	$(info $(M) running tests and generating coverage report...)
 	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT)))
 	mkdir -p $(TEST_REPORT_OUTPUT_DIRNAME)
-	$(GO) test ./httpserver/ -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -covermode=count
+	$(GO) test ./internal/*/ -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -covermode=count
 

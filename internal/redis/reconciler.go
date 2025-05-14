@@ -6,27 +6,31 @@ package redis
 
 import (
 	"context"
-	"log"
 	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/inditextech/redisrobin/internal/util"
 )
 
 type RedisClusterReconciler struct {
-	redisCluster   *RedisCluster
+	logger       logr.Logger
+	redisCluster *RedisCluster
 }
 
-func NewRedisClusterReconciler(redisCluster *RedisCluster) *RedisClusterReconciler {
+func NewRedisClusterReconciler(redisCluster *RedisCluster) (*RedisClusterReconciler, error) {
 	return &RedisClusterReconciler{
+		logger:       util.GetLogger("reconciler"),
 		redisCluster: redisCluster,
-	}
+	}, nil
 }
 
 func (r *RedisClusterReconciler) Start(ctx context.Context) {
 	for ctx.Err() == nil {
-		log.Printf("Reconcilling cluster %s.", r.redisCluster.GetName())
+		r.logger.Info("Reconcilling cluster")
 
 		err := r.Reconcile(ctx)
 		if err != nil {
-			log.Printf("Error reconcilling cluster: %v", err)
+			r.logger.Error(err, "Error reconcilling cluster")
 		}
 
 		time.Sleep(time.Second * time.Duration(r.redisCluster.GetReconcilerInterval()))

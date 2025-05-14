@@ -6,7 +6,6 @@ package httpserver
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -14,17 +13,20 @@ import (
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 
+	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
+	logger       logr.Logger
 	redisCluster *redis.RedisCluster
 	config       config.APIConfig
 }
 
 func NewServer(redisCluster *redis.RedisCluster, config config.APIConfig) *Server {
 	return &Server{
+		logger:       util.GetLogger("http-server"),
 		redisCluster: redisCluster,
 		config:       config,
 	}
@@ -33,11 +35,11 @@ func NewServer(redisCluster *redis.RedisCluster, config config.APIConfig) *Serve
 // Init initializes the Server using the Config in the provided Manager.
 func (s *Server) Init(mgr ctrl.Manager) error {
 	// Set up the HTTP server with the provided Config
-	for path, pathConfiguration := range s.config.Endpoints {
+	for path, pathConfiguration := range s.config.Paths {
 		// Check the path configuration and delete it if it is invalid
 		if err := s.checkPathConfiguration(pathConfiguration); err != nil {
-			log.Printf("Error checking path %s configuration: %v", path, err)
-			delete(s.config.Endpoints, path)
+			s.logger.Error(err, "Error checking path configuration", "path", path)
+			delete(s.config.Paths, path)
 			continue
 		}
 
@@ -52,10 +54,10 @@ func (s *Server) Init(mgr ctrl.Manager) error {
 // ServeHTTP routes incoming HTTP requests to the appropriate handler methods.
 // It implements the http.Handler interface.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received %s request on path %s", r.Method, r.URL.Path)
+	s.logger.Info("Received request", "path", r.URL.Path, "method", r.Method)
 
 	// Check if the path is configured
-	pathConfiguration, found := s.config.Endpoints[r.URL.Path]
+	pathConfiguration, found := s.config.Paths[r.URL.Path]
 	if !found {
 		s.sendError(w, http.StatusNotFound, fmt.Sprintf("Unknown path %s", r.URL.Path))
 		return

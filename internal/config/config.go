@@ -6,7 +6,6 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -25,7 +24,7 @@ type RedisClusterConfig struct {
 	Namespace                string        `yaml:"namespace"`
 	Name                     string        `yaml:"name"`
 	Replicas                 int           `yaml:"replicas"`
-	Status 				 	 string        `yaml:"status"`
+	Status                   string        `yaml:"status"`
 	HealthProbePeriodSeconds int           `yaml:"health_probe_interval_seconds"`
 	HealingTimeSeconds       int           `yaml:"healing_time_seconds"`
 	MaxRetries               int           `yaml:"max_retries"`
@@ -34,27 +33,21 @@ type RedisClusterConfig struct {
 
 // RedisMetricsConfig holds metrics-related Redis configuration.
 type RedisMetricsConfig struct {
-	IntervalSeconds int `yaml:"interval_seconds"`
-	RedisInfoKeys []string `yaml:"redis_info_keys"`
+	IntervalSeconds int      `yaml:"interval_seconds"`
+	RedisInfoKeys   []string `yaml:"redis_info_keys"`
 }
 
 // RedisConfig groups all Redis related configuration.
 type RedisConfig struct {
 	Reconciler RedisReconcilerConfig `yaml:"reconciler"`
-	Cluster  RedisClusterConfig  `yaml:"cluster"`
-	Metrics  RedisMetricsConfig  `yaml:"metrics"`
-}
-
-// 
-type APIConfig struct {
-	Endpoints map[string]map[string]interface{} `yaml:"endpoints"`
+	Cluster    RedisClusterConfig    `yaml:"cluster"`
+	Metrics    RedisMetricsConfig    `yaml:"metrics"`
 }
 
 // Configuration is the top-level configuration struct.
 type Configuration struct {
 	Metadata map[string]string `yaml:"metadata"`
 	Redis    RedisConfig       `yaml:"redis"`
-	API      APIConfig         `yaml:"api"`
 }
 
 // String returns a formatted string of the configuration.
@@ -71,7 +64,7 @@ RedisMetricsIntervalSeconds: %d`,
 		c.Redis.Cluster.HealthProbePeriodSeconds,
 		c.Redis.Cluster.HealingTimeSeconds,
 		c.Redis.Metrics.RedisInfoKeys,
-		c.Redis.Metrics.IntervalSeconds,)
+		c.Redis.Metrics.IntervalSeconds)
 }
 
 // validate checks for missing required configuration fields.
@@ -105,8 +98,17 @@ func (cfg *Configuration) validate() []string {
 	if cfg.Redis.Metrics.IntervalSeconds == 0 {
 		missing = append(missing, "redis.metrics.interval_seconds")
 	}
-	if len(cfg.API.Endpoints) == 0 {
-		missing = append(missing, "api.endpoints")
+	return missing
+}
+
+type APIConfig struct {
+	Paths map[string]map[string]interface{} `yaml:"paths"`
+}
+
+func (cfg *APIConfig) validate() []string {
+	var missing []string
+	if len(cfg.Paths) == 0 {
+		missing = append(missing, "paths")
 	}
 	return missing
 }
@@ -135,19 +137,43 @@ func (y *YAMLConfigLoader) LoadConfig(path string) (*Configuration, error) {
 	return &cfg, nil
 }
 
+// LoadAPIConfig reads and decodes the YAML configuration from the specified file path.
+func (y *YAMLConfigLoader) LoadAPIConfig(path string) (*APIConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read configuration file %s: %w", path, err)
+	}
+	var cfg APIConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal configuration file %s: %w", path, err)
+	}
+	if missing := cfg.validate(); len(missing) > 0 {
+		return nil, fmt.Errorf("missing required configuration fields: %v", missing)
+	}
+	return &cfg, nil
+}
+
 // GetConfiguration returns the singleton Configuration loaded from the default file.
 // The configuration is loaded only once using sync.Once.
-func GetConfiguration() *Configuration {
+func GetConfiguration() (*Configuration, error) {
 	var config *Configuration
 	var err error
 	var once sync.Once
 	once.Do(func() {
 		loader := &YAMLConfigLoader{}
 		config, err = loader.LoadConfig("/opt/conf/configmap/application-configmap.yml")
-		if err != nil {
-			log.Fatalf("failed to load configuration: %v", err)
-		}
-
 	})
-	return config
+	return config, err
+}
+
+// GetAPIConfiguration returns the singleton APIConfiguration loaded from the default file.
+func GetAPIConfiguration() (*APIConfig, error) {
+	var config *APIConfig
+	var err error
+	var once sync.Once
+	once.Do(func() {
+		loader := &YAMLConfigLoader{}
+		config, err = loader.LoadAPIConfig("/opt/conf/api/openapi-rest.yml")
+	})
+	return config, err
 }

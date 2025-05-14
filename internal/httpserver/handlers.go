@@ -6,7 +6,6 @@ package httpserver
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/inditextech/redisrobin/internal/redis"
@@ -25,7 +24,7 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 	// Parse the request body
 	request := RedisClusterStatusRequest{}
 	if err := ParseRequest(r, &request); err != nil {
-		log.Printf("Invalid request: %v", err)
+		s.logger.Info("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}
@@ -35,7 +34,7 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 
 	// Send the response
 	response := RedisClusterStatusResponse{
-		Status: request.Status,
+		Status: s.redisCluster.GetRedisClusterStatus(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -51,7 +50,7 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	// Parse the request body
 	request := ClusterReplicasRequest{}
 	if err := ParseRequest(r, &request); err != nil {
-		log.Printf("Invalid request: %v", err)
+		s.logger.Info("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}
@@ -61,7 +60,7 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 
 	// Send the response
 	response := ClusterReplicasResponse{
-		Replicas: request.Replicas,
+		Replicas: s.redisCluster.GetReplicas(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -77,7 +76,7 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	// Parse the request body
 	request := ClusterMoveRequest{}
 	if err := ParseRequest(r, &request); err != nil {
-		log.Printf("Invalid request: %v", err)
+		s.logger.Info("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}

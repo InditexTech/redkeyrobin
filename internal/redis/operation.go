@@ -4,7 +4,7 @@
 
 package redis
 
-import	(
+import (
 	"time"
 )
 
@@ -12,8 +12,8 @@ import	(
 type RedisOperation struct {
 	Name          string
 	Status        string
-	NodeFrom      *Node
-	NodeTo        *Node
+	NodeFrom      *RedisNode
+	NodeTo        *RedisNode
 	InitTimestamp time.Time
 	EndTimestamp  time.Time
 	Cmd           *RedisCLICommand

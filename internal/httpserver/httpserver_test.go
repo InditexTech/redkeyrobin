@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/go-logr/logr"
@@ -67,7 +68,15 @@ func (m MockedControllerManager) GetControllerOptions() ctrlConfig.Controller {
 	return ctrlConfig.Controller{}
 }
 
-var server = Server{}
+var server = Server{
+	redisCluster: redis.NewRedisCluster(&config.Configuration{
+		Redis: config.RedisConfig{
+			Cluster: config.RedisClusterConfig{
+				Status: "Ready",
+			},
+		},
+	}),
+}
 
 func TestCheckPathConfiguration(t *testing.T) {
 	tests := []struct {
@@ -144,40 +153,40 @@ func TestCheckPathConfiguration(t *testing.T) {
 
 func TestInit(t *testing.T) {
 	tests := []struct {
-		name              string
-		endpoints         map[string]map[string]interface{}
-		expectedEndpoints map[string]map[string]interface{}
-		err               error
+		name          string
+		paths         map[string]map[string]interface{}
+		expectedPaths map[string]map[string]interface{}
+		err           error
 	}{
 		{
-			name:              "empty endpoints",
-			endpoints:         map[string]map[string]interface{}{},
-			expectedEndpoints: map[string]map[string]interface{}{},
-			err:               nil,
+			name:          "empty endpoints",
+			paths:         map[string]map[string]interface{}{},
+			expectedPaths: map[string]map[string]interface{}{},
+			err:           nil,
 		},
 		{
 			name: "invalid path configuration",
-			endpoints: map[string]map[string]interface{}{
+			paths: map[string]map[string]interface{}{
 				"/rediscluster/status": map[string]interface{}{},
 			},
-			expectedEndpoints: map[string]map[string]interface{}{},
-			err:               nil,
+			expectedPaths: map[string]map[string]interface{}{},
+			err:           nil,
 		},
 		{
 			name: "metrics server extra handler error",
-			endpoints: map[string]map[string]interface{}{
+			paths: map[string]map[string]interface{}{
 				"/error": map[string]interface{}{
 					"get": map[string]interface{}{
 						"operationId": "GetRedisClusterStatus",
 					},
 				},
 			},
-			expectedEndpoints: map[string]map[string]interface{}{},
-			err:               fmt.Errorf("unable to attach /error handler: error adding metrics server extra handler"),
+			expectedPaths: map[string]map[string]interface{}{},
+			err:           fmt.Errorf("unable to attach /error handler: error adding metrics server extra handler"),
 		},
 		{
 			name: "one path good, one path bad",
-			endpoints: map[string]map[string]interface{}{
+			paths: map[string]map[string]interface{}{
 				"/rediscluster/status": map[string]interface{}{
 					"get": map[string]interface{}{
 						"operationId": "GetRedisClusterStatus",
@@ -185,7 +194,7 @@ func TestInit(t *testing.T) {
 				},
 				"/rediscluster/health": map[string]interface{}{},
 			},
-			expectedEndpoints: map[string]map[string]interface{}{
+			expectedPaths: map[string]map[string]interface{}{
 				"/rediscluster/status": map[string]interface{}{
 					"get": map[string]interface{}{
 						"operationId": "GetRedisClusterStatus",
@@ -196,14 +205,14 @@ func TestInit(t *testing.T) {
 		},
 		{
 			name: "good request",
-			endpoints: map[string]map[string]interface{}{
+			paths: map[string]map[string]interface{}{
 				"/rediscluster/status": map[string]interface{}{
 					"get": map[string]interface{}{
 						"operationId": "GetRedisClusterStatus",
 					},
 				},
 			},
-			expectedEndpoints: map[string]map[string]interface{}{
+			expectedPaths: map[string]map[string]interface{}{
 				"/rediscluster/status": map[string]interface{}{
 					"get": map[string]interface{}{
 						"operationId": "GetRedisClusterStatus",
@@ -218,8 +227,9 @@ func TestInit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := Server{
 				config: config.APIConfig{
-					Endpoints: tt.endpoints,
+					Paths: tt.paths,
 				},
+				redisCluster: redis.NewRedisCluster(&config.Configuration{}),
 			}
 			err := server.Init(MockedControllerManager{})
 			assert.Equal(t, tt.err, err)
@@ -239,7 +249,7 @@ func TestServeHTTP(t *testing.T) {
 		{
 			name: "endpoint not found",
 			config: config.APIConfig{
-				Endpoints: map[string]map[string]interface{}{
+				Paths: map[string]map[string]interface{}{
 					"/rediscluster/status": map[string]interface{}{
 						"get": map[string]interface{}{
 							"operationId": "GetRedisClusterStatus",
@@ -257,7 +267,7 @@ func TestServeHTTP(t *testing.T) {
 		{
 			name: "method not allowed",
 			config: config.APIConfig{
-				Endpoints: map[string]map[string]interface{}{
+				Paths: map[string]map[string]interface{}{
 					"/rediscluster/status": map[string]interface{}{
 						"get": map[string]interface{}{
 							"operationId": "GetRedisClusterStatus",
@@ -275,7 +285,7 @@ func TestServeHTTP(t *testing.T) {
 		{
 			name: "good request",
 			config: config.APIConfig{
-				Endpoints: map[string]map[string]interface{}{
+				Paths: map[string]map[string]interface{}{
 					"/rediscluster/status": map[string]interface{}{
 						"get": map[string]interface{}{
 							"operationId": "GetRedisClusterStatus",
@@ -286,7 +296,7 @@ func TestServeHTTP(t *testing.T) {
 			endpoint: "/rediscluster/status",
 			method:   "GET",
 			expectedBody: RedisClusterStatusResponse{
-				Status: "OK",
+				Status: "",
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -295,7 +305,9 @@ func TestServeHTTP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := Server{
-				config: tt.config,
+				logger:       ctrl.Log.WithName("test"),
+				config:       tt.config,
+				redisCluster: redis.NewRedisCluster(&config.Configuration{}),
 			}
 			testRequest(t, tt.method, tt.endpoint, "", server.ServeHTTP, tt.expectedStatusCode, tt.expectedBody)
 		})

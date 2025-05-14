@@ -4,7 +4,6 @@
 
 package redis
 
-
 type OperationInProgressError struct {
 	Operation string
 }

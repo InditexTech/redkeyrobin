@@ -5,15 +5,14 @@
 package redis
 
 import (
-	"os"
 	"context"
+	"os"
 	"time"
-	"log"
 )
 
-// Node represents a Redis cluster node.
-type Node struct {
-	Name 	 string
+// RedisNode represents a Redis cluster node.
+type RedisNode struct {
+	Name     string
 	ID       string
 	Addr     string
 	IP       string
@@ -23,7 +22,7 @@ type Node struct {
 	Failures int
 }
 
-func (rn *Node) GetNumberOfSlots() int {
+func (rn *RedisNode) GetNumberOfSlots() int {
 	slots := 0
 
 	for _, slotRange := range rn.Slots {
@@ -33,13 +32,12 @@ func (rn *Node) GetNumberOfSlots() int {
 	return slots
 }
 
-func (rn *Node) Init() error {
+func (rn *RedisNode) Init() error {
 	redisClient := NewRedisClient(context.Background(), rn.Addr, os.Getenv("REDISAUTH"), 0)
 	defer redisClient.Close()
 
 	// Check connection
 	if err := redisClient.CheckConnection(3, 1*time.Second); err != nil {
-		log.Printf("Error connecting to Redis: %v", err)
 		return err
 	}
 
@@ -53,7 +51,7 @@ func (rn *Node) Init() error {
 	return nil
 }
 
-func (rn *Node) UpdateInfo(nodeInfo Node) {
+func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	rn.IP = nodeInfo.IP
 	rn.Role = nodeInfo.Role
 	rn.Slots = nodeInfo.Slots

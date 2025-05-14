@@ -7,16 +7,16 @@ package metrics
 import (
 	"context"
 	"fmt"
-	"log"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"maps"
-
+	"github.com/go-logr/logr"
 	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/util"
 )
 
 // nodeInfoReplacer is used to clean up node info strings.
@@ -25,10 +25,9 @@ var nodeInfoReplacer = strings.NewReplacer("{", "", "}", "", "\r", "", "[", "", 
 // metricNameReplacer transforms metric names (e.g., replacing hyphens).
 var metricNameReplacer = strings.NewReplacer("-", "_")
 
-
-
-// RedisPollMetrics is responsible for orchestrating the continuous polling of Redis 
+// RedisPollMetrics is responsible for orchestrating the continuous polling of Redis
 type RedisPollMetrics struct {
+	logger         logr.Logger
 	redisCluster   *redis.RedisCluster
 	metricsManager *MetricsManager
 	clusterMgr     *ClusterManager
@@ -41,7 +40,8 @@ func NewRedisPollMetrics(redisCluster *redis.RedisCluster, metricsManager *Metri
 	clusterMgr := NewClusterManager(metricsManager)
 
 	return &RedisPollMetrics{
-		redisCluster:           redisCluster,
+		logger:         util.GetLogger("metrics"),
+		redisCluster:   redisCluster,
 		metricsManager: metricsManager,
 		clusterMgr:     clusterMgr,
 	}, nil
@@ -50,11 +50,11 @@ func NewRedisPollMetrics(redisCluster *redis.RedisCluster, metricsManager *Metri
 // Start begins the polling loop.
 func (p *RedisPollMetrics) Start(ctx context.Context) {
 	for ctx.Err() == nil {
-		log.Printf("Polling metrics %s.", p.redisCluster.GetName())
+		p.logger.Info("Polling metrics")
 
 		err := p.pollRedisMetrics(ctx)
 		if err != nil {
-			log.Printf("Error polling Redis metrics: %v", err)
+			p.logger.Error(err, "Error polling Redis metrics")
 		}
 		time.Sleep(time.Second * time.Duration(p.redisCluster.GetMetricsInterval()))
 	}
@@ -105,16 +105,6 @@ func (p *RedisPollMetrics) pollRedisClusterMetrics(ctx context.Context) error {
 // pollClusterNodes obtains node information from Redis, updates membership if changed,
 // and then stores each node's data in the metrics manager.
 func (p *RedisPollMetrics) pollClusterNodes(redisClient *redis.RedisClient) error {
-	// err := redisClient.CheckConnection(p.redisCluster.GetClusterMaxRetries(), p.redisCluster.GetClusterBackOff())
-	// if err != nil {
-	// 	return fmt.Errorf("error checking connection: %w", err)
-	// }
-
-	// nodesInfo, err := redisClient.GetNodesInfo()
-	// if err != nil {
-	// 	return fmt.Errorf("error getting nodes info: %w", err)
-	// }
-
 	nodesInfo := p.redisCluster.GetNodes()
 
 	// Check if cluster membership changed; reset metrics if needed
@@ -173,7 +163,7 @@ func (p *RedisPollMetrics) pollClusterInfo(redisClient *redis.RedisClient) error
 func (p *RedisPollMetrics) pollRedisNodeLevelMetrics(ctx context.Context) error {
 	for _, node := range p.redisCluster.GetNodes() {
 		if err := p.pollRedisInfoAllMetrics(ctx, node.IP, node.Name); err != nil {
-			log.Printf("Error polling Redis metrics for node %s: %v", node.Name, err)
+			p.logger.Error(err, "Error polling Redis metrics", "node", node.Name)
 		}
 	}
 	return nil
@@ -247,7 +237,7 @@ func (p *RedisPollMetrics) processPromMetrics(
 	addPromMetrics(redisInfo, tags, p.redisCluster.GetMetricsRedisInfoKeys(), redisInfo.Keyspace, p.metricsManager)
 }
 
-// pollClusterCheckMetrics fetches the "redis-cli --cluster check" info and updates 
+// pollClusterCheckMetrics fetches the "redis-cli --cluster check" info and updates
 func (p *RedisPollMetrics) pollClusterCheckMetrics(ctx context.Context) error {
 	redisClient := p.createRedisClusterClient(ctx)
 	defer p.closeRedisClient(redisClient)

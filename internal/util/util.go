@@ -45,8 +45,7 @@ func ParseFloat(value string) float64 {
 	return num
 }
 
-
-func ParseSlotRange(values ...string) ([][]int) {
+func ParseSlotRange(values ...string) [][]int {
 	slots := [][]int{}
 
 	for _, value := range values {

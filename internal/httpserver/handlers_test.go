@@ -4,23 +4,21 @@
 
 package httpserver
 
-import(
-	"testing"
+import (
 	"net/http"
+	"testing"
 )
-
-
 
 func TestGetRedisClusterStatus(t *testing.T) {
 	tests := []struct {
-		name string
-		expectedBody RedisClusterStatusResponse
+		name               string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
 			name: "good request",
 			expectedBody: RedisClusterStatusResponse{
-				Status: "OK",
+				Status: "Ready",
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -34,13 +32,13 @@ func TestGetRedisClusterStatus(t *testing.T) {
 
 func TestUpdateRedisClusterStatus(t *testing.T) {
 	tests := []struct {
-		name string
-		request string
-		expectedBody ResponseInterface
+		name               string
+		request            string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
-			name: "bad request",
+			name:    "bad request",
 			request: "{",
 			expectedBody: ErrorResponse{
 				Error: "Invalid request: unexpected EOF",
@@ -48,7 +46,7 @@ func TestUpdateRedisClusterStatus(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "invalid request",
+			name:    "invalid request",
 			request: `{"status": "Invalid"}`,
 			expectedBody: ErrorResponse{
 				Error: "Invalid request: invalid status 'Invalid'",
@@ -56,7 +54,7 @@ func TestUpdateRedisClusterStatus(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "good request",
+			name:    "good request",
 			request: `{"status": "Ready"}`,
 			expectedBody: RedisClusterStatusResponse{
 				Status: "Ready",
@@ -73,12 +71,18 @@ func TestUpdateRedisClusterStatus(t *testing.T) {
 
 func TestGetClusterReplicas(t *testing.T) {
 	tests := []struct {
-		name string
-		request string
-		expectedBody ResponseInterface
+		name               string
+		request            string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
-
+		{
+			name: "good request",
+			expectedBody: ClusterReplicasResponse{
+				Replicas: 0,
+			},
+			expectedStatusCode: http.StatusOK,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -87,15 +91,37 @@ func TestGetClusterReplicas(t *testing.T) {
 	}
 }
 
-
 func TestUpdateClusterReplicas(t *testing.T) {
 	tests := []struct {
-		name string
-		request string
-		expectedBody ResponseInterface
+		name               string
+		request            string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
-
+		{
+			name:    "bad request",
+			request: "{",
+			expectedBody: ErrorResponse{
+				Error: "Invalid request: unexpected EOF",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "invalid request",
+			request: `{"replicas": -1}`,
+			expectedBody: ErrorResponse{
+				Error: "Invalid request: invalid replicas '-1'",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "good request",
+			request: `{"replicas": 3}`,
+			expectedBody: ClusterReplicasResponse{
+				Replicas: 3,
+			},
+			expectedStatusCode: http.StatusOK,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,12 +132,18 @@ func TestUpdateClusterReplicas(t *testing.T) {
 
 func TestGetClusterStatus(t *testing.T) {
 	tests := []struct {
-		name string
-		request string
-		expectedBody ResponseInterface
+		name               string
+		request            string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
-
+		{
+			name: "good request",
+			expectedBody: ClusterStatusResponse{
+				Status: "Unknown",
+			},
+			expectedStatusCode: http.StatusOK,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -122,13 +154,11 @@ func TestGetClusterStatus(t *testing.T) {
 
 func TestMoveNodeSlots(t *testing.T) {
 	tests := []struct {
-		name string
-		request string
-		expectedBody ResponseInterface
+		name               string
+		request            string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
-	}{
-
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testRequest(t, "PUT", "/cluster/move", tt.request, server.MoveNodeSlots, tt.expectedStatusCode, tt.expectedBody)
@@ -138,13 +168,11 @@ func TestMoveNodeSlots(t *testing.T) {
 
 func TestCheckCluster(t *testing.T) {
 	tests := []struct {
-		name string
-		request string
-		expectedBody ResponseInterface
+		name               string
+		request            string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
-	}{
-
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testRequest(t, "GET", "/cluster/check", tt.request, server.CheckCluster, tt.expectedStatusCode, tt.expectedBody)
@@ -154,13 +182,11 @@ func TestCheckCluster(t *testing.T) {
 
 func TestFixCluster(t *testing.T) {
 	tests := []struct {
-		name string
-		request string
-		expectedBody ResponseInterface
+		name               string
+		request            string
+		expectedBody       ResponseInterface
 		expectedStatusCode int
-	}{
-
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testRequest(t, "PUT", "/cluster/fix", tt.request, server.FixCluster, tt.expectedStatusCode, tt.expectedBody)

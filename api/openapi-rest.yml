@@ -152,21 +152,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClusterMoveSlotsResponse'
 
-  /metrics:
-    get:
-      tags:
-        - metrics
-      summary: Get Cluster metrics
-      description: Get Cluster metrics in Prometheus format
-      operationId: GetMetrics
-      responses:
-        '200':
-          description: Return metrics
-          content:
-            text/plain:
-              schema:
-                type: string
-
   
   /v1/cluster/check:
     get:

@@ -29,7 +29,7 @@ func NewClusterManager(mm *MetricsManager) *ClusterManager {
 
 // CheckClusterNodes compares known node IPs with the current node list and resets metrics
 // if there is a change. The gatherIPList logic is encapsulated here rather than using a global IpList.
-func (cm *ClusterManager) CheckClusterNodes(nodesInfo []*redis.Node) {
+func (cm *ClusterManager) CheckClusterNodes(nodesInfo []*redis.RedisNode) {
 	if cm.needsRefresh(nodesInfo) {
 		cm.generateIpList(nodesInfo)
 		cm.metricsManager.ResetMetrics()
@@ -37,7 +37,7 @@ func (cm *ClusterManager) CheckClusterNodes(nodesInfo []*redis.Node) {
 }
 
 // generateIpList rebuilds the ipList from the given nodesInfo.
-func (cm *ClusterManager) generateIpList(nodesInfo []*redis.Node) {
+func (cm *ClusterManager) generateIpList(nodesInfo []*redis.RedisNode) {
 	ipNodes := make([]string, 0, len(nodesInfo))
 	for _, node := range nodesInfo {
 		nodeInfoStringList := strings.Split(nodeInfoReplacer.Replace(fmt.Sprintf("%v", node)), " ")
@@ -49,7 +49,7 @@ func (cm *ClusterManager) generateIpList(nodesInfo []*redis.Node) {
 }
 
 // needsRefresh detects if there's a mismatch between the current ipList and the new node set.
-func (cm *ClusterManager) needsRefresh(nodesInfo []*redis.Node) bool {
+func (cm *ClusterManager) needsRefresh(nodesInfo []*redis.RedisNode) bool {
 	if len(cm.ipList) != len(nodesInfo) {
 		return true
 	}

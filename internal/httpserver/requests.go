@@ -4,15 +4,14 @@
 
 package httpserver
 
-import(
-	"fmt"
+import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
-	"github.com/inditextech/redisrobin/internal/util"
 	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/util"
 )
-
 
 var (
 	ValidRedisClusterStatus = []string{redis.Initializing, redis.Ready, redis.Error, redis.Upgrading, redis.ScalingDown, redis.ScalingUp, redis.Maintenance, redis.Unknown}
@@ -58,9 +57,9 @@ func (r *ClusterReplicasRequest) Validate() error {
 }
 
 type ClusterMoveRequest struct {
-	From string `json:"from"`
-	To string `json:"to"`
-	Slots int `json:"slots"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Slots int    `json:"slots"`
 }
 
 func (r *ClusterMoveRequest) Validate() error {
