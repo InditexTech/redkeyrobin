@@ -97,3 +97,20 @@ type ClusterMoveSlotsResponse struct {
 func (r ClusterMoveSlotsResponse) GetKeys() []string {
 	return []string{"status"}
 }
+
+type ClusterCheckResponse struct {
+	Errors   []string `json:"errors"`
+	Warnings []string `json:"warnings"`
+}
+
+func (r ClusterCheckResponse) GetKeys() []string {
+	return []string{"errors", "warnings"}
+}
+
+type ClusterFixResponse struct {
+	Status string `json:"status"`
+}
+
+func (r ClusterFixResponse) GetKeys() []string {
+	return []string{"status"}
+}

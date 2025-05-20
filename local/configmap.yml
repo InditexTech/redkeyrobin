@@ -17,6 +17,7 @@ redis:
     namespace: redis-operator
     name: rediscluster-sample
     status: Ready
+    replicas_per_master: 0
     health_probe_interval_seconds: 60
     healing_time_seconds: 60
     max_retries: 2

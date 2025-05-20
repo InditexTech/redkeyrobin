@@ -15,31 +15,54 @@ import (
 type RedisClusterReconciler struct {
 	logger       logr.Logger
 	redisCluster *RedisCluster
+	channel	  chan struct{}
 }
 
-func NewRedisClusterReconciler(redisCluster *RedisCluster) (*RedisClusterReconciler, error) {
+func NewRedisClusterReconciler(redisCluster *RedisCluster, channel chan struct{}) (*RedisClusterReconciler, error) {
 	return &RedisClusterReconciler{
 		logger:       util.GetLogger("reconciler"),
 		redisCluster: redisCluster,
+		channel:	  channel,
 	}, nil
 }
 
 func (r *RedisClusterReconciler) Start(ctx context.Context) {
-	for ctx.Err() == nil {
-		r.logger.Info("Reconcilling cluster")
+	timeout := time.Duration(r.redisCluster.GetReconcilerInterval()) * time.Second
 
-		err := r.Reconcile(ctx)
-		if err != nil {
-			r.logger.Error(err, "Error reconcilling cluster")
+	for {
+		select {
+		case <-ctx.Done():
+			r.logger.Info("Context cancelled, stopping reconciler")
+			return
+		case <-r.channel:
+			r.Reconcile()
+		case <-time.After(timeout):
+			r.Reconcile()
 		}
-
-		time.Sleep(time.Second * time.Duration(r.redisCluster.GetReconcilerInterval()))
 	}
 }
 
-func (r *RedisClusterReconciler) Reconcile(ctx context.Context) error {
+func (r *RedisClusterReconciler) Reconcile() {
+	r.logger.Info("Reconcilling cluster")
+	err := r.doReconcile()
+	if err != nil {
+		r.logger.Error(err, "Error reconcilling cluster")
+	}
+}
+
+func (r *RedisClusterReconciler) doReconcile() error {
+	// Remove outdated operations
+	r.redisCluster.RemoveOutdatedOperations()
+
+	// Check if the cluster is ready, finishing if not
 	if r.redisCluster.GetRedisClusterStatus() != Ready {
 		return nil
+	}
+
+	// Check cluster integrity
+	err := r.redisCluster.CheckClusterIntegrity(false, true)
+	if err != nil {
+		return err
 	}
 
 	return nil

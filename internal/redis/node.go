@@ -7,19 +7,27 @@ package redis
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/inditextech/redisrobin/internal/util"
 )
 
 // RedisNode represents a Redis cluster node.
 type RedisNode struct {
-	Name     string
-	ID       string
-	Addr     string
-	IP       string
-	Role     string
-	Slots    []RedisSlotRange
-	MasterID string
-	Failures int
+	Name       string
+	ID         string
+	Addr       string
+	IP         string
+	Flags      string
+	Slots      []RedisSlotRange
+	MasterID   string
+	Failures   int
+	Sent       int
+	Recv       int
+	LinkStatus string
+	MaxRetries int
+	Backoff    time.Duration
 }
 
 type RedisSlotRange struct {
@@ -37,14 +45,12 @@ func (rn *RedisNode) GetNumberOfSlots() int {
 	return slots
 }
 
-func (rn *RedisNode) Init(maxRetries int, backoff time.Duration) error {
-	redisClient := NewRedisClient(context.Background(), rn.Addr, os.Getenv("REDISAUTH"), 0)
-	defer redisClient.Close()
-
-	// Check connection
-	if err := redisClient.CheckConnection(maxRetries, backoff); err != nil {
+func (rn *RedisNode) Init() error {
+	redisClient, err := rn.getClient(context.Background())
+	if err != nil {
 		return err
 	}
+	defer redisClient.Close()
 
 	// Get node info
 	nodeID, err := redisClient.GetMyID()
@@ -52,14 +58,102 @@ func (rn *RedisNode) Init(maxRetries int, backoff time.Duration) error {
 		return err
 	}
 
+	nodeIP, err := util.GetIPFromAddress(rn.Addr)
+	if err != nil {
+		return err
+	}
+
 	rn.ID = nodeID
+	rn.IP = nodeIP
 	return nil
+}
+
+func (rn *RedisNode) getClient(ctx context.Context) (*RedisClient, error) {
+	redisClient := NewRedisClient(ctx, rn.Addr, os.Getenv("REDISAUTH"), 0)
+	if err := redisClient.CheckConnection(rn.MaxRetries, rn.Backoff); err != nil {
+		return nil, err
+	}
+	return redisClient, nil
 }
 
 func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	rn.IP = nodeInfo.IP
-	rn.Role = nodeInfo.Role
+	rn.Flags = nodeInfo.Flags
 	rn.Slots = nodeInfo.Slots
 	rn.MasterID = nodeInfo.MasterID
 	rn.Failures = nodeInfo.Failures
+}
+
+func (rn *RedisNode) IsMaster() bool {
+	return strings.Contains(rn.Flags, "master")
+}
+
+func (rn *RedisNode) IsConnected() bool {
+	return rn.LinkStatus == "connected"
+}
+
+func (rn *RedisNode) IsDisconnected() bool {
+	return rn.LinkStatus == "disconnected"
+}
+
+func (rn *RedisNode) IsReplica() bool {
+	return rn.hasFlag("replica")
+}
+
+func (rn *RedisNode) ShouldBeRemoved() bool {
+	return rn.hasFlag("fail") || rn.hasFlag("noaddr")
+}
+
+func (rn *RedisNode) hasFlag(flag string) bool {
+	return strings.Contains(rn.Flags, flag)
+}
+
+func (rn *RedisNode) GetClusterNodes(ctx context.Context) ([]RedisNode, error) {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer redisClient.Close()
+
+	return redisClient.GetNodesInfo()
+}
+
+func (rn *RedisNode) ReplicateNode(ctx context.Context, master RedisNode) error {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
+
+	return redisClient.ClusterReplicate(master.ID)
+}
+
+func (rn *RedisNode) Reset(ctx context.Context) error {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
+
+	return redisClient.ClusterReset(false)
+}
+
+func (rn *RedisNode) MeetNode(ctx context.Context, node RedisNode) error {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
+
+	return redisClient.ClusterMeet(node.IP, RedisPort)
+}
+
+func (rn *RedisNode) ForgetNode(ctx context.Context, node RedisNode) error {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
+
+	return redisClient.ClusterForget(node.ID)
 }

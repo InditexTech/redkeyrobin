@@ -56,11 +56,20 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the replicas
-	s.redisCluster.SetReplicas(request.Replicas)
+	err := s.redisCluster.SetReplicas(request.Replicas)
 
 	// Send the response
 	response := ClusterReplicasResponse{
 		Replicas: s.redisCluster.GetReplicas(),
+	}
+	if err != nil {
+		if _, ok := err.(*redis.OperationCompletedError); ok {
+			s.sendResponse(w, http.StatusAccepted, response)
+			return
+		}
+
+		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error updating replicas: %v", err))
+		return
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -104,7 +113,7 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 		slots = from.GetNumberOfSlots()
 	}
 
-	// Do the move
+	// Launch the move
 	err := s.redisCluster.MoveSlots(from, to, slots)
 	response := ClusterMoveSlotsResponse{}
 	if err != nil {
@@ -126,22 +135,37 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
+	// Launch the check
+	result, err := s.redisCluster.Check()
 
+	// Send the response
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error checking cluster: %v", err))
+		return
+	}
+	response := ClusterCheckResponse{
+		Errors:  result.Errors,
+		Warnings: result.Warnings,
+	}
+	s.sendResponse(w, http.StatusOK, response)
 }
 
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
-	err := s.redisCluster.Rebalance(true)
+	// Launch the fix
+	err := s.redisCluster.CheckClusterIntegrity(true, false)
+
+	// Send the response
+	response := ClusterFixResponse{
+		Status: "In progress",
+	}
 	if err != nil {
 		if _, ok := err.(*redis.OperationInProgressError); ok {
-			s.sendResponse(w, http.StatusAccepted, nil)
-			return
-		} else if _, ok := err.(*redis.OperationCompletedError); ok {
-			s.sendResponse(w, http.StatusOK, nil)
+			s.sendResponse(w, http.StatusAccepted, response)
 			return
 		}
 
-		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error rebalancing cluster: %v", err))
+		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error fixing cluster: %v", err))
 		return
 	}
-	s.sendResponse(w, http.StatusCreated, nil)
+	s.sendResponse(w, http.StatusCreated, response)
 }

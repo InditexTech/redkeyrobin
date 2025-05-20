@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewRedisClusterReconciler(t *testing.T) {
-	reconciler, err := NewRedisClusterReconciler(&RedisCluster{})
+	reconciler, err := NewRedisClusterReconciler(&RedisCluster{}, make(chan struct{}))
 
 	assert.NoError(t, err)
 	assert.NotNil(t, reconciler)
@@ -21,6 +21,7 @@ func TestNewRedisClusterReconciler(t *testing.T) {
 
 func TestRedisClusterReconcilerReconcile(t *testing.T) {
 	redisCluster := NewFakeRedisCluster(
+		t.Context(),
 		&config.Configuration{
 			Redis: config.RedisConfig{
 				Cluster: config.RedisClusterConfig{
@@ -39,8 +40,9 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 		map[string]*RedisNode{},
 		map[string][]*RedisOperation{},
 	)
-	reconciler, _ := NewRedisClusterReconciler(redisCluster)
+	reconciler, _ := NewRedisClusterReconciler(redisCluster, make(chan struct{}))
 
-	err := reconciler.Reconcile(nil)
+	reconciler.Reconcile()
+	err := reconciler.doReconcile()
 	assert.NoError(t, err)
 }

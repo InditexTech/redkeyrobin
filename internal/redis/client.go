@@ -7,6 +7,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,14 +66,13 @@ const (
 	TotalClusterLinksBufEx             = "total_cluster_links_buffer_limit_exceeded"
 )
 
-var redisClientLogger logr.Logger
-
 // -----------------------------------------------------------------------------
 // Redis Client
 // -----------------------------------------------------------------------------
 
 // RedisClient encapsulates a connection to Redis.
 type RedisClient struct {
+	logger logr.Logger
 	client *redisgo.Client
 	ctx    context.Context
 }
@@ -120,13 +120,13 @@ type ClusterInfo struct {
 
 // NewRedisClient creates a new RedisClient for the given address.
 func NewRedisClient(ctx context.Context, addr, password string, db int) *RedisClient {
-	redisClientLogger = util.GetLogger("redis-cluster")
 	client := redisgo.NewClient(&redisgo.Options{
 		Addr:     fmt.Sprintf("%s:%d", addr, RedisPort),
 		Password: password,
 		DB:       db,
 	})
 	return &RedisClient{
+		logger: util.GetLogger("redis-cluster"),
 		client: client,
 		ctx:    ctx,
 	}
@@ -165,7 +165,6 @@ func (rc *RedisClient) GetInfo() (*RedisInfo, error) {
 	return parseRedisInfo(info), nil
 }
 
-
 // GetClusterInfo retrieves and parses cluster information from Redis.
 func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
 	info, err := rc.client.ClusterInfo(rc.ctx).Result()
@@ -183,7 +182,7 @@ func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
 	for _, line := range lines {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
-			redisClientLogger.Info("Skipping malformed cluster info", "line", line)
+			rc.logger.Info("Skipping malformed cluster info", "line", line)
 			continue
 		}
 
@@ -258,29 +257,23 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 8 {
-			redisClientLogger.Info("Skipping malformed", "line", line)
+			rc.logger.Info("Skipping malformed", "line", line)
 			continue
 		}
 
 		// Extract Node Details
 		nodeID := fields[0]
 		ipPort := fields[1]
-		role := fields[2]     // First flag usually indicates role
+		flags := fields[2]
 		masterID := fields[3] // "-" if master, otherwise Master ID
+		sent := util.ParseInt(fields[4])
+		recv := util.ParseInt(fields[5])
+		linkStatus := fields[7]
 
 		// Extract slot information (if available)
 		slots := []RedisSlotRange{}
 		if len(fields) > 8 {
 			slots = parseRedisSlotRange(fields[8:]...)
-		}
-
-		// Validate role
-		if role != "master" && role != "slave" && role != "myself,master" && role != "myself,slave" {
-			continue
-		}
-
-		if role == "myself,master" {
-			role = "master"
 		}
 
 		// Retrieve failure count
@@ -292,12 +285,15 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 
 		// Construct Node struct
 		node := RedisNode{
-			ID:       nodeID,
-			IP:       strings.Split(ipPort, ":")[0], // Extract only IP
-			Role:     role,
-			Slots:    slots,
-			MasterID: masterID,
-			Failures: failures,
+			ID:         nodeID,
+			IP:         strings.Split(ipPort, ":")[0], // Extract only IP
+			Flags:      flags,
+			Slots:      slots,
+			MasterID:   masterID,
+			Failures:   failures,
+			Sent:       sent,
+			Recv:       recv,
+			LinkStatus: linkStatus,
 		}
 
 		nodes = append(nodes, node)
@@ -314,4 +310,54 @@ func (rc *RedisClient) GetMyID() (string, error) {
 	}
 
 	return result.(string), nil
+}
+
+// ClusterForgetNode removes a node from the cluster.
+func (rc *RedisClient) ClusterForgetNode(nodeID string) error {
+	_, err := rc.client.ClusterForget(rc.ctx, nodeID).Result()
+	if err != nil {
+		return fmt.Errorf("failed to forget node %s: %v", nodeID, err)
+	}
+	return nil
+}
+
+// ClusterMeet instructs the current node to meet the specified node.
+func (rc *RedisClient) ClusterMeet(ip string, port int) error {
+	_, err := rc.client.ClusterMeet(rc.ctx, ip, strconv.Itoa(port)).Result()
+	if err != nil {
+		return fmt.Errorf("failed to meet node %s: %v", ip, err)
+	}
+	return nil
+}
+
+// ClusterReplicate instructs the current node to replicate the specified master.
+func (rc *RedisClient) ClusterReplicate(nodeID string) error {
+	_, err := rc.client.ClusterReplicate(rc.ctx, nodeID).Result()
+	if err != nil {
+		return fmt.Errorf("failed to replicate node %s: %v", nodeID, err)
+	}
+	return nil
+}
+
+// ClusterReset instructs the current node to reset.
+func (rc *RedisClient) ClusterReset(hard bool) error {
+	var err error
+
+	if hard {
+		_, err = rc.client.ClusterResetHard(rc.ctx).Result()
+	} else {
+		_, err = rc.client.ClusterResetSoft(rc.ctx).Result()
+	}
+	if err != nil {
+		return fmt.Errorf("failed to reset cluster node: %v", err)
+	}
+	return nil
+}
+
+func (rc *RedisClient) ClusterForget(nodeID string) error {
+	_, err := rc.client.ClusterForget(rc.ctx, nodeID).Result()
+	if err != nil {
+		return fmt.Errorf("failed to forget node %s: %v", nodeID, err)
+	}
+	return nil
 }

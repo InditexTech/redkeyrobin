@@ -58,8 +58,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Communication channe for the reconciler
+	channel := make(chan struct{})
+	defer close(channel)
+
 	// Initialize the Redis cluster.
-	redisCluster := redis.NewRedisCluster(conf)
+	redisCluster := redis.NewRedisCluster(ctx, conf, channel)
 	if err := redisCluster.Init(); err != nil {
 		logger.Error(err, "Unable to initialize Redis Cluster")
 		os.Exit(1)
@@ -82,7 +86,7 @@ func main() {
 	go redisPollMetrics.Start(ctx)
 
 	// Create and launch the redis cluster reconciler
-	redisClusterReconciler, err := redis.NewRedisClusterReconciler(redisCluster)
+	redisClusterReconciler, err := redis.NewRedisClusterReconciler(redisCluster, channel)
 	if err != nil {
 		logger.Error(err, "Unable to create Redis reconciler")
 		os.Exit(1)

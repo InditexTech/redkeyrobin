@@ -49,20 +49,31 @@ func NewRedisPollMetrics(redisCluster *redis.RedisCluster, metricsManager *Metri
 
 // Start begins the polling loop.
 func (p *RedisPollMetrics) Start(ctx context.Context) {
-	for ctx.Err() == nil {
-		p.logger.Info("Polling metrics")
+	timeout := time.Duration(p.redisCluster.GetMetricsInterval()) * time.Second
 
-		err := p.pollRedisMetrics(ctx)
-		if err != nil {
-			p.logger.Error(err, "Error polling Redis metrics")
+	for {
+		select {
+		case <-ctx.Done():
+			p.logger.Info("Context canceled, stopping polling")
+			return
+		case <-time.After(timeout):
+			p.logger.Info("Polling metrics")
+
+			err := p.pollRedisMetrics(ctx)
+			if err != nil {
+				p.logger.Error(err, "Error polling Redis metrics")
+			}
 		}
-		time.Sleep(time.Second * time.Duration(p.redisCluster.GetMetricsInterval()))
 	}
 }
 
 // pollRedisMetrics retrieves all nodes in the configured namespace and labelSelector, then
 // polls both cluster-level metrics and Redis INFO per node.
 func (p *RedisPollMetrics) pollRedisMetrics(ctx context.Context) error {
+	if p.redisCluster.GetStatus() != redis.Ready {
+		return nil
+	}
+
 	// cluster-level info (GetNodesInfo, GetClusterInfo)
 	if err := p.pollRedisClusterMetrics(ctx); err != nil {
 		return err
@@ -117,7 +128,7 @@ func (p *RedisPollMetrics) pollClusterNodes(redisClient *redis.RedisClient) erro
 
 		nodeTags[NodeID] = node.ID
 		nodeTags[NodeIP] = node.IP
-		nodeTags[Role] = node.Role
+		nodeTags[Role] = node.Flags
 		nodeTags[Slots] = fmt.Sprintf("%v", node.Slots)
 		nodeTags[MasterID] = node.MasterID
 		nodeTags[NodeFailures] = fmt.Sprintf("%v", node.Failures)
@@ -162,7 +173,7 @@ func (p *RedisPollMetrics) pollClusterInfo(redisClient *redis.RedisClient) error
 // from each node in the configured Redis Cluster.
 func (p *RedisPollMetrics) pollRedisNodeLevelMetrics(ctx context.Context) error {
 	for _, node := range p.redisCluster.GetNodes() {
-		if err := p.pollRedisInfoAllMetrics(ctx, node.IP, node.Name); err != nil {
+		if err := p.pollRedisInfoAllMetrics(ctx, node.Addr, node.Name); err != nil {
 			p.logger.Error(err, "Error polling Redis metrics", "node", node.Name)
 		}
 	}

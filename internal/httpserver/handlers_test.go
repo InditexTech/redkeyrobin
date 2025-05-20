@@ -107,6 +107,14 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
+			name: "same replicas",
+			request: `{"replicas": 0}`,
+			expectedBody: ClusterReplicasResponse{
+				Replicas: 0,
+			},
+			expectedStatusCode: http.StatusAccepted,
+		},
+		{
 			name:    "good request",
 			request: `{"replicas": 3}`,
 			expectedBody: ClusterReplicasResponse{
@@ -237,7 +245,15 @@ func TestCheckCluster(t *testing.T) {
 		request            string
 		expectedBody       ResponseInterface
 		expectedStatusCode int
-	}{}
+	}{
+		{
+			name: "unexpected error",
+			expectedBody: ErrorResponse{
+				Error: "Error checking cluster: error getting and checking Redis client: maxRetries must be greater than 0",
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testRequest(t, "GET", "/cluster/check", tt.request, server.CheckCluster, tt.expectedStatusCode, tt.expectedBody)
@@ -251,7 +267,22 @@ func TestFixCluster(t *testing.T) {
 		request            string
 		expectedBody       ResponseInterface
 		expectedStatusCode int
-	}{}
+	}{
+		{
+			name: "good request",
+			expectedBody: ClusterFixResponse{
+				Status: "In progress",
+			},
+			expectedStatusCode: http.StatusCreated,
+		},
+		{
+			name: "fix in progress",
+			expectedBody: ClusterFixResponse{
+				Status: "In progress",
+			},
+			expectedStatusCode: http.StatusAccepted,
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testRequest(t, "PUT", "/cluster/fix", tt.request, server.FixCluster, tt.expectedStatusCode, tt.expectedBody)

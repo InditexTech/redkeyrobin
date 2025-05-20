@@ -69,50 +69,51 @@ func (m MockedControllerManager) GetControllerOptions() ctrlConfig.Controller {
 }
 
 var node1 = &redis.RedisNode{
-	Name: "node1",
-	ID: "1234567890",
-	Addr: "node1",
-	IP: "1.1.1.1",
-	Role: "master",
+	Name:  "node1",
+	ID:    "1234567890",
+	Addr:  "node1",
+	IP:    "1.1.1.1",
+	Flags: "master",
 	Slots: []redis.RedisSlotRange{
-			{
-				Start: 0,
-				End: 4,
-			},
+		{
+			Start: 0,
+			End:   4,
 		},
+	},
 	MasterID: "",
 }
 var node2 = &redis.RedisNode{
-	Name: "node2",
-	ID: "0987654321",
-	Addr: "node2",
-	IP: "2.2.2.2",
-	Role: "master",
+	Name:  "node2",
+	ID:    "0987654321",
+	Addr:  "node2",
+	IP:    "2.2.2.2",
+	Flags: "master",
 	Slots: []redis.RedisSlotRange{
-			{
-				Start: 5,
-				End: 7,
-			},
+		{
+			Start: 5,
+			End:   7,
 		},
+	},
 	MasterID: "",
 }
 var node3 = &redis.RedisNode{
-	Name: "node3",
-	ID: "0987654321",
-	Addr: "node2",
-	IP: "2.2.2.2",
-	Role: "master",
+	Name:  "node3",
+	ID:    "0987654321",
+	Addr:  "node2",
+	IP:    "2.2.2.2",
+	Flags: "master",
 	Slots: []redis.RedisSlotRange{
-			{
-				Start: 7,
-				End: 10,
-			},
+		{
+			Start: 7,
+			End:   10,
 		},
+	},
 	MasterID: "",
 }
 
 var server = Server{
 	redisCluster: redis.NewFakeRedisCluster(
+		context.TODO(),
 		&config.Configuration{
 			Redis: config.RedisConfig{
 				Cluster: config.RedisClusterConfig{
@@ -129,16 +130,16 @@ var server = Server{
 		map[string][]*redis.RedisOperation{
 			"Resharding": {
 				{
-					Name:  "Resharding",
-					Status: "Running",
+					Name:     "Resharding",
+					Status:   "Running",
 					NodeFrom: node1,
-					NodeTo: node3,					
+					NodeTo:   node3,
 				},
 				{
-					Name:  "Resharding",
-					Status: "Finished",
+					Name:     "Resharding",
+					Status:   "Finished",
 					NodeFrom: node1,
-					NodeTo: node2,					
+					NodeTo:   node2,
 				},
 			},
 		},
@@ -296,7 +297,7 @@ func TestInit(t *testing.T) {
 				config: config.APIConfig{
 					Paths: tt.paths,
 				},
-				redisCluster: redis.NewRedisCluster(&config.Configuration{}),
+				redisCluster: redis.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})),
 			}
 			err := server.Init(MockedControllerManager{})
 			assert.Equal(t, tt.err, err)
@@ -374,7 +375,7 @@ func TestServeHTTP(t *testing.T) {
 			server := Server{
 				logger:       ctrl.Log.WithName("test"),
 				config:       tt.config,
-				redisCluster: redis.NewRedisCluster(&config.Configuration{}),
+				redisCluster: redis.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})),
 			}
 			testRequest(t, tt.method, tt.endpoint, "", server.ServeHTTP, tt.expectedStatusCode, tt.expectedBody)
 		})

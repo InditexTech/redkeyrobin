@@ -17,6 +17,7 @@ import (
 // RedisOperatorConfig holds operator-level Redis configuration.
 type RedisReconcilerConfig struct {
 	IntervalSeconds int `yaml:"interval_seconds"`
+	OperationCleanupIntervalSeconds int `yaml:"operation_cleanup_interval_seconds"`
 }
 
 // RedisClusterConfig holds cluster-level Redis configuration.
@@ -24,6 +25,7 @@ type RedisClusterConfig struct {
 	Namespace                string        `yaml:"namespace"`
 	Name                     string        `yaml:"name"`
 	Replicas                 int           `yaml:"replicas"`
+	ReplicasPerMaster		 int           `yaml:"replicas_per_master"`
 	Status                   string        `yaml:"status"`
 	HealthProbePeriodSeconds int           `yaml:"health_probe_interval_seconds"`
 	HealingTimeSeconds       int           `yaml:"healing_time_seconds"`
@@ -97,6 +99,9 @@ func (cfg *Configuration) validate() []string {
 	}
 	if cfg.Redis.Metrics.IntervalSeconds == 0 {
 		missing = append(missing, "redis.metrics.interval_seconds")
+	}
+	if cfg.Redis.Reconciler.OperationCleanupIntervalSeconds == 0 {
+		cfg.Redis.Reconciler.OperationCleanupIntervalSeconds = 60
 	}
 	return missing
 }

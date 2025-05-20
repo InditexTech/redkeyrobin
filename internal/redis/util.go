@@ -5,6 +5,7 @@
 package redis
 
 import (
+	"fmt"
 	"context"
 	"strings"
 	"bufio"
@@ -45,17 +46,7 @@ func parseClusterCheckOutput(output string) *ClusterCheckResult {
 
 	// Check for any scanning error.
 	if err := scanner.Err(); err != nil {
-		redisClientLogger.Error(err, "Error reading cluster check output")
-	}
-
-	return result
-}
-
-// parseClusterFixOutput processes Redis cluster fix output into a structured format.
-func parseClusterFixOutput(output string) *ClusterFixResult {
-	result := &ClusterFixResult{
-		Errors:   []string{},
-		Warnings: []string{},
+		fmt.Printf("Error reading cluster check output: %v", err)
 	}
 
 	return result
@@ -63,6 +54,7 @@ func parseClusterFixOutput(output string) *ClusterFixResult {
 
 // parseRedisSlotRange processes Redis slot range output into a structured format.
 func parseRedisSlotRange(values ...string) []RedisSlotRange {
+	// TODO: add importing and migrating slots?
 	slots := []RedisSlotRange{}
 
 	for _, value := range values {
@@ -127,7 +119,6 @@ func parseRedisInfo(info string) *RedisInfo {
 		// Parse "key:value" structure
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
-			redisClientLogger.Info("Skipping malformed line", "line", line)
 			continue
 		}
 
@@ -163,7 +154,7 @@ func parseRedisInfo(info string) *RedisInfo {
 		case SectionLatency:
 			parsedInfo.LatencyStats[key] = value
 		default:
-			redisClientLogger.Info("Ignoring unknown redis info", "section", section, "key", key)
+			fmt.Printf("Ignoring unknown redis info. Section:%s, key: %s", section, key)
 		}
 	}
 

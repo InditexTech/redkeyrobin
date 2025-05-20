@@ -5,7 +5,9 @@
 package util
 
 import (
+	"net"
 	"strings"
+	"fmt"
 )
 
 // MapToString converts a map[string]string to a string.
@@ -30,4 +32,18 @@ func StringInSlice(item string, list []string) bool {
 		}
 	}
 	return false
+}
+
+
+func GetIPFromAddress(address string) (string, error) {
+	ips, err := net.LookupIP(address)
+	if err != nil {
+		return "", err
+	}
+
+	if len(ips) == 0 {
+		return "", fmt.Errorf("no IPs found for address %s", address)
+	}
+
+	return ips[0].String(), nil
 }

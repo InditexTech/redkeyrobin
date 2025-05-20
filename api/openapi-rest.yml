@@ -323,5 +323,4 @@ components:
           example: InProgress
           enum:
             - InProgress
-            - Completed
             - Error

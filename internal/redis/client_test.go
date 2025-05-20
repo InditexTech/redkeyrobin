@@ -33,7 +33,7 @@ func TestCheckConnection(t *testing.T) {
 		name               string
 		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
 		maxRetries         int
-		backoff			time.Duration
+		backoff            time.Duration
 		expectedError      error
 	}{
 		{
@@ -52,7 +52,7 @@ func TestCheckConnection(t *testing.T) {
 				return client, mock
 			},
 			maxRetries:    1,
-			backoff: time.Duration(-1),
+			backoff:       time.Duration(-1),
 			expectedError: fmt.Errorf("backoff must be greater than 0"),
 		},
 		{
@@ -63,7 +63,7 @@ func TestCheckConnection(t *testing.T) {
 				return client, mock
 			},
 			maxRetries:    1,
-			backoff: time.Microsecond * 10,
+			backoff:       time.Microsecond * 10,
 			expectedError: fmt.Errorf("failed to connect after 1 retries"),
 		},
 		{
@@ -74,7 +74,7 @@ func TestCheckConnection(t *testing.T) {
 				return client, mock
 			},
 			maxRetries:    1,
-			backoff: time.Microsecond * 10,
+			backoff:       time.Microsecond * 10,
 			expectedError: nil,
 		},
 	}
@@ -105,7 +105,7 @@ func TestGetInfo(t *testing.T) {
 		name               string
 		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
 		expectedError      error
-		expectedVersion   string
+		expectedVersion    string
 	}{
 		{
 			name: "failed to get info",
@@ -125,7 +125,7 @@ func TestGetInfo(t *testing.T) {
 				return client, mock
 			},
 			expectedVersion: "6.2.5",
-			expectedError: nil,
+			expectedError:   nil,
 		},
 	}
 	for _, tt := range tests {
@@ -152,14 +152,13 @@ func TestGetInfo(t *testing.T) {
 	}
 }
 
-
 // TestGetClusterInfo test the GetClusterInfo
 func TestGetClusterInfo(t *testing.T) {
 	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		name                string
+		getRedisClientMock  func() (*redisgo.Client, redismock.ClientMock)
 		expectedClusterInfo *ClusterInfo
-		expectedError      error
+		expectedError       error
 	}{
 		{
 			name: "failed to get cluster info",
@@ -210,26 +209,26 @@ fail-line
 				return client, mock
 			},
 			expectedClusterInfo: &ClusterInfo{
-				State:                   "ok",
-				SlotsAssigned:           16384,
-				SlotsOK:                 16384,
-				SlotsPFail:              0,
-				SlotsFail:               0,
-				KnownNodes:              5,
-				ClusterSize:             5,
-				CurrentEpoch:            13877,
-				MyEpoch:                 13877,
-				MessagesPingSent:        19544,
-				MessagesPongSent:        52643,
-				MessagesMeetSent:        187,
-				MessagesUpdateSent:      6,
-				MessagesSent:            72380,
-				MessagesPingReceived:    19675,
-				MessagesPongReceived:    72169,
-				MessagesMeetReceived:    188,
-				MessagesFailReceived:    1,
+				State:                  "ok",
+				SlotsAssigned:          16384,
+				SlotsOK:                16384,
+				SlotsPFail:             0,
+				SlotsFail:              0,
+				KnownNodes:             5,
+				ClusterSize:            5,
+				CurrentEpoch:           13877,
+				MyEpoch:                13877,
+				MessagesPingSent:       19544,
+				MessagesPongSent:       52643,
+				MessagesMeetSent:       187,
+				MessagesUpdateSent:     6,
+				MessagesSent:           72380,
+				MessagesPingReceived:   19675,
+				MessagesPongReceived:   72169,
+				MessagesMeetReceived:   188,
+				MessagesFailReceived:   1,
 				MessagesUpdateReceived: 4,
-				MessagesReceived:        92037,
+				MessagesReceived:       92037,
 			},
 			expectedError: nil,
 		},
@@ -258,13 +257,12 @@ fail-line
 	}
 }
 
-
 // TestCheckConnection tests the GetInfo
 func TestGetNodesInfo(t *testing.T) {
 	tests := []struct {
 		name               string
 		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedNodesInfo []RedisNode
+		expectedNodesInfo  []RedisNode
 		expectedError      error
 	}{
 		{
@@ -291,10 +289,10 @@ func TestGetNodesInfo(t *testing.T) {
 				client, mock := redismock.NewClientMock()
 				mock.ExpectClusterNodes().SetVal(`
 222d03eb91487e6542cff1e105d911deb37a5ddd 10.253.43.143:6379@16379 master - 0 1740670560026 13876 connected 9828-10923 12560-13103 14744-16383
-77e5805a3550270e5cf23ed42bc2d0577426d876 10.252.6.201:6379@16379 myself,master - 0 1740670560000 13877 connected 2456-3275 4912-6277 7914-7917 8738-9553 9558-9827
+77e5805a3550270e5cf23ed42bc2d0577426d876 10.252.6.201:6379@16379 myself,master - 0 1740670560000 13877 disconnected 2456-3275 4912-6277 7914-7917 8738-9553 9558-9827
 bb1704c223955cf9a533142e4569f7aba510b1ea 10.252.26.193:6379@16379 slave 77e5805a3550270e5cf23ed42bc2d0577426d876 0 1740670561031 13846 connected 0 1-815 9554-9557 10924-11739 13104-14743
-e420256dda2dbfb8db95658397ca8af3c3889b31 10.253.21.209:6379@16379 badrole - 0 1740670562035 13852 connected 816-1635 3276-4091 6278-7097 11740-12559
-0d691cdfe68b44134f8cdbca0d81563754a5aa6f 10.252.8.20:6379@16379 master - 0 1740670559023 13874 connected 
+e420256dda2dbfb8db95658397ca8af3c3889b31 10.253.21.209:6379@16379 myself,slave - 0 1740670562035 13852 connected 816-1635 3276-4091 6278-7097 11740-12559
+0d691cdfe68b44134f8cdbca0d81563754a5aa6f 10.252.8.20:6379@16379 noaddr - 0 1740670559023 13874 connected 
 malformed-line
 `)
 				mock.ExpectClusterCountFailureReports("222d03eb91487e6542cff1e105d911deb37a5ddd").SetVal(100)
@@ -304,7 +302,7 @@ malformed-line
 				{
 					ID:    "222d03eb91487e6542cff1e105d911deb37a5ddd",
 					IP:    "10.253.43.143",
-					Role:  "master",
+					Flags: "master",
 					Slots: []RedisSlotRange{
 						{
 							Start: 9828,
@@ -321,11 +319,14 @@ malformed-line
 					},
 					MasterID: "-",
 					Failures: 100,
+					Sent:	 0,
+					Recv:	 1740670560026,
+					LinkStatus: "connected",
 				},
 				{
 					ID:    "77e5805a3550270e5cf23ed42bc2d0577426d876",
 					IP:    "10.252.6.201",
-					Role:  "master",
+					Flags: "myself,master",
 					Slots: []RedisSlotRange{
 						{
 							Start: 2456,
@@ -350,11 +351,14 @@ malformed-line
 					},
 					MasterID: "-",
 					Failures: 0,
+					Sent: 0,
+					Recv: 1740670560000,
+					LinkStatus: "disconnected",
 				},
 				{
 					ID:    "bb1704c223955cf9a533142e4569f7aba510b1ea",
 					IP:    "10.252.26.193",
-					Role:  "slave",
+					Flags: "slave",
 					Slots: []RedisSlotRange{
 						{
 							Start: 0,
@@ -379,14 +383,48 @@ malformed-line
 					},
 					MasterID: "77e5805a3550270e5cf23ed42bc2d0577426d876",
 					Failures: 0,
-				},
+					Sent: 0,
+					Recv: 1740670561031,
+					LinkStatus: "connected",
+				}, 
 				{
-					ID:    "0d691cdfe68b44134f8cdbca0d81563754a5aa6f",
-					IP:    "10.252.8.20",
-					Role:  "master",
-					Slots: []RedisSlotRange{},
+					ID:    "e420256dda2dbfb8db95658397ca8af3c3889b31",
+					IP:    "10.253.21.209",
+					Flags: "myself,slave",
+					Slots: []RedisSlotRange{
+						{
+							Start: 816,
+							End:   1635,
+						},
+						{
+							Start: 3276,
+							End:   4091,
+						},
+						{
+							Start: 6278,
+							End:   7097,
+						},
+						{
+							Start: 11740,
+							End:   12559,
+						},
+					},
 					MasterID: "-",
 					Failures: 0,
+					Sent: 0,
+					Recv: 1740670562035,
+					LinkStatus: "connected",
+				},
+				{
+					ID:       "0d691cdfe68b44134f8cdbca0d81563754a5aa6f",
+					IP:       "10.252.8.20",
+					Flags:    "noaddr",
+					Slots:    []RedisSlotRange{},
+					MasterID: "-",
+					Failures: 0,
+					Sent:     0,
+					Recv:     1740670559023,
+					LinkStatus: "connected",
 				},
 			},
 		},
@@ -420,7 +458,7 @@ func TestGetMyID(t *testing.T) {
 	tests := []struct {
 		name               string
 		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedID   string
+		expectedID         string
 		expectedError      error
 	}{
 		{
@@ -439,7 +477,7 @@ func TestGetMyID(t *testing.T) {
 				mock.ExpectDo("CLUSTER", "MYID").SetVal("theawesomeid")
 				return client, mock
 			},
-			expectedID: "theawesomeid",
+			expectedID:    "theawesomeid",
 			expectedError: nil,
 		},
 	}

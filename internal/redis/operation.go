@@ -16,7 +16,7 @@ type RedisOperation struct {
 	NodeTo        *RedisNode
 	InitTimestamp time.Time
 	EndTimestamp  time.Time
-	Cmd           *RedisCLICommand
+	Cmd           RedisCommand
 }
 
 // Wait waits for the command to finish and updates the operation status
@@ -26,7 +26,7 @@ func (ro *RedisOperation) Wait() error {
 	ro.EndTimestamp = time.Now()
 
 	// Check if command failed
-	if err := ro.Cmd.Err; err != nil {
+	if err := ro.Cmd.Error(); err != nil {
 		ro.Status = Error
 		return err
 	}
@@ -34,4 +34,29 @@ func (ro *RedisOperation) Wait() error {
 	// Command finished successfully
 	ro.Status = "Finished"
 	return nil
+}
+
+// Cancel cancels the operation
+func (ro *RedisOperation) Cancel() {
+	ro.Cmd.Cancel()
+	ro.Status = "Cancelled"
+}
+
+// GetDuration returns the duration of the operation
+func (ro *RedisOperation) GetDuration() time.Duration {
+	return ro.EndTimestamp.Sub(ro.InitTimestamp)
+}
+
+// GetElapsedTime returns the elapsed time since the operation started
+func (ro *RedisOperation) GetElapsedTime() time.Duration {
+	return time.Since(ro.InitTimestamp)
+}
+
+// GetElapsedTimeFromEnd returns the elapsed time since the operation ended
+func (ro *RedisOperation) GetElapsedTimeFromEnd() time.Duration {
+	if ro.EndTimestamp.IsZero() {
+		return time.Duration(0)
+	}
+
+	return time.Since(ro.EndTimestamp)
 }

@@ -53,29 +53,6 @@ Another line with no error or warning
 	}
 }
 
-func TestParseClusterFixOutput(t *testing.T) {
-	tests := []struct {
-		name               string
-		input   string
-		expectedOutput      *ClusterFixResult
-	}{
-		{
-			name: "empty input",
-			input: "",
-			expectedOutput: &ClusterFixResult{
-				Errors:   []string{},
-				Warnings: []string{},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := parseClusterFixOutput(tt.input)
-			assert.Equal(t, tt.expectedOutput, actual)
-		})
-	}
-}
-
 func TestParseRedisSlotRange(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -432,14 +409,18 @@ func TestRunRedisCLICommand(t *testing.T) {
 			name: "error",
 			command: "exit 1",
 			expected: &RedisCLICommand{
-				ExitCode: 1,
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 1,
+				},
 			},
 		},
 		{
 			name: "good",
 			command: "exit 0",
 			expected: &RedisCLICommand{
-				ExitCode: 0,
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 0,
+				},
 			},
 		},
 	}
@@ -461,14 +442,18 @@ func TestRunRedisCLICommandAsync(t *testing.T) {
 			name: "error",
 			command: "exit 1",
 			expected: &RedisCLICommand{
-				ExitCode: 1,
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 1,
+				},
 			},
 		},
 		{
 			name: "good",
 			command: "exit 0",
 			expected: &RedisCLICommand{
-				ExitCode: 0,
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 0,
+				},
 			},
 		},
 	}
@@ -476,7 +461,7 @@ func TestRunRedisCLICommandAsync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			actual := runRedisCLICommandAsync(t.Context(), tt.command)
 			assert.Equal(t, actual.ExitCode, 0)
-			actual.CheckStatusCode()
+			actual.checkStatusCode()
 			assert.Equal(t, actual.ExitCode, -1)
 			actual.Wait()
 			assert.Equal(t, actual.ExitCode, tt.expected.ExitCode)
