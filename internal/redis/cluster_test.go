@@ -265,12 +265,12 @@ func TestRedisClusterCheckOperations(t *testing.T) {
 
 func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 	tests := []struct {
-		name          string
-		operations map[string][]*RedisOperation
+		name               string
+		operations         map[string][]*RedisOperation
 		expectedOperations map[string]int
 	}{
 		{
-			name:          "no expired operations",
+			name: "no expired operations",
 			operations: map[string][]*RedisOperation{
 				Rebalancing: {
 					{
@@ -280,19 +280,19 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 				},
 				Resharding: {
 					{
-						Name:   Resharding,
-						Status: "Finished",
+						Name:         Resharding,
+						Status:       "Finished",
 						EndTimestamp: time.Now().Add(-time.Second * 2),
 					},
 				},
 			},
 			expectedOperations: map[string]int{
 				Rebalancing: 1,
-				Resharding: 1,
+				Resharding:  1,
 			},
 		},
 		{
-			name:          "one expired operation",
+			name: "one expired operation",
 			operations: map[string][]*RedisOperation{
 				Rebalancing: {
 					{
@@ -300,31 +300,31 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 						Status: "Running",
 					},
 					{
-						Name:   Rebalancing,
-						Status: "Finished",
+						Name:         Rebalancing,
+						Status:       "Finished",
 						EndTimestamp: time.Now().Add(-time.Second * 100),
 					},
 				},
 				Resharding: {
 					{
-						Name:   Resharding,
-						Status: "Finished",
+						Name:         Resharding,
+						Status:       "Finished",
 						EndTimestamp: time.Now().Add(-time.Second * 2),
 					},
 				},
 			},
 			expectedOperations: map[string]int{
 				Rebalancing: 1,
-				Resharding: 1,
+				Resharding:  1,
 			},
 		},
 		{
-			name:          "several expired operations",
+			name: "several expired operations",
 			operations: map[string][]*RedisOperation{
 				Rebalancing: {
 					{
-						Name:   Rebalancing,
-						Status: "Finished",
+						Name:         Rebalancing,
+						Status:       "Finished",
 						EndTimestamp: time.Now().Add(-time.Second * 1000),
 					},
 					{
@@ -332,25 +332,24 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 						Status: "Running",
 					},
 					{
-						Name:   Rebalancing,
-						Status: "Finished",
+						Name:         Rebalancing,
+						Status:       "Finished",
 						EndTimestamp: time.Now().Add(-time.Second * 100),
 					},
 				},
 				Resharding: {
 					{
-						Name:   Resharding,
-						Status: "Finished",
+						Name:         Resharding,
+						Status:       "Finished",
 						EndTimestamp: time.Now().Add(-time.Second * 20),
 					},
 				},
 			},
 			expectedOperations: map[string]int{
 				Rebalancing: 1,
-				Resharding: 0,
+				Resharding:  0,
 			},
 		},
-		
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -533,7 +532,7 @@ func TestRedisClusterRefreshNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.RefreshNodes()
+			err := redisCluster.refreshNodes()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -707,9 +706,9 @@ func TestRedisClusterWaitForRebalanceToFinish(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			operation := &RedisOperation{
-				Name:     Rebalancing,
-				Status:   "Running",
-				Cmd: 	  tt.cmd,
+				Name:   Rebalancing,
+				Status: "Running",
+				Cmd:    tt.cmd,
 			}
 
 			tt.cmd.cmd.Start()
@@ -801,7 +800,7 @@ func TestRedisClusterWaitForReshardToFinish(t *testing.T) {
 				Status:   "Running",
 				NodeFrom: node1,
 				NodeTo:   node3,
-				Cmd: 	  tt.cmd,
+				Cmd:      tt.cmd,
 			}
 			tt.cmd.cmd.Start()
 			redisCluster.waitForReshardToFinish(operation)

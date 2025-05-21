@@ -361,3 +361,11 @@ func (rc *RedisClient) ClusterForget(nodeID string) error {
 	}
 	return nil
 }
+
+func (rc *RedisClient) ClusterAddSlots(slots ...int) error {
+	_, err := rc.client.ClusterAddSlots(rc.ctx, slots...).Result()
+	if err != nil {
+		return fmt.Errorf("failed to add slots %v: %v", slots, err)
+	}
+	return nil
+}

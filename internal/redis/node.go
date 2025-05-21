@@ -6,6 +6,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -35,6 +36,10 @@ type RedisSlotRange struct {
 	End   int
 }
 
+func (rn *RedisNode) String() string {
+	return fmt.Sprintf("Node(ID: %s, Name: %s, IP: %s)", rn.ID, rn.Name,  rn.IP)
+}
+
 func (rn *RedisNode) GetNumberOfSlots() int {
 	slots := 0
 
@@ -45,8 +50,8 @@ func (rn *RedisNode) GetNumberOfSlots() int {
 	return slots
 }
 
-func (rn *RedisNode) Init() error {
-	redisClient, err := rn.getClient(context.Background())
+func (rn *RedisNode) Init(ctx context.Context) error {
+	redisClient, err := rn.getClient(ctx)
 	if err != nil {
 		return err
 	}
@@ -77,11 +82,27 @@ func (rn *RedisNode) getClient(ctx context.Context) (*RedisClient, error) {
 }
 
 func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
-	rn.IP = nodeInfo.IP
+	if nodeInfo.IP != "" {
+		rn.IP = nodeInfo.IP
+	}
 	rn.Flags = nodeInfo.Flags
 	rn.Slots = nodeInfo.Slots
 	rn.MasterID = nodeInfo.MasterID
 	rn.Failures = nodeInfo.Failures
+}
+
+func (rn *RedisNode) ResetSlots() {
+	rn.Slots = []RedisSlotRange{}
+}
+
+func (rn *RedisNode) SetID(id string) {
+	rn.ID = id
+	rn.ResetSlots()
+}
+
+func (rn *RedisNode) SetIP(ip string) {
+	rn.IP = ip
+	rn.ResetSlots()
 }
 
 func (rn *RedisNode) IsMaster() bool {
@@ -156,4 +177,14 @@ func (rn *RedisNode) ForgetNode(ctx context.Context, node RedisNode) error {
 	defer redisClient.Close()
 
 	return redisClient.ClusterForget(node.ID)
+}
+
+func (rn *RedisNode) AddSlots(ctx context.Context, slots ...int) error {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
+
+	return redisClient.ClusterAddSlots(slots...)
 }

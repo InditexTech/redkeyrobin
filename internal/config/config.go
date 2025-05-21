@@ -27,6 +27,7 @@ type RedisClusterConfig struct {
 	Replicas                 int           `yaml:"replicas"`
 	ReplicasPerMaster		 int           `yaml:"replicas_per_master"`
 	Status                   string        `yaml:"status"`
+	Ephemeral                bool          `yaml:"ephemeral"`
 	HealthProbePeriodSeconds int           `yaml:"health_probe_interval_seconds"`
 	HealingTimeSeconds       int           `yaml:"healing_time_seconds"`
 	MaxRetries               int           `yaml:"max_retries"`

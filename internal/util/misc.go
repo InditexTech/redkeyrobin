@@ -34,7 +34,7 @@ func StringInSlice(item string, list []string) bool {
 	return false
 }
 
-
+// GetIPFromAddress returns the IP address of a given address.
 func GetIPFromAddress(address string) (string, error) {
 	ips, err := net.LookupIP(address)
 	if err != nil {
@@ -46,4 +46,14 @@ func GetIPFromAddress(address string) (string, error) {
 	}
 
 	return ips[0].String(), nil
+}
+
+// MakeRangeMap creates a map with a range of integers as keys.
+func MakeRangeMap(min int, max int) map[int]interface{} {
+	result := map[int]interface{}{}
+	a := make([]int, max-min+1)
+	for i := range a {
+		result[min+i] = ""
+	}
+	return result
 }

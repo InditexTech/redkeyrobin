@@ -29,6 +29,8 @@ func NewRedisClusterReconciler(redisCluster *RedisCluster, channel chan struct{}
 func (r *RedisClusterReconciler) Start(ctx context.Context) {
 	timeout := time.Duration(r.redisCluster.GetReconcilerInterval()) * time.Second
 
+	r.Reconcile()
+
 	for {
 		select {
 		case <-ctx.Done():
