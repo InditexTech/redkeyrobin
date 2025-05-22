@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestMapToString(t *testing.T) {
 	testMap := map[string]string{
 		"key1": "value1",

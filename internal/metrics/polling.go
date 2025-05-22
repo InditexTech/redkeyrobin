@@ -57,8 +57,6 @@ func (p *RedisPollMetrics) Start(ctx context.Context) {
 			p.logger.Info("Context canceled, stopping polling")
 			return
 		case <-time.After(timeout):
-			p.logger.Info("Polling metrics")
-
 			err := p.pollRedisMetrics(ctx)
 			if err != nil {
 				p.logger.Error(err, "Error polling Redis metrics")
@@ -70,9 +68,12 @@ func (p *RedisPollMetrics) Start(ctx context.Context) {
 // pollRedisMetrics retrieves all nodes in the configured namespace and labelSelector, then
 // polls both cluster-level metrics and Redis INFO per node.
 func (p *RedisPollMetrics) pollRedisMetrics(ctx context.Context) error {
+	// Do nothing if the cluster is not ready
 	if p.redisCluster.GetStatus() != redis.Ready {
 		return nil
 	}
+
+	p.logger.Info("Polling metrics")
 
 	// cluster-level info (GetNodesInfo, GetClusterInfo)
 	if err := p.pollRedisClusterMetrics(ctx); err != nil {

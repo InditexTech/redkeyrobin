@@ -41,7 +41,6 @@ RedisMetricsIntervalSeconds: 40`
 	assert.Equal(t, expected, cfg.String())
 }
 
-
 func TestConfigurationValidate(t *testing.T) {
 	cfg := &Configuration{}
 	missing := cfg.validate()
@@ -65,4 +64,3 @@ func TestAPIConfigurationValidate(t *testing.T) {
 	assert.Len(t, missing, 1)
 	assert.Contains(t, missing, "paths")
 }
-

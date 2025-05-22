@@ -15,14 +15,14 @@ import (
 type RedisClusterReconciler struct {
 	logger       logr.Logger
 	redisCluster *RedisCluster
-	channel	  chan struct{}
+	channel      chan struct{}
 }
 
 func NewRedisClusterReconciler(redisCluster *RedisCluster, channel chan struct{}) (*RedisClusterReconciler, error) {
 	return &RedisClusterReconciler{
 		logger:       util.GetLogger("reconciler"),
 		redisCluster: redisCluster,
-		channel:	  channel,
+		channel:      channel,
 	}, nil
 }
 
@@ -45,10 +45,11 @@ func (r *RedisClusterReconciler) Start(ctx context.Context) {
 }
 
 func (r *RedisClusterReconciler) Reconcile() {
-	r.logger.Info("Reconcilling cluster")
-	err := r.doReconcile()
-	if err != nil {
-		r.logger.Error(err, "Error reconcilling cluster")
+	r.logger.Info("Reconciling cluster")
+	if err := r.doReconcile(); err != nil {
+		r.logger.Error(err, "Error reconciling cluster")
+	} else {
+		r.logger.Info("Cluster reconciled successfully")
 	}
 }
 
@@ -56,16 +57,59 @@ func (r *RedisClusterReconciler) doReconcile() error {
 	// Remove outdated operations
 	r.redisCluster.RemoveOutdatedOperations()
 
-	// Check if the cluster is ready, finishing if not
-	if r.redisCluster.GetRedisClusterStatus() != Ready {
+	// Reconcile based on the current status
+	switch r.redisCluster.GetRedisClusterStatus() {
+	case Ready:
+		return r.reconcileReadyStatus()
+	case ScalingUp:
+		return r.reconcileScalingUpStatus()
+	case ScalingDown:
+		return r.reconcileScalingDownStatus()
+	case Upgrading:
+		return r.reconcileUpgradingStatus()
+	default:
 		return nil
 	}
+}
 
+func (r *RedisClusterReconciler) reconcileReadyStatus() error {
 	// Check cluster integrity
-	err := r.redisCluster.CheckClusterIntegrity(false, true)
+	err := r.redisCluster.Reconcile(false, true)
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
+	// Check if the cluster needs to be scaled up
+	if r.redisCluster.IsScaled() {
+		return r.reconcileReadyStatus()
+	}
+
+	// Scale up the cluster
+	if err := r.redisCluster.ScaleUp(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
+	// Check if the cluster needs to be scaled down
+	if r.redisCluster.IsScaled() {
+		return nil
+	}
+
+	// Scale down the cluster
+	if err := r.redisCluster.ScaleDown(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *RedisClusterReconciler) reconcileUpgradingStatus() error {
 	return nil
 }

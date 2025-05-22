@@ -107,7 +107,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "same replicas",
+			name:    "same replicas",
 			request: `{"replicas": 0}`,
 			expectedBody: ClusterReplicasResponse{
 				Replicas: 0,
@@ -210,7 +210,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		{
 			name:    "resharding in progress",
 			request: `{"from": "node1", "to": "node3"}`,
-			expectedBody:  ClusterMoveSlotsResponse{
+			expectedBody: ClusterMoveSlotsResponse{
 				Status: "In progress",
 			},
 			expectedStatusCode: http.StatusAccepted,
@@ -218,7 +218,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		{
 			name:    "resharding completed",
 			request: `{"from": "node1", "to": "node2"}`,
-			expectedBody:  ClusterMoveSlotsResponse{
+			expectedBody: ClusterMoveSlotsResponse{
 				Status: "Completed",
 			},
 			expectedStatusCode: http.StatusOK,
@@ -226,7 +226,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		{
 			name:    "unexpected error",
 			request: `{"from": "node2", "to": "node3"}`,
-			expectedBody:  ErrorResponse{
+			expectedBody: ErrorResponse{
 				Error: "Error rebalancing cluster: error getting and checking Redis client: maxRetries must be greater than 0",
 			},
 			expectedStatusCode: http.StatusInternalServerError,

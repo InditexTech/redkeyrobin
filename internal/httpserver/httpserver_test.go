@@ -69,17 +69,12 @@ func (m MockedControllerManager) GetControllerOptions() ctrlConfig.Controller {
 }
 
 var node1 = &redis.RedisNode{
-	Name:  "node1",
-	ID:    "1234567890",
-	Addr:  "node1",
-	IP:    "1.1.1.1",
-	Flags: "master",
-	Slots: []redis.RedisSlotRange{
-		{
-			Start: 0,
-			End:   4,
-		},
-	},
+	Name:     "node1",
+	ID:       "1234567890",
+	Addr:     "node1",
+	IP:       "1.1.1.1",
+	Flags:    "master",
+	Slots:    []redis.RedisSlotRange{},
 	MasterID: "",
 }
 var node2 = &redis.RedisNode{

@@ -5,13 +5,13 @@
 package redis
 
 import (
-	"fmt"
-	"context"
-	"strings"
 	"bufio"
+	"context"
+	"fmt"
+	"math"
 	"slices"
 	"strconv"
-	"math"
+	"strings"
 
 	"github.com/inditextech/redisrobin/internal/util"
 )

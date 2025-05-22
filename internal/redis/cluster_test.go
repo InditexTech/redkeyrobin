@@ -22,8 +22,8 @@ var node1 = &RedisNode{
 	Flags: "master",
 	Slots: []RedisSlotRange{
 		{
-			Start: 0,
-			End:   4,
+			Start: 1,
+			End:   5461,
 		},
 	},
 	MasterID: "",
@@ -36,8 +36,8 @@ var node2 = &RedisNode{
 	Flags: "master",
 	Slots: []RedisSlotRange{
 		{
-			Start: 5,
-			End:   7,
+			Start: 5462,
+			End:   10922,
 		},
 	},
 	MasterID: "",
@@ -50,8 +50,8 @@ var node3 = &RedisNode{
 	Flags: "master",
 	Slots: []RedisSlotRange{
 		{
-			Start: 7,
-			End:   10,
+			Start: 10923,
+			End:   16384,
 		},
 	},
 	MasterID: "",
@@ -117,143 +117,7 @@ func TestRedisClusterGetters(t *testing.T) {
 	assert.Contains(t, nodes, node3)
 }
 
-func TestRedisClusterAddOperation(t *testing.T) {
-	tests := []struct {
-		name               string
-		operationName      string
-		nodeFrom           *RedisNode
-		nodeTo             *RedisNode
-		expectedOperations int
-		newState           string
-	}{
-		{
-			name:               "add operation rebalancing",
-			operationName:      Rebalancing,
-			expectedOperations: 1,
-		},
-		{
-			name:               "add operation resharding",
-			operationName:      Resharding,
-			nodeFrom:           node1,
-			nodeTo:             node3,
-			expectedOperations: 1,
-		},
-		{
-			name:               "add operation resharding",
-			operationName:      Resharding,
-			nodeFrom:           node1,
-			nodeTo:             node2,
-			expectedOperations: 2,
-			newState:           "Finished",
-		},
-		{
-			name:               "add operation fixing",
-			operationName:      Fixing,
-			nodeFrom:           node1,
-			expectedOperations: 1,
-			newState:           "Finished",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := redisCluster.addOperation(tt.operationName, nil, tt.nodeFrom, tt.nodeTo)
-
-			assert.NotNil(t, redisCluster.operations[tt.operationName])
-			assert.Len(t, redisCluster.operations[tt.operationName], tt.expectedOperations)
-			assert.Equal(t, operation.Name, tt.operationName)
-			assert.Equal(t, operation.NodeFrom, tt.nodeFrom)
-			assert.Equal(t, operation.NodeTo, tt.nodeTo)
-			assert.Equal(t, operation.Status, "Running")
-
-			if tt.newState != "" {
-				operation.Status = tt.newState
-				assert.Equal(t, operation.Status, tt.newState)
-			}
-		})
-	}
-}
-
-func TestRedisClusterHasOperation(t *testing.T) {
-	tests := []struct {
-		name            string
-		operationName   string
-		operationStatus string
-		expectedResult  bool
-	}{
-		{
-			name:           "operation not found",
-			operationName:  Fixing,
-			expectedResult: false,
-		},
-		{
-			name:            "no operation with status",
-			operationName:   Fixing,
-			operationStatus: "Error",
-			expectedResult:  false,
-		},
-		{
-			name:            "operation with status",
-			operationName:   Fixing,
-			operationStatus: "Finished",
-			expectedResult:  true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := redisCluster.hasOperation(tt.operationName, tt.operationStatus)
-			assert.Equal(t, result, tt.expectedResult)
-		})
-	}
-}
-
-func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
-	tests := []struct {
-		name            string
-		operationName   string
-		operationStatus string
-		nodeFrom        RedisNode
-		nodeTo          RedisNode
-		expectedResult  bool
-	}{
-		{
-			name:           "operation not found",
-			operationName:  Fixing,
-			expectedResult: false,
-		},
-		{
-			name:            "no operation in nodes",
-			operationName:   Rebalancing,
-			operationStatus: "Running",
-			nodeFrom:        *node1,
-			nodeTo:          *node2,
-			expectedResult:  false,
-		},
-		{
-			name:            "operation in nodes, bad status",
-			operationName:   Resharding,
-			operationStatus: "Running",
-			nodeFrom:        *node1,
-			nodeTo:          *node2,
-			expectedResult:  false,
-		},
-		{
-			name:            "operation in nodes",
-			operationName:   Resharding,
-			operationStatus: "Running",
-			nodeFrom:        *node1,
-			nodeTo:          *node3,
-			expectedResult:  true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := redisCluster.hasOperationBetweenNodes(tt.operationName, tt.operationStatus, tt.nodeFrom, tt.nodeTo)
-			assert.Equal(t, result, tt.expectedResult)
-		})
-	}
-}
-
-func TestRedisClusterCheckOperations(t *testing.T) {
+func TestRedisClusterAskers(t *testing.T) {
 	assert.True(t, redisCluster.IsRebalancing())
 	assert.False(t, redisCluster.HasBeenRebalanced())
 
@@ -261,119 +125,13 @@ func TestRedisClusterCheckOperations(t *testing.T) {
 	assert.True(t, redisCluster.IsResharding(*node1, *node3))
 	assert.True(t, redisCluster.HasBeenResharded(*node1, *node2))
 	assert.False(t, redisCluster.HasBeenResharded(*node1, *node3))
-}
 
-func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
-	tests := []struct {
-		name               string
-		operations         map[string][]*RedisOperation
-		expectedOperations map[string]int
-	}{
-		{
-			name: "no expired operations",
-			operations: map[string][]*RedisOperation{
-				Rebalancing: {
-					{
-						Name:   Rebalancing,
-						Status: "Running",
-					},
-				},
-				Resharding: {
-					{
-						Name:         Resharding,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 2),
-					},
-				},
-			},
-			expectedOperations: map[string]int{
-				Rebalancing: 1,
-				Resharding:  1,
-			},
-		},
-		{
-			name: "one expired operation",
-			operations: map[string][]*RedisOperation{
-				Rebalancing: {
-					{
-						Name:   Rebalancing,
-						Status: "Running",
-					},
-					{
-						Name:         Rebalancing,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 100),
-					},
-				},
-				Resharding: {
-					{
-						Name:         Resharding,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 2),
-					},
-				},
-			},
-			expectedOperations: map[string]int{
-				Rebalancing: 1,
-				Resharding:  1,
-			},
-		},
-		{
-			name: "several expired operations",
-			operations: map[string][]*RedisOperation{
-				Rebalancing: {
-					{
-						Name:         Rebalancing,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 1000),
-					},
-					{
-						Name:   Rebalancing,
-						Status: "Running",
-					},
-					{
-						Name:         Rebalancing,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 100),
-					},
-				},
-				Resharding: {
-					{
-						Name:         Resharding,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 20),
-					},
-				},
-			},
-			expectedOperations: map[string]int{
-				Rebalancing: 1,
-				Resharding:  0,
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rdcl := NewFakeRedisCluster(
-				t.Context(),
-				&config.Configuration{
-					Redis: config.RedisConfig{
-						Reconciler: config.RedisReconcilerConfig{
-							OperationCleanupIntervalSeconds: 10,
-						},
-					},
-				},
-				"Unknown",
-				map[string]*RedisNode{},
-				tt.operations,
-			)
-
-			rdcl.RemoveOutdatedOperations()
-
-			for operation, ops := range rdcl.operations {
-				assert.Len(t, ops, tt.expectedOperations[operation], "operation %s", operation)
-			}
-		})
-	}
+	assert.False(t, redisCluster.IsFixing())
+	assert.False(t, redisCluster.IsReconciling())
+	assert.False(t, redisCluster.HasMissingSlots())
+	assert.True(t, redisCluster.IsBalanced())
+	assert.True(t, redisCluster.HasDesiredReplicas())
+	assert.True(t, redisCluster.IsScaled())
 }
 
 func TestRedisClusterAddNode(t *testing.T) {
@@ -452,7 +210,7 @@ func TestRedisClusterGetNodeFromID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := redisCluster.getNodeFromID(tt.nodeID)
+			node := redisCluster.GetNodeFromID(tt.nodeID)
 			assert.Equal(t, node, tt.expectedNode)
 		})
 	}
@@ -637,6 +395,7 @@ func TestRedisClusterRebalance(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
+		force         bool
 		expectedError error
 	}{
 		{
@@ -668,13 +427,14 @@ func TestRedisClusterRebalance(t *testing.T) {
 			prepareTest: func() {
 				redisCluster.operations[Rebalancing] = []*RedisOperation{}
 			},
+			force:         true,
 			expectedError: fmt.Errorf("error getting and checking Redis client: failed to connect after 1 retries"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.Rebalance(true, nil, false)
+			err := redisCluster.Rebalance(true, nil, tt.force)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -723,6 +483,8 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
+		from          *RedisNode
+		to            *RedisNode
 		expectedError error
 	}{
 		{
@@ -737,6 +499,8 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 					},
 				}
 			},
+			from:          node1,
+			to:            node3,
 			expectedError: &OperationInProgressError{Operation: "Resharding"},
 		},
 		{
@@ -751,6 +515,8 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 					},
 				}
 			},
+			from:          node1,
+			to:            node3,
 			expectedError: &OperationCompletedError{Operation: "Resharding"},
 		},
 		{
@@ -758,13 +524,15 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 			prepareTest: func() {
 				redisCluster.operations[Resharding] = []*RedisOperation{}
 			},
+			from:          node2,
+			to:            node3,
 			expectedError: fmt.Errorf("error getting and checking Redis client: failed to connect after 1 retries"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.MoveSlots(node1, node3, 10)
+			err := redisCluster.MoveSlots(tt.from, tt.to, 10)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

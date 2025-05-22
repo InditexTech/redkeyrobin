@@ -5,9 +5,9 @@
 package util
 
 import (
+	"fmt"
 	"net"
 	"strings"
-	"fmt"
 )
 
 // MapToString converts a map[string]string to a string.

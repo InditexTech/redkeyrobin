@@ -37,7 +37,7 @@ type RedisSlotRange struct {
 }
 
 func (rn *RedisNode) String() string {
-	return fmt.Sprintf("Node(ID: %s, Name: %s, IP: %s)", rn.ID, rn.Name,  rn.IP)
+	return fmt.Sprintf("Node(ID: %s, Name: %s, IP: %s)", rn.ID, rn.Name, rn.IP)
 }
 
 func (rn *RedisNode) GetNumberOfSlots() int {
@@ -119,6 +119,10 @@ func (rn *RedisNode) IsDisconnected() bool {
 
 func (rn *RedisNode) IsReplica() bool {
 	return rn.hasFlag("replica")
+}
+
+func (rn *RedisNode) HasSlots() bool {
+	return rn.GetNumberOfSlots() > 0
 }
 
 func (rn *RedisNode) ShouldBeRemoved() bool {

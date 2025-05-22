@@ -25,13 +25,13 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 		&config.Configuration{
 			Redis: config.RedisConfig{
 				Cluster: config.RedisClusterConfig{
-					Status: "Ready",
-					Replicas: 3,
-					Name: "test",
-					Namespace: "test",
-					MaxRetries: 1,
-					BackOff: time.Microsecond * 10,
-					HealingTimeSeconds: 55,
+					Status:                   "Ready",
+					Replicas:                 3,
+					Name:                     "test",
+					Namespace:                "test",
+					MaxRetries:               1,
+					BackOff:                  time.Microsecond * 10,
+					HealingTimeSeconds:       55,
 					HealthProbePeriodSeconds: 40,
 				},
 			},

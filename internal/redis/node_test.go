@@ -98,11 +98,10 @@ func TestNodeUpdateInfo(t *testing.T) {
 	}
 }
 
-
 func TestNodeIsMaster(t *testing.T) {
 	tests := []struct {
-		name   string
-		node   *RedisNode
+		name     string
+		node     *RedisNode
 		expected bool
 	}{
 		{
@@ -156,9 +155,9 @@ func TestNodeIsMaster(t *testing.T) {
 
 func TestNodeHasFlag(t *testing.T) {
 	tests := []struct {
-		name   string
-		node   *RedisNode
-		flag  string
+		name     string
+		node     *RedisNode
+		flag     string
 		expected bool
 	}{
 		{
@@ -169,7 +168,7 @@ func TestNodeHasFlag(t *testing.T) {
 				Slots:    []RedisSlotRange{},
 				Failures: 1,
 			},
-			flag: "master",
+			flag:     "master",
 			expected: true,
 		},
 		{
@@ -190,7 +189,7 @@ func TestNodeHasFlag(t *testing.T) {
 				Slots:    []RedisSlotRange{},
 				Failures: 1,
 			},
-			flag: "master",
+			flag:     "master",
 			expected: false,
 		},
 		{
@@ -201,7 +200,7 @@ func TestNodeHasFlag(t *testing.T) {
 				Slots:    []RedisSlotRange{},
 				Failures: 1,
 			},
-			flag: "fail",
+			flag:     "fail",
 			expected: true,
 		},
 	}

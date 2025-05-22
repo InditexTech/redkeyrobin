@@ -13,10 +13,10 @@ import (
 
 func TestOperationWait(t *testing.T) {
 	tests := []struct {
-		name               string
-		operation 		*RedisOperation
-		expectedStatus 	string
-		expectedError     error
+		name           string
+		operation      *RedisOperation
+		expectedStatus string
+		expectedError  error
 	}{
 		{
 			name: "error",
@@ -24,7 +24,7 @@ func TestOperationWait(t *testing.T) {
 				Cmd: NewRedisCLICommand(t.Context(), "exit 1"),
 			},
 			expectedStatus: "Error",
-			expectedError: &exec.ExitError{},
+			expectedError:  &exec.ExitError{},
 		},
 		{
 			name: "good",
@@ -32,7 +32,7 @@ func TestOperationWait(t *testing.T) {
 				Cmd: NewRedisCLICommand(t.Context(), "exit 0"),
 			},
 			expectedStatus: "Finished",
-			expectedError: nil,
+			expectedError:  nil,
 		},
 	}
 	for _, tt := range tests {

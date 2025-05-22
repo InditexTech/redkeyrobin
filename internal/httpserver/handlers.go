@@ -144,7 +144,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := ClusterCheckResponse{
-		Errors:  result.Errors,
+		Errors:   result.Errors,
 		Warnings: result.Warnings,
 	}
 	s.sendResponse(w, http.StatusOK, response)
@@ -152,7 +152,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	// Launch the fix
-	err := s.redisCluster.CheckClusterIntegrity(true, false)
+	err := s.redisCluster.Reconcile(true, false)
 
 	// Send the response
 	response := ClusterFixResponse{

@@ -12,18 +12,18 @@ import (
 
 func TestParseInt(t *testing.T) {
 	tests := []struct {
-		name               string
-		input   string
+		name     string
+		input    string
 		expected int
 	}{
 		{
-			name: "bad",
-			input: "bad",
+			name:     "bad",
+			input:    "bad",
 			expected: 0,
 		},
 		{
-			name: "good",
-			input: "123",
+			name:     "good",
+			input:    "123",
 			expected: 123,
 		},
 	}
@@ -37,18 +37,18 @@ func TestParseInt(t *testing.T) {
 
 func TestParseInt64(t *testing.T) {
 	tests := []struct {
-		name               string
-		input   string
+		name     string
+		input    string
 		expected int64
 	}{
 		{
-			name: "bad",
-			input: "bad",
+			name:     "bad",
+			input:    "bad",
 			expected: 0,
 		},
 		{
-			name: "good",
-			input: "123",
+			name:     "good",
+			input:    "123",
 			expected: 123,
 		},
 	}
@@ -62,18 +62,18 @@ func TestParseInt64(t *testing.T) {
 
 func TestParseFloat(t *testing.T) {
 	tests := []struct {
-		name               string
-		input   string
+		name     string
+		input    string
 		expected float64
 	}{
 		{
-			name: "bad",
-			input: "bad",
+			name:     "bad",
+			input:    "bad",
 			expected: 0,
 		},
 		{
-			name: "good",
-			input: "123.123",
+			name:     "good",
+			input:    "123.123",
 			expected: 123.123,
 		},
 	}

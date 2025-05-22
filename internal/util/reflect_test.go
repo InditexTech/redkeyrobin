@@ -20,7 +20,7 @@ func (t *TestStruct) Method1() int {
 	return t.Number
 }
 
-func (t *TestStruct) Method2(w http.ResponseWriter, r *http.Request) {	
+func (t *TestStruct) Method2(w http.ResponseWriter, r *http.Request) {
 }
 
 func (t *TestStruct) Method3(input int) int {
@@ -34,23 +34,23 @@ var testStruct = &TestStruct{
 
 func TestMethodIsValid(t *testing.T) {
 	tests := []struct {
-		name               string
-		method string
+		name     string
+		method   string
 		expected error
 	}{
 		{
-			name: "not found",
-			method: "bad",
+			name:     "not found",
+			method:   "bad",
 			expected: fmt.Errorf("method bad not found"),
 		},
 		{
-			name: "bad signature",
-			method: "Method1",
+			name:     "bad signature",
+			method:   "Method1",
 			expected: fmt.Errorf("method Method1 has invalid signature"),
 		},
 		{
-			name: "good",
-			method: "Method2",
+			name:     "good",
+			method:   "Method2",
 			expected: nil,
 		},
 	}
@@ -64,19 +64,19 @@ func TestMethodIsValid(t *testing.T) {
 
 func TestInvoke(t *testing.T) {
 	tests := []struct {
-		name               string
-		method string
+		name     string
+		method   string
 		expected error
-		args []interface{}
+		args     []interface{}
 	}{
 		{
-			name: "no inputs",
+			name:   "no inputs",
 			method: "Method1",
 		},
 		{
-			name: "inputs",
+			name:   "inputs",
 			method: "Method3",
-			args: []interface{}{456},
+			args:   []interface{}{456},
 		},
 	}
 	for _, tt := range tests {

@@ -6,8 +6,8 @@ package redis
 
 import (
 	"context"
-	"fmt"
 	"errors"
+	"fmt"
 )
 
 // ClusterCheckResult aggregates the overall cluster state similar to "redis-cli --cluster check".

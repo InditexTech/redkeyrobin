@@ -11,15 +11,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestParseClusterCheckOutput(t *testing.T) {
 	tests := []struct {
-		name               string
-		input   string
-		expectedOutput      *ClusterCheckResult
+		name           string
+		input          string
+		expectedOutput *ClusterCheckResult
 	}{
 		{
-			name: "empty input",
+			name:  "empty input",
 			input: "",
 			expectedOutput: &ClusterCheckResult{
 				Errors:   []string{},
@@ -36,7 +35,7 @@ Another line with no error or warning
 [WARNING] Node 1: Mismatching hash slots and slots configuration. Node has 1 slots but 0 slots are assigned to it.
 			`,
 			expectedOutput: &ClusterCheckResult{
-				Errors:   []string{
+				Errors: []string{
 					"Node 1: Node is not empty. Keys found: 1",
 				},
 				Warnings: []string{
@@ -55,17 +54,17 @@ Another line with no error or warning
 
 func TestParseRedisSlotRange(t *testing.T) {
 	tests := []struct {
-		name               string
-		input   []string
-		expectedOutput      []RedisSlotRange
+		name           string
+		input          []string
+		expectedOutput []RedisSlotRange
 	}{
 		{
-			name: "empty input",
-			input: []string{},
+			name:           "empty input",
+			input:          []string{},
 			expectedOutput: []RedisSlotRange{},
 		},
 		{
-			name: "good input",
+			name:  "good input",
 			input: []string{"0-1", "2-3", "novalid-novalid", "6-novalid", "novalid-6", "6", "novalid"},
 			expectedOutput: []RedisSlotRange{
 				{Start: 0, End: 1},
@@ -401,12 +400,12 @@ db0:keys=30,expires=0,avg_ttl=0
 
 func TestRunRedisCLICommand(t *testing.T) {
 	tests := []struct {
-		name               string
-		command   string
-		expected      *RedisCLICommand
+		name     string
+		command  string
+		expected *RedisCLICommand
 	}{
 		{
-			name: "error",
+			name:    "error",
 			command: "exit 1",
 			expected: &RedisCLICommand{
 				RedisBaseCommand: RedisBaseCommand{
@@ -415,7 +414,7 @@ func TestRunRedisCLICommand(t *testing.T) {
 			},
 		},
 		{
-			name: "good",
+			name:    "good",
 			command: "exit 0",
 			expected: &RedisCLICommand{
 				RedisBaseCommand: RedisBaseCommand{
@@ -434,12 +433,12 @@ func TestRunRedisCLICommand(t *testing.T) {
 
 func TestRunRedisCLICommandAsync(t *testing.T) {
 	tests := []struct {
-		name               string
-		command   string
-		expected      *RedisCLICommand
+		name     string
+		command  string
+		expected *RedisCLICommand
 	}{
 		{
-			name: "error",
+			name:    "error",
 			command: "exit 1",
 			expected: &RedisCLICommand{
 				RedisBaseCommand: RedisBaseCommand{
@@ -448,7 +447,7 @@ func TestRunRedisCLICommandAsync(t *testing.T) {
 			},
 		},
 		{
-			name: "good",
+			name:    "good",
 			command: "exit 0",
 			expected: &RedisCLICommand{
 				RedisBaseCommand: RedisBaseCommand{

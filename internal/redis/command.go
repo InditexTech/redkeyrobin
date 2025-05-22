@@ -5,10 +5,10 @@
 package redis
 
 import (
-	"sync"
 	"bytes"
 	"context"
 	"os/exec"
+	"sync"
 )
 
 type RedisCommand interface {
@@ -22,7 +22,6 @@ type RedisCommand interface {
 	Error() error
 }
 
-
 type RedisBaseCommand struct {
 	ExitCode int
 	Err      error
@@ -35,9 +34,9 @@ func (rbc *RedisBaseCommand) Error() error {
 // RedisCLICommand represents a Redis CLI command.
 type RedisCLICommand struct {
 	RedisBaseCommand
-	cmd      *exec.Cmd
-	stdout   *bytes.Buffer
-	stderr   *bytes.Buffer
+	cmd    *exec.Cmd
+	stdout *bytes.Buffer
+	stderr *bytes.Buffer
 }
 
 // NewRedisCLICommand creates a new Redis CLI command.
@@ -104,12 +103,11 @@ func (rcc *RedisCLICommand) GetCombinedOutput() string {
 	return rcc.GetStdout() + rcc.GetStderr()
 }
 
-
 type RedisLibraryCommand struct {
 	RedisBaseCommand
-	ctx context.Context
-	wg sync.WaitGroup
-	cmd func(context.Context) error
+	ctx    context.Context
+	wg     sync.WaitGroup
+	cmd    func(context.Context) error
 	cancel context.CancelFunc
 }
 
@@ -117,10 +115,10 @@ func NewRedisLibraryCommand(ctx context.Context, cmd func(context.Context) error
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &RedisLibraryCommand{
-		ctx: ctx,
-		cmd: cmd,
+		ctx:    ctx,
+		cmd:    cmd,
 		cancel: cancel,
-		wg: sync.WaitGroup{},
+		wg:     sync.WaitGroup{},
 	}
 }
 
