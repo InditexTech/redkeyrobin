@@ -118,7 +118,7 @@ func (rn *RedisNode) IsDisconnected() bool {
 }
 
 func (rn *RedisNode) IsReplica() bool {
-	return rn.hasFlag("replica")
+	return rn.hasFlag("slave")
 }
 
 func (rn *RedisNode) HasSlots() bool {

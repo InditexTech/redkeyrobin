@@ -503,3 +503,281 @@ func TestGetMyID(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterForgetNode(t *testing.T) {
+	tests := []struct {
+		name               string
+		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		expectedError      error
+	}{
+		{
+			name: "failed to forget node",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "forget", "node1").SetErr(fmt.Errorf("failed forget"))
+				return client, mock
+			},
+			expectedError: fmt.Errorf("failed to forget node node1: failed forget"),
+		},
+		{
+			name: "success",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "forget", "node1").SetVal("theawesomeid")
+				return client, mock
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := tt.getRedisClientMock()
+			rc := &RedisClient{
+				client: client,
+				ctx:    context.Background(),
+			}
+
+			err := rc.ClusterForgetNode("node1")
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.Nil(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestClusterMeet(t *testing.T) {
+	tests := []struct {
+		name               string
+		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		expectedError      error
+	}{
+		{
+			name: "failed to meet node",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "meet", "node1", "1234").SetErr(fmt.Errorf("failed meet"))
+				return client, mock
+			},
+			expectedError: fmt.Errorf("failed to meet node node1: failed meet"),
+		},
+		{
+			name: "success",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "meet", "node1", "1234").SetVal("theawesomeid")
+				return client, mock
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := tt.getRedisClientMock()
+			rc := &RedisClient{
+				client: client,
+				ctx:    context.Background(),
+			}
+
+			err := rc.ClusterMeet("node1", 1234)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.Nil(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestClusterReplicate(t *testing.T) {
+	tests := []struct {
+		name               string
+		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		expectedError      error
+	}{
+		{
+			name: "failed to replicate node",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "replicate", "node1").SetErr(fmt.Errorf("failed replicate"))
+				return client, mock
+			},
+			expectedError: fmt.Errorf("failed to replicate node node1: failed replicate"),
+		},
+		{
+			name: "success",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "replicate", "node1").SetVal("theawesomeid")
+				return client, mock
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := tt.getRedisClientMock()
+			rc := &RedisClient{
+				client: client,
+				ctx:    context.Background(),
+			}
+
+			err := rc.ClusterReplicate("node1")
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.Nil(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestClusterReset(t *testing.T) {
+	tests := []struct {
+		name               string
+		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		hard 			 bool
+		expectedError      error
+	}{
+		{
+			name: "failed to reset node",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "reset", "soft").SetErr(fmt.Errorf("failed reset"))
+				return client, mock
+			},
+			expectedError: fmt.Errorf("failed to reset cluster node: failed reset"),
+		},
+		{
+			name: "success",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "reset", "hard").SetVal("theawesomeid")
+				return client, mock
+			},
+			hard: true,
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := tt.getRedisClientMock()
+			rc := &RedisClient{
+				client: client,
+				ctx:    context.Background(),
+			}
+
+			err := rc.ClusterReset(tt.hard)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.Nil(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestClusterForget(t *testing.T) {
+	tests := []struct {
+		name               string
+		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		expectedError      error
+	}{
+		{
+			name: "failed to forge node",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "forget", "node1").SetErr(fmt.Errorf("failed forget"))
+				return client, mock
+			},
+			expectedError: fmt.Errorf("failed to forget node node1: failed forget"),
+		},
+		{
+			name: "success",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "forget", "node1").SetVal("theawesomeid")
+				return client, mock
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := tt.getRedisClientMock()
+			rc := &RedisClient{
+				client: client,
+				ctx:    context.Background(),
+			}
+
+			err := rc.ClusterForget("node1")
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.Nil(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestClusterAddSlots(t *testing.T) {
+	tests := []struct {
+		name               string
+		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		expectedError      error
+	}{
+		{
+			name: "failed to replicate node",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "addslots", 1, 2, 3).SetErr(fmt.Errorf("failed slots"))
+				return client, mock
+			},
+			expectedError: fmt.Errorf("failed to add slots [1 2 3]: failed slots"),
+		},
+		{
+			name: "success",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "addslots", 1, 2, 3).SetVal("theawesomeid")
+				return client, mock
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := tt.getRedisClientMock()
+			rc := &RedisClient{
+				client: client,
+				ctx:    context.Background(),
+			}
+
+			err := rc.ClusterAddSlots(1, 2, 3)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.Nil(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}

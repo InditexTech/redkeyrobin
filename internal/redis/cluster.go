@@ -206,7 +206,7 @@ func (rc *RedisCluster) GetMasterNodes() []*RedisNode {
 func (rc *RedisCluster) GetReplicaNodes() []*RedisNode {
 	replicas := make([]*RedisNode, 0)
 	for _, node := range rc.nodes {
-		if !node.IsMaster() {
+		if node.IsReplica() {
 			replicas = append(replicas, node)
 		}
 	}
@@ -419,13 +419,13 @@ func (rc *RedisCluster) Reconcile(async, force bool) error {
 	return nil
 }
 
-func (rc *RedisCluster) ScaleUp() error {
+func (rc *RedisCluster) ScaleUp(force bool) error {
 	rc.logger.Info("Scaling up cluster")
 
 	// Check if the cluster is already scaling up
-	if rc.IsScalingUp() {
+	if rc.IsScalingUp() && !force {
 		rc.logger.Info("Cluster is already scaling up")
-		return &OperationCompletedError{Operation: "ScaleUp"}
+		return &OperationInProgressError{Operation: "ScaleUp"}
 	}
 
 	// Launch cluster scaling up operation
@@ -440,13 +440,13 @@ func (rc *RedisCluster) ScaleUp() error {
 	return nil
 }
 
-func (rc *RedisCluster) ScaleDown() error {
+func (rc *RedisCluster) ScaleDown(force bool) error {
 	rc.logger.Info("Scaling down cluster")
 
 	// Check if the cluster is already scaling down
-	if rc.IsScalingDown() {
+	if rc.IsScalingDown() && !force {
 		rc.logger.Info("Cluster is already scaling down")
-		return &OperationCompletedError{Operation: "ScaleDown"}
+		return &OperationInProgressError{Operation: "ScaleDown"}
 	}
 
 	// Launch cluster scaling down operation
@@ -603,7 +603,7 @@ func (rc *RedisCluster) forgetNode(ctx context.Context, nodeToForget RedisNode) 
 		}
 
 		if err := node.ForgetNode(ctx, nodeToForget); err != nil {
-			return fmt.Errorf("error forgetting node %s from node %s: %w", node.Name, nodeToForget.Name, err)
+			return fmt.Errorf("error forgetting node %s from node %s: %v", node.Name, nodeToForget.Name, err)
 		}
 
 		rc.logger.Info("Node forgotten successfully", "node", nodeToForget.Name, "from", node.Name)

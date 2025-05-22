@@ -89,7 +89,7 @@ func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
 	}
 
 	// Scale up the cluster
-	if err := r.redisCluster.ScaleUp(); err != nil {
+	if err := r.redisCluster.ScaleUp(true); err != nil {
 		return err
 	}
 
@@ -103,7 +103,7 @@ func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 	}
 
 	// Scale down the cluster
-	if err := r.redisCluster.ScaleDown(); err != nil {
+	if err := r.redisCluster.ScaleDown(true); err != nil {
 		return err
 	}
 
