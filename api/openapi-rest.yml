@@ -183,6 +183,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClusterFixResponse'
 
+  /v1/cluster/reset/{nodeIndex}:
+    put:
+      tags:
+        - fix
+      summary: Reset Cluster node
+      description: Launches a cluster node reset
+      operationId: ResetNode
+      parameters:
+        - in: path
+          name: nodeIndex
+          schema:
+            type: integer
+          description: Node ID
+          required: true
+          example: 0
+      responses:
+        '200':
+          description: Cluster node has been reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterFixResponse'
+
 
 components:
   schemas:
@@ -271,11 +294,11 @@ components:
       properties:
         from:
           type: string
-          description: Redis Cluster node to move slots from
-          example: rediscluster-sample-0
+          description: Redis Cluster node to move slots from. Can be the name name or the node index
+          example: "0"
         to:
           type: string
-          description: Redis Cluster node to move slots to
+          description: Redis Cluster node to move slots to. Can be the name name or the node index
           example: rediscluster-sample-1
         slots:
           type: integer

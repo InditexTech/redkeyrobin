@@ -114,3 +114,11 @@ type ClusterFixResponse struct {
 func (r ClusterFixResponse) GetKeys() []string {
 	return []string{"status"}
 }
+
+type ClusterResetNodeResponse struct {
+	Status string `json:"status"`
+}
+
+func (r ClusterResetNodeResponse) GetKeys() []string {
+	return []string{"status"}
+}

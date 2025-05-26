@@ -5,7 +5,7 @@
 package redis
 
 import (
-	"os/exec"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,7 +24,7 @@ func TestOperationWait(t *testing.T) {
 				Cmd: NewRedisCLICommand(t.Context(), "exit 1"),
 			},
 			expectedStatus: "Error",
-			expectedError:  &exec.ExitError{},
+			expectedError:  fmt.Errorf("Command failed with exit code 1"),
 		},
 		{
 			name: "good",

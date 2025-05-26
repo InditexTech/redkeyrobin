@@ -7,6 +7,7 @@ package redis
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 	"sync"
 )
@@ -101,6 +102,13 @@ func (rcc *RedisCLICommand) GetStderr() string {
 // GetCombinedOutput returns the combined output (both stdout and stderr) of the Redis CLI command.
 func (rcc *RedisCLICommand) GetCombinedOutput() string {
 	return rcc.GetStdout() + rcc.GetStderr()
+}
+
+func (rcc *RedisCLICommand) Error() error {
+	if rcc.Err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s", rcc.GetCombinedOutput())
 }
 
 type RedisLibraryCommand struct {

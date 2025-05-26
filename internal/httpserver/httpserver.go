@@ -57,9 +57,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Received request", "path", r.URL.Path, "method", r.Method)
 
 	// Check if the path is configured
-	pathConfiguration, found := s.config.Paths[r.URL.Path]
-	if !found {
-		s.sendError(w, http.StatusNotFound, fmt.Sprintf("Unknown path %s", r.URL.Path))
+	pathConfiguration, err := s.getPathConfiguration(r)
+	if err != nil {
+		s.sendError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -72,6 +72,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Invoke the method that handles the request
 	util.Invoke(s, methodConfiguration["operationId"].(string), w, r)
+}
+
+func (s *Server) getPathConfiguration(r *http.Request) (map[string]interface{}, error) {
+	// Check if we have the exact path in the configuration
+	if pathConfiguration, found := s.config.Paths[r.URL.Path]; found {
+		return pathConfiguration, nil
+	}
+
+	// Check if we have a pattern that matches the path in the configuration
+	if pathConfiguration, found := s.config.Paths[r.Pattern]; found {
+		return pathConfiguration, nil
+	}
+
+	// Return an error if the path is not found
+	return nil, fmt.Errorf("Unknown path %s", r.URL.Path)
 }
 
 func (s *Server) checkPathConfiguration(pathConfiguration map[string]interface{}) error {

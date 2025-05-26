@@ -74,7 +74,7 @@ func (r *RedisClusterReconciler) doReconcile() error {
 
 func (r *RedisClusterReconciler) reconcileReadyStatus() error {
 	// Check cluster integrity
-	err := r.redisCluster.Reconcile(false, true)
+	err := r.redisCluster.CheckIntegrity(false, true)
 	if err != nil {
 		return err
 	}
@@ -111,5 +111,15 @@ func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 }
 
 func (r *RedisClusterReconciler) reconcileUpgradingStatus() error {
+	// Check if the cluster needs to be upgraded
+	if !r.redisCluster.CanBeUpgraded() {  // r.redisCluster.IsUpgraded() ||
+		return nil
+	}
+
+	// Upgrade the cluster
+	if err := r.redisCluster.Upgrade(true); err != nil {
+		return err
+	}
+
 	return nil
 }

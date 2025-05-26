@@ -25,7 +25,7 @@ func TestGetRedisClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/rediscluster/status", "", server.GetRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/rediscluster/status", "", "", nil, server.GetRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -64,7 +64,7 @@ func TestUpdateRedisClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "POST", "/rediscluster/status", tt.request, server.UpdateRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "POST", "/rediscluster/status", tt.request, "", nil, server.UpdateRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -86,7 +86,7 @@ func TestGetClusterReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/cluster/replicas", tt.request, server.GetClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/cluster/replicas", tt.request, "", nil, server.GetClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -125,7 +125,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "PUT", "/cluster/replicas", tt.request, server.UpdateClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "PUT", "/cluster/replicas", tt.request, "", nil, server.UpdateClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -147,7 +147,7 @@ func TestGetClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/cluster/status", tt.request, server.GetClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/cluster/status", tt.request, "", nil, server.GetClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -169,7 +169,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		},
 		{
 			name:    "invalid request to",
-			request: `{"from": "node1"}`,
+			request: `{"from": "0"}`,
 			expectedBody: ErrorResponse{
 				Error: "Invalid request: 'to' cannot be empty",
 			},
@@ -177,7 +177,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		},
 		{
 			name:    "same nodes",
-			request: `{"from": "node1", "to": "node1"}`,
+			request: `{"from": "0", "to": "0"}`,
 			expectedBody: ErrorResponse{
 				Error: "Source and destination nodes cannot be the same",
 			},
@@ -185,7 +185,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		},
 		{
 			name:    "invalid request slots",
-			request: `{"from": "node1", "to": "node2", "slots": -1}`,
+			request: `{"from": "0", "to": "1", "slots": -1}`,
 			expectedBody: ErrorResponse{
 				Error: "Invalid request: 'slots' must be positive",
 			},
@@ -193,23 +193,39 @@ func TestMoveNodeSlots(t *testing.T) {
 		},
 		{
 			name:    "from node not found",
-			request: `{"from": "node4", "to": "node2"}`,
+			request: `{"from": "3", "to": "1"}`,
 			expectedBody: ErrorResponse{
-				Error: "Node 'node4' not found",
+				Error: "Node '3' not found",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "from node bad cluster name not found",
+			request: `{"from": "novalid-3", "to": "1"}`,
+			expectedBody: ErrorResponse{
+				Error: "Node 'novalid-3' not found",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name:    "to node not found",
-			request: `{"from": "node1", "to": "node4"}`,
+			request: `{"from": "test-0", "to": "3"}`,
 			expectedBody: ErrorResponse{
-				Error: "Node 'node4' not found",
+				Error: "Node '3' not found",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:    "to node good cluster name not found",
+			request: `{"from": "test-0", "to": "test-3"}`,
+			expectedBody: ErrorResponse{
+				Error: "Node 'test-3' not found",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name:    "resharding in progress",
-			request: `{"from": "node1", "to": "node3"}`,
+			request: `{"from": "0", "to": "2"}`,
 			expectedBody: ClusterMoveSlotsResponse{
 				Status: "In progress",
 			},
@@ -217,7 +233,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		},
 		{
 			name:    "resharding completed",
-			request: `{"from": "node1", "to": "node2"}`,
+			request: `{"from": "0", "to": "1"}`,
 			expectedBody: ClusterMoveSlotsResponse{
 				Status: "Completed",
 			},
@@ -225,7 +241,7 @@ func TestMoveNodeSlots(t *testing.T) {
 		},
 		{
 			name:    "unexpected error",
-			request: `{"from": "node2", "to": "node3"}`,
+			request: `{"from": "1", "to": "2"}`,
 			expectedBody: ErrorResponse{
 				Error: "Error rebalancing cluster: error getting and checking Redis client: maxRetries must be greater than 0",
 			},
@@ -234,7 +250,7 @@ func TestMoveNodeSlots(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "PUT", "/cluster/move", tt.request, server.MoveNodeSlots, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "PUT", "/cluster/move", tt.request, "", nil, server.MoveNodeSlots, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -256,7 +272,7 @@ func TestCheckCluster(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/cluster/check", tt.request, server.CheckCluster, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/cluster/check", tt.request, "", nil, server.CheckCluster, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -285,7 +301,43 @@ func TestFixCluster(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "PUT", "/cluster/fix", tt.request, server.FixCluster, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "PUT", "/cluster/fix", tt.request, "", nil, server.FixCluster, tt.expectedStatusCode, tt.expectedBody)
+		})
+	}
+}
+
+func TestResetNode(t *testing.T) {
+	tests := []struct {
+		name               string
+		request            string
+		pathValues         map[string]string
+		expectedBody       ResponseInterface
+		expectedStatusCode int
+	}{
+		{
+			name: "node not found",
+			expectedBody: ErrorResponse{
+				Error: "Node 'notfound' not found",
+			},
+			pathValues: map[string]string{
+				"nodeIndex": "notfound",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "good request",
+			expectedBody: ErrorResponse{
+				Error: "Error reseting node: maxRetries must be greater than 0",
+			},
+			pathValues: map[string]string{
+				"nodeIndex": "1",
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testRequest(t, "PUT", "/cluster/reset/1", tt.request, "", tt.pathValues, server.ResetNode, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }

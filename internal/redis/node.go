@@ -16,6 +16,7 @@ import (
 
 // RedisNode represents a Redis cluster node.
 type RedisNode struct {
+	Index 	   int
 	Name       string
 	ID         string
 	Addr       string

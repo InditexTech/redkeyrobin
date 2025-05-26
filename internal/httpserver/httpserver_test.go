@@ -78,7 +78,7 @@ var node1 = &redis.RedisNode{
 	MasterID: "",
 }
 var node2 = &redis.RedisNode{
-	Name:  "node2",
+	Name:  "test-1",
 	ID:    "0987654321",
 	Addr:  "node2",
 	IP:    "2.2.2.2",
@@ -113,14 +113,15 @@ var server = Server{
 			Redis: config.RedisConfig{
 				Cluster: config.RedisClusterConfig{
 					Status: "Ready",
+					Name:   "test",
 				},
 			},
 		},
 		"Unknown",
 		map[string]*redis.RedisNode{
-			"node1": node1,
-			"node2": node2,
-			"node3": node3,
+			"test-0": node1,
+			"test-1": node2,
+			"test-2": node3,
 		},
 		map[string][]*redis.RedisOperation{
 			"Resharding": {
@@ -138,6 +139,7 @@ var server = Server{
 				},
 			},
 		},
+		make(chan struct{}, 5),
 	),
 }
 
@@ -274,11 +276,21 @@ func TestInit(t *testing.T) {
 						"operationId": "GetRedisClusterStatus",
 					},
 				},
+				"/rediscluster/reset/{nodeId}": map[string]interface{}{
+					"put": map[string]interface{}{
+						"operationId": "ResetRedisNode",
+					},
+				},
 			},
 			expectedPaths: map[string]map[string]interface{}{
 				"/rediscluster/status": map[string]interface{}{
 					"get": map[string]interface{}{
 						"operationId": "GetRedisClusterStatus",
+					},
+				},
+				"/rediscluster/reset/{nodeId}": map[string]interface{}{
+					"put": map[string]interface{}{
+						"operationId": "ResetRedisNode",
 					},
 				},
 			},
@@ -306,6 +318,8 @@ func TestServeHTTP(t *testing.T) {
 		config             config.APIConfig
 		endpoint           string
 		method             string
+		pattern 		  string
+		pathValues         map[string]string
 		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
@@ -359,29 +373,57 @@ func TestServeHTTP(t *testing.T) {
 			endpoint: "/rediscluster/status",
 			method:   "GET",
 			expectedBody: RedisClusterStatusResponse{
-				Status: "",
+				Status: "Ready",
 			},
 			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name: "good request with parameters",
+			config: config.APIConfig{
+				Paths: map[string]map[string]interface{}{
+					"/rediscluster/reset/{nodeIndex}": map[string]interface{}{
+					"put": map[string]interface{}{
+						"operationId": "ResetNode",
+					},
+				},
+				},
+			},
+			endpoint: "/rediscluster/reset/1",
+			method:   "PUT",
+			pattern: "/rediscluster/reset/{nodeIndex}",
+			pathValues: map[string]string{
+				"nodeIndex": "1",
+			},
+			expectedBody: ErrorResponse{
+				Error: "Error reseting node: maxRetries must be greater than 0",
+			},
+			expectedStatusCode: http.StatusInternalServerError,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := Server{
+			svr := Server{
 				logger:       ctrl.Log.WithName("test"),
 				config:       tt.config,
-				redisCluster: redis.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})),
+				redisCluster: server.redisCluster,
 			}
-			testRequest(t, tt.method, tt.endpoint, "", server.ServeHTTP, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, tt.method, tt.endpoint, "", tt.pattern, tt.pathValues, svr.ServeHTTP, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
 
-func testRequest(t *testing.T, method string, endpoint string, request string, handlerFunc http.HandlerFunc, expectedStatusCode int, expectedBody interface{}) {
+func testRequest(t *testing.T, method string, endpoint string, body string, pattern string, pathValues map[string] string,handlerFunc http.HandlerFunc, expectedStatusCode int, expectedBody interface{}) {
 	// Create a new request
-	req, err := http.NewRequest(method, endpoint, strings.NewReader(request))
+	req, err := http.NewRequest(method, endpoint, strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("Error creating request: %v", err)
+	}
+	if pattern != "" {
+		req.Pattern = pattern
+	}
+	for key, value := range pathValues {
+		req.SetPathValue(key, value)
 	}
 
 	// Create a new response recorder
@@ -396,12 +438,12 @@ func testRequest(t *testing.T, method string, endpoint string, request string, h
 	}
 
 	// Check the response body
-	var body interface{}
-	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+	var response interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Fatalf("Error decoding response: %v", err)
 	}
 
-	bodyContent, _ := json.Marshal(body)
+	bodyContent, _ := json.Marshal(response)
 	bodyContentString := string(bodyContent[:])
 	bodyExpectedContent, _ := json.Marshal(expectedBody)
 	bodyExpectedContentString := string(bodyExpectedContent[:])

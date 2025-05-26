@@ -152,7 +152,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	// Launch the fix
-	err := s.redisCluster.Reconcile(true, false)
+	err := s.redisCluster.CheckIntegrity(true, false)
 
 	// Send the response
 	response := ClusterFixResponse{
@@ -168,4 +168,36 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.sendResponse(w, http.StatusCreated, response)
+}
+
+func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
+	// Parse the request path to get the node index
+	nodeIndex := r.PathValue("nodeIndex")
+
+	// Get the node
+	node := s.redisCluster.GetNode(nodeIndex)
+	if node == nil {
+		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node '%s' not found", nodeIndex))
+		return
+	}
+
+	// Launch the reset
+	err := s.redisCluster.ResetNode(node)
+
+	// Send the response
+	response := ClusterResetNodeResponse{
+		Status: "Completed",
+	}
+	if err != nil {
+		if _, ok := err.(*redis.OperationInProgressError); ok {
+			response.Status = "In progress"
+			s.sendResponse(w, http.StatusAccepted, response)
+			return
+		}
+
+		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error reseting node: %v", err))
+		return
+	}
+
+	s.sendResponse(w, http.StatusOK, response)
 }

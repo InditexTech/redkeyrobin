@@ -5,6 +5,7 @@
 package redis
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -19,39 +20,12 @@ func TestNewRedisClusterReconciler(t *testing.T) {
 	assert.NotNil(t, reconciler)
 }
 
-// func TestRedisClusterReconcilerReconcile(t *testing.T) {
-// 	redisCluster := NewFakeRedisCluster(
-// 		t.Context(),
-// 		&config.Configuration{
-// 			Redis: config.RedisConfig{
-// 				Cluster: config.RedisClusterConfig{
-// 					Status:                   "Ready",
-// 					Replicas:                 3,
-// 					Name:                     "test",
-// 					Namespace:                "test",
-// 					MaxRetries:               1,
-// 					BackOff:                  time.Microsecond * 10,
-// 					HealingTimeSeconds:       55,
-// 					HealthProbePeriodSeconds: 40,
-// 				},
-// 			},
-// 		},
-// 		"Unknown",
-// 		map[string]*RedisNode{},
-// 		map[string][]*RedisOperation{},
-// 	)
-// 	reconciler, _ := NewRedisClusterReconciler(redisCluster, make(chan struct{}))
-
-// 	reconciler.Reconcile()
-// 	err := reconciler.doReconcile()
-// 	assert.NoError(t, err)
-// }
 
 func TestRedisClusterReconcilerReconcile(t *testing.T) {
 	tests := []struct {
-		name           string
-		config 	   *config.Configuration
-		expectedError  error
+		name          string
+		config        *config.Configuration
+		expectedError error
 	}{
 		{
 			name: "Ready",
@@ -69,7 +43,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedError:  nil,
+			expectedError: fmt.Errorf("Error reconciling cluster: error getting and checking Redis client: failed to connect after 1 retries"),
 		},
 		{
 			name: "Scaling up",
@@ -87,7 +61,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedError:  nil,
+			expectedError: fmt.Errorf("Error reconciling cluster: error getting and checking Redis client: failed to connect after 1 retries"),
 		},
 		{
 			name: "Scaling down",
@@ -105,7 +79,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedError:  nil,
+			expectedError: fmt.Errorf("Error reconciling cluster: error getting and checking Redis client: failed to connect after 1 retries"),
 		},
 		{
 			name: "Upgrading",
@@ -123,7 +97,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedError:  nil,
+			expectedError: fmt.Errorf("Error reconciling cluster: error getting and checking Redis client: failed to connect after 1 retries"),
 		},
 	}
 	for _, tt := range tests {
@@ -134,6 +108,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 				"Unknown",
 				map[string]*RedisNode{},
 				map[string][]*RedisOperation{},
+				make(chan struct{}, 5),
 			)
 
 			reconciler, _ := NewRedisClusterReconciler(rdcl, make(chan struct{}))

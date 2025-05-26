@@ -24,21 +24,21 @@ func TestMapToString(t *testing.T) {
 
 func TestGetIPFromAddress(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name          string
+		input         string
+		expected      string
 		expectedError error
 	}{
 		{
-			name:     "bad",
-			input:    "bad",
-			expected: "",
+			name:          "bad",
+			input:         "bad",
+			expected:      "",
 			expectedError: fmt.Errorf("lookup bad"),
 		},
 		{
-			name:     "good",
-			input:    "localhost",
-			expected: "127.0.0.1",
+			name:          "good",
+			input:         "localhost",
+			expected:      "127.0.0.1",
 			expectedError: nil,
 		},
 	}

@@ -646,7 +646,7 @@ func TestClusterReset(t *testing.T) {
 	tests := []struct {
 		name               string
 		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		hard 			 bool
+		hard               bool
 		expectedError      error
 	}{
 		{
@@ -665,7 +665,7 @@ func TestClusterReset(t *testing.T) {
 				mock.ExpectDo("cluster", "reset", "hard").SetVal("theawesomeid")
 				return client, mock
 			},
-			hard: true,
+			hard:          true,
 			expectedError: nil,
 		},
 	}

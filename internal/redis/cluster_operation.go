@@ -23,8 +23,8 @@ func (rc *RedisCluster) RemoveOutdatedOperations() {
 	}
 }
 
-// doReconcile checks the integrity of the Redis cluster
-func (rc *RedisCluster) doReconcile(ctx context.Context) error {
+// doCheckIntegrity checks the integrity of the Redis cluster
+func (rc *RedisCluster) doCheckIntegrity(ctx context.Context) error {
 	// Check nodes info
 	if err := rc.checkNodes(); err != nil {
 		return err
@@ -76,7 +76,7 @@ func (rc *RedisCluster) doScaleUp(ctx context.Context) error {
 	}
 
 	// Do integrity check
-	if err := rc.doReconcile(ctx); err != nil {
+	if err := rc.doCheckIntegrity(ctx); err != nil {
 		return err
 	}
 
@@ -96,28 +96,108 @@ func (rc *RedisCluster) doScaleDown(ctx context.Context) error {
 		return err
 	}
 
-	// Get nodes to remove
-	nodesToRemove, err := rc.getNodesToRemove(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Rebalance cluster to remove slots from the nodes to remove
-	weights := map[string]int{}
-	for _, node := range nodesToRemove {
-		weights[node.ID] = 0
-	}
-	if err := rc.Rebalance(false, weights, true); err != nil {
-		return err
-	}
-
-	// Forget and remove nodes
-	if err := rc.forgetAndRemoveNodes(ctx, nodesToRemove); err != nil {
+	// Remove nodes if needed
+	if err := rc.removeNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Do integrity check
-	if err := rc.doReconcile(ctx); err != nil {
+	if err := rc.doCheckIntegrity(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (rc *RedisCluster) doUpgrade(ctx context.Context) error {
+	// Add new nodes if needed
+	if err := rc.addNewNodesIfNeeded(ctx); err != nil {
+		return err
+	}
+
+	// Check nodes info
+	if err := rc.checkNodes(); err != nil {
+		return err
+	}
+
+	// Forget outdated nodes
+	if err := rc.removeOutdatedNodes(ctx); err != nil {
+		return err
+	}
+
+	// Remove nodes if needed
+	if err := rc.removeNodesIfNeeded(ctx); err != nil {
+		return err
+	}
+
+	// Meet nodes if needed
+	if err := rc.meetNodesIfNeeded(ctx); err != nil {
+		return err
+	}
+
+	// Ensure cluster ratio
+	if err := rc.ensureClusterRatio(ctx); err != nil {
+		return nil
+	}
+
+	// Update nodes info
+	if err := rc.refreshNodes(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (rc *RedisCluster) doResetNode(ctx context.Context) error {
+	// Get the node
+	nodeName, ok := ctx.Value("nodeName").(string)
+	if !ok {
+		return fmt.Errorf("node name not found in context")
+	}
+
+	node := rc.GetNode(nodeName)
+	if node == nil {
+		return fmt.Errorf("node '%s' not found", nodeName)
+	}
+
+	// Reset the node
+	if err := node.Reset(ctx); err != nil {
+		return err
+	}
+	time.Sleep(5 * time.Second)
+
+	// Forget the node if it is ephemeral
+	if rc.IsEphemeral() {
+		if err := rc.forgetNode(ctx, *node); err != nil {
+			return err
+		}
+
+		// Wait for cluster meet so nodes can agree on configuration
+		time.Sleep(5 * time.Second)
+	}
+
+	// Check nodes info
+	if err := rc.checkNodes(); err != nil {
+		return err
+	}
+
+	// Forget outdated nodes
+	if err := rc.removeOutdatedNodes(ctx); err != nil {
+		return err
+	}
+
+	// Meet nodes if needed
+	if err := rc.meetNodesIfNeeded(ctx); err != nil {
+		return err
+	}
+
+	// Ensure cluster ratio
+	if err := rc.ensureClusterRatio(ctx); err != nil {
+		return err
+	}
+
+	// Update nodes info
+	if err := rc.refreshNodes(); err != nil {
 		return err
 	}
 
@@ -143,7 +223,7 @@ func (rc *RedisCluster) launchReshardOperation(from, to *RedisNode, slots int) (
 }
 
 // waitForReshardToFinish waits for the reshard operation to finish and updates the status
-func (rc *RedisCluster) waitForReshardToFinish(operation *RedisOperation) {
+func (rc *RedisCluster) waitForReshardToFinish(operation *RedisOperation) error {
 	rc.status = Resharding
 
 	// Wait for reshard to finish
@@ -153,20 +233,18 @@ func (rc *RedisCluster) waitForReshardToFinish(operation *RedisOperation) {
 	if err != nil {
 		rc.status = ReshardingError
 		rc.logger.Info("Error resharding node", "error", err, "from", operation.NodeFrom.Name, "to", operation.NodeTo.Name)
-		return
+		return err
 	}
 
 	// Reshard finished successfully
 	rc.status = Ready
 	rc.logger.Info("Slots moved successfully between nodes", "from", operation.NodeFrom.Name, "to", operation.NodeTo.Name)
 
-	// Forget the node if it is ephemeral
-	if rc.IsEphemeral() {
-		rc.forgetNode(rc.ctx, *operation.NodeFrom)
-	}
-
 	// Update nodes info
-	rc.refreshNodes()
+	if err := rc.refreshNodes(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // launchRebalanceOperation launches a rebalance operation with the specified weights
@@ -188,23 +266,26 @@ func (rc *RedisCluster) launchRebalanceOperation(weights map[string]int) (*Redis
 }
 
 // waitForRebalanceToFinish waits for the cluster rebalance to finish and updates the status
-func (rc *RedisCluster) waitForRebalanceToFinish(operation *RedisOperation) {
+func (rc *RedisCluster) waitForRebalanceToFinish(operation *RedisOperation) error {
 	// Wait for cluster rebalance to finish
 	err := operation.Wait()
 
 	// Rebalance failed
 	if err != nil {
 		rc.logger.Info("Error rebalancing cluster", "error", err)
-		return
+		return err
 	}
 
 	// Rebalance finished successfully
 	rc.logger.Info("Cluster rebalanced successfully")
 
 	// Update nodes info
-	rc.refreshNodes()
+	if err := rc.refreshNodes(); err != nil {
+		return err
+	}
+	return nil
 }
-
+//13a69ac3dde975fc5e9556cd9ab415b1a8461fdc
 // launchFixOperation launches a fix operation
 func (rc *RedisCluster) launchFixOperation() (*RedisOperation, error) {
 	// Get Redis client and check connection
@@ -224,50 +305,54 @@ func (rc *RedisCluster) launchFixOperation() (*RedisOperation, error) {
 }
 
 // waitForFixToFinish waits for the cluster fix to finish and updates the status
-func (rc *RedisCluster) waitForFixToFinish(operation *RedisOperation) {
+func (rc *RedisCluster) waitForFixToFinish(operation *RedisOperation) error {
 	// Wait for cluster fix to finish
 	err := operation.Wait()
 
 	// Fix failed
 	if err != nil {
 		rc.logger.Info("Error fixing cluster", "error", err, "stdout", operation.Cmd.GetStdout(), "stderr", operation.Cmd.GetStderr())
-		return
+		return err
 	}
 
 	// Fix finished successfully
 	rc.logger.Info("Cluster fixed successfully")
 
 	// Update nodes info
-	rc.refreshNodes()
+	if err := rc.refreshNodes(); err != nil {
+		return err
+	}
+	return nil
 }
 
-// launchReconcileOperation launches a reconcile operation
-func (rc *RedisCluster) launchReconcileOperation() (*RedisOperation, error) {
-	// Launch reconcile operation
-	cmd := NewRedisLibraryCommand(rc.ctx, rc.doReconcile)
+// launchCheckIntegrityOperation launches a check integrity operation
+func (rc *RedisCluster) launchCheckIntegrityOperation() (*RedisOperation, error) {
+	// Launch check integrity operation
+	cmd := NewRedisLibraryCommand(rc.ctx, rc.doCheckIntegrity)
 	cmd.Start()
 
 	// Return the operation
-	return rc.addOperation(Reconciling, cmd, nil, nil), nil
+	return rc.addOperation(CheckingIntegrity, cmd, nil, nil), nil
 }
 
-// waitForReconcileToFinish waits for the cluster reconcle to finish and updates the status
-func (rc *RedisCluster) waitForReconcileToFinish(operation *RedisOperation) {
-	rc.status = Reconciling
+// waitForCheckIntegrityToFinish waits for the cluster check integrity to finish and updates the status
+func (rc *RedisCluster) waitForCheckIntegrityToFinish(operation *RedisOperation) error {
+	rc.status = CheckingIntegrity
 
 	// Wait for cluster reconcile to finish
 	err := operation.Wait()
 
 	// Reconcile failed
 	if err != nil {
-		rc.status = ReconcilingError
-		rc.logger.Info("Error reconciling cluster", "error", err)
-		return
+		rc.status = CheckingIntegrityError
+		rc.logger.Info("Error checking cluster integrity", "error", err)
+		return err
 	}
 
-	// Reconcile finished successfully
+	// Check integrity finished successfully
 	rc.status = Ready
-	rc.logger.Info("Cluster reconciled successfully")
+	rc.logger.Info("Cluster integrity successfully checked")
+	return nil
 }
 
 func (rc *RedisCluster) launchScaleUpOperation() (*RedisOperation, error) {
@@ -279,7 +364,7 @@ func (rc *RedisCluster) launchScaleUpOperation() (*RedisOperation, error) {
 	return rc.addOperation(ScalingUp, cmd, nil, nil), nil
 }
 
-func (rc *RedisCluster) waitForScaleUpToFinish(operation *RedisOperation) {
+func (rc *RedisCluster) waitForScaleUpToFinish(operation *RedisOperation) error {
 	rc.status = ScalingUp
 
 	// Wait for scale up to finish
@@ -289,12 +374,13 @@ func (rc *RedisCluster) waitForScaleUpToFinish(operation *RedisOperation) {
 	if err != nil {
 		rc.status = ScalingUpError
 		rc.logger.Info("Error scaling up cluster", "error", err)
-		return
+		return err
 	}
 
 	// Scale up finished successfully
 	rc.status = Ready
 	rc.logger.Info("Cluster scaled up successfully")
+	return nil
 }
 
 func (rc *RedisCluster) launchScaleDownOperation() (*RedisOperation, error) {
@@ -306,22 +392,51 @@ func (rc *RedisCluster) launchScaleDownOperation() (*RedisOperation, error) {
 	return rc.addOperation(ScalingDown, cmd, nil, nil), nil
 }
 
-func (rc *RedisCluster) waitForScaleDownToFinish(operation *RedisOperation) {
+func (rc *RedisCluster) waitForScaleDownToFinish(operation *RedisOperation) error {
 	rc.status = ScalingDown
 
 	// Wait for scale down to finish
 	err := operation.Wait()
 
-	// Scale up failed
+	// Scale down failed
 	if err != nil {
 		rc.status = ScalingDownError
-		rc.logger.Info("Error scaling up cluster", "error", err)
-		return
+		rc.logger.Info("Error scaling down cluster", "error", err)
+		return err
 	}
 
 	// Scale down finished successfully
 	rc.status = Ready
 	rc.logger.Info("Cluster scaled down successfully")
+	return nil
+}
+
+func (rc *RedisCluster) launchUpgradeOperation() (*RedisOperation, error) {
+	// Launch upgrade operation
+	cmd := NewRedisLibraryCommand(rc.ctx, rc.doUpgrade)
+	cmd.Start()
+
+	// Return the operation
+	return rc.addOperation(Upgrading, cmd, nil, nil), nil
+}
+
+func (rc *RedisCluster) waitForUpgradeToFinish(operation *RedisOperation) error {
+	rc.status = Upgrading
+
+	// Wait for upgrading to finish
+	err := operation.Wait()
+
+	// Upgrading failed
+	if err != nil {
+		rc.status = UpgradingError
+		rc.logger.Info("Error upgrading cluster", "error", err)
+		return err
+	}
+
+	// Upgrading finished successfully
+	rc.status = Ready
+	rc.logger.Info("Cluster upgraded successfully")
+	return nil
 }
 
 // launchCheckOperation launches a check operation and returns the result
@@ -341,6 +456,34 @@ func (rc *RedisCluster) launchCheckOperation() (*ClusterCheckResult, error) {
 	return result, nil
 }
 
+// launchResetNodeOperation launches a reset node operation and returns the result
+func (rc *RedisCluster) launchResetNodeOperation(node *RedisNode) (*RedisOperation, error) {
+	// Create context with node name
+	ctx := context.WithValue(rc.ctx, "nodeName", node.Name)
+
+	// Launch upgrade operation
+	cmd := NewRedisLibraryCommand(ctx, rc.doResetNode)
+	cmd.Start()
+
+	// Return the operation
+	return rc.addOperation(Resetting, cmd, node, nil), nil
+}
+
+func (rc *RedisCluster) waitForResetNodeToFinish(operation *RedisOperation) error {
+	// Wait for reset node to finish
+	err := operation.Wait()
+
+	// Reset node failed
+	if err != nil {
+		rc.logger.Info("Error resetting cluster node", "error", err, "node", operation.NodeFrom.Name)
+		return err
+	}
+
+	// Reset node finished successfully
+	rc.logger.Info("Cluster node resetted successfully", "node", operation.NodeFrom.Name)
+	return nil
+}
+
 // hasOperation returns true if the cluster has an operation with the specified name and status
 func (rc *RedisCluster) hasOperation(name string, status string) bool {
 	operations, ok := rc.operations[name]
@@ -350,6 +493,25 @@ func (rc *RedisCluster) hasOperation(name string, status string) bool {
 
 	for _, operation := range operations {
 		if operation.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+// hasOperationInNode returns true if the cluster has an operation with the specified name and status in the specified node
+func (rc *RedisCluster) hasOperationInNode(name string, status string, node RedisNode) bool {
+	operations, ok := rc.operations[name]
+	if !ok {
+		return false
+	}
+
+	for _, operation := range operations {
+		if operation.Status != status {
+			continue
+		}
+
+		if operation.NodeFrom != nil && operation.NodeFrom.Name == node.Name {
 			return true
 		}
 	}

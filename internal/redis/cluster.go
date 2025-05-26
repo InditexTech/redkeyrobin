@@ -24,6 +24,7 @@ const (
 	Ready                         = "Ready"
 	Error                         = "Error"
 	Upgrading                     = "Upgrading"
+	UpgradingError                = "UpgradingError"
 	ScalingDown                   = "ScalingDown"
 	ScalingDownError              = "ScalingDownError"
 	ScalingUp                     = "ScalingUp"
@@ -36,8 +37,10 @@ const (
 	RebalancingError              = "RebalancingError"
 	Fixing                        = "Fixing"
 	FixingError                   = "FixingError"
-	Reconciling                   = "Reconciling"
-	ReconcilingError              = "ReconcilingError"
+	CheckingIntegrity             = "CheckingIntegrity"
+	CheckingIntegrityError        = "CheckingIntegrityError"
+	Resetting                     = "Resetting"
+	ResettingError                = "ResettingError"
 	RedisClusterTotalSlots        = 16384
 	RedisNodesUnbalancedThreshold = 2
 )
@@ -66,7 +69,7 @@ func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel ch
 	}
 }
 
-func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*RedisNode, operations map[string][]*RedisOperation) *RedisCluster {
+func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*RedisNode, operations map[string][]*RedisOperation, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
 		ctx:        ctx,
 		logger:     util.GetLogger("redis-cluster"),
@@ -74,6 +77,7 @@ func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status
 		status:     status,
 		nodes:      nodes,
 		operations: operations,
+		channel:    channel,
 	}
 }
 
@@ -178,6 +182,10 @@ func (rc *RedisCluster) GetMetadata() map[string]string {
 
 // GetNode returns the Redis node with the specified name or nil if it doesn't exist
 func (rc *RedisCluster) GetNode(name string) *RedisNode {
+	// If the name is a number, add the cluster name as a prefix
+	if _, err := strconv.Atoi(name); err == nil {
+		name = fmt.Sprintf("%s-%s", rc.GetName(), name)
+	}
 	return rc.nodes[name]
 }
 
@@ -235,11 +243,16 @@ func (rc *RedisCluster) SetReplicas(replicas int) error {
 	currentReplicas := rc.GetReplicas()
 	rc.logger.Info("Changing Redis Cluster replicas", "current", currentReplicas, "desired", replicas)
 
+	// Check if the current number of replicas is equal to the desired number of replicas
 	if replicas == currentReplicas {
 		return &OperationCompletedError{Operation: "SetReplicas"}
 	}
 
+	// Set the desired replicas
 	rc.conf.Redis.Cluster.Replicas = replicas
+
+	// Write in the channel to trigger the reconciler
+	rc.channel <- struct{}{}
 
 	return nil
 }
@@ -307,7 +320,7 @@ func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool
 	if async {
 		go rc.waitForRebalanceToFinish(operation)
 	} else {
-		rc.waitForRebalanceToFinish(operation)
+		return rc.waitForRebalanceToFinish(operation)
 	}
 
 	return nil
@@ -318,7 +331,7 @@ func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
 	rc.logger.Info("Moving slots", "slots", slots, "from", from.Name, "to", to.Name)
 
 	// Check if there is an ongoing reshard between the specified nodes
-	if rc.IsResharding(*from, *to) {
+	if rc.IsReshardingNodes(*from, *to) {
 		rc.logger.Info("There is already a reshard operation between nodes", "from", from.Name, "to", to.Name)
 		return &OperationInProgressError{Operation: "Resharding"}
 	} else if !from.HasSlots() {
@@ -334,7 +347,6 @@ func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
 
 	// Wait for reshard to finish asynchronously
 	go rc.waitForReshardToFinish(operation)
-
 	return nil
 }
 
@@ -379,41 +391,41 @@ func (rc *RedisCluster) Fix(async bool, force bool) error {
 	if async {
 		go rc.waitForFixToFinish(operation)
 	} else {
-		rc.waitForFixToFinish(operation)
+		return rc.waitForFixToFinish(operation)
 	}
 
 	return nil
 }
 
-// Reconcile checks the integrity of the Redis cluster
-func (rc *RedisCluster) Reconcile(async, force bool) error {
-	rc.logger.Info("Reconciling cluster")
+// CheckIntegrity checks the integrity of the Redis cluster
+func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
+	rc.logger.Info("Checking cluster integrity")
 
-	// Check if the cluster reconcile is being executed
-	if rc.IsReconciling() {
+	// Check if the cluster check integrity is being executed
+	if rc.IsCheckingIntegrity() {
 		if force {
-			rc.logger.Info("Cancelling ongoing reconciling operation")
-			operation := rc.getOperation(Reconciling, "Running")
+			rc.logger.Info("Cancelling ongoing checking integrity operation")
+			operation := rc.getOperation(CheckingIntegrity, "Running")
 			if operation != nil {
 				operation.Cancel()
 			}
 		} else {
-			rc.logger.Info("Cluster reconciling is already being executed")
-			return &OperationInProgressError{Operation: "Reconciling"}
+			rc.logger.Info("Cluster check integrity is already being executed")
+			return &OperationInProgressError{Operation: "CheckingIntegrity"}
 		}
 	}
 
-	// Launch cluster reconcile operation
-	operation, err := rc.launchReconcileOperation()
+	// Launch cluster check integrity operation
+	operation, err := rc.launchCheckIntegrityOperation()
 	if err != nil {
 		return err
 	}
 
 	// Launch wait for reconcile synchronously or asynchronously depending on the async flag
 	if async {
-		go rc.waitForReconcileToFinish(operation)
+		go rc.waitForCheckIntegrityToFinish(operation)
 	} else {
-		rc.waitForReconcileToFinish(operation)
+		return rc.waitForCheckIntegrityToFinish(operation)
 	}
 
 	return nil
@@ -435,9 +447,7 @@ func (rc *RedisCluster) ScaleUp(force bool) error {
 	}
 
 	// Launch wait for scaling up to finish synchronously
-	rc.waitForScaleUpToFinish(operation)
-
-	return nil
+	return rc.waitForScaleUpToFinish(operation)
 }
 
 func (rc *RedisCluster) ScaleDown(force bool) error {
@@ -456,9 +466,46 @@ func (rc *RedisCluster) ScaleDown(force bool) error {
 	}
 
 	// Launch wait for scaling down to finish synchronously
-	rc.waitForScaleDownToFinish(operation)
+	return rc.waitForScaleDownToFinish(operation)
+}
 
-	return nil
+func (rc *RedisCluster) Upgrade(force bool) error {
+	rc.logger.Info("Upgrading cluster")
+
+	// Check if the cluster is already upgrading
+	if rc.IsUpgrading() && !force {
+		rc.logger.Info("Cluster is already upgrading")
+		return &OperationInProgressError{Operation: "Upgrade"}
+	}
+
+	// Launch cluster upgrading operation
+	operation, err := rc.launchUpgradeOperation()
+	if err != nil {
+		return err
+	}
+
+	// Launch wait for upgrading to finish synchronously
+	return rc.waitForUpgradeToFinish(operation)
+}
+
+// Check reset a Redis node in the cluster
+func (rc *RedisCluster) ResetNode(node *RedisNode) error {
+	rc.logger.Info("Reseting node", "node", node.Name)
+
+	// Check if the cluster node is already being resetted
+	if rc.IsResettingNode(*node) {
+		rc.logger.Info("Cluster node is already resetted", "node", node.Name)
+		return &OperationInProgressError{Operation: "Resetting"}
+	}
+
+	// Launch reset node operation
+	operation, err := rc.launchResetNodeOperation(node)
+	if err != nil {
+		return err
+	}
+
+	// Launch wait for reset node to finish synchronously
+	return rc.waitForResetNodeToFinish(operation)
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -496,9 +543,14 @@ func (rc *RedisCluster) IsRebalancing() bool {
 	return rc.hasOperation(Rebalancing, "Running")
 }
 
-// IsResharding returns true if there is a reshard operation between the specified nodes
-func (rc *RedisCluster) IsResharding(from, to RedisNode) bool {
+// IsReshardingNodes returns true if there is a reshard operation between the specified nodes
+func (rc *RedisCluster) IsReshardingNodes(from, to RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Running", from, to)
+}
+
+// IsResharding returns true if the cluster is resharding right now
+func (rc *RedisCluster) IsResharding() bool {
+	return rc.hasOperation(Resharding, "Running")
 }
 
 // IsFixing returns true if the cluster is being fixing right now
@@ -506,9 +558,9 @@ func (rc *RedisCluster) IsFixing() bool {
 	return rc.hasOperation(Fixing, "Running")
 }
 
-// IsReconciling returns true if we are reconcilling the cluster right now
-func (rc *RedisCluster) IsReconciling() bool {
-	return rc.hasOperation(Reconciling, "Running")
+// IsCheckingIntegrity returns true if we are checkint the integrity of the cluster right now
+func (rc *RedisCluster) IsCheckingIntegrity() bool {
+	return rc.hasOperation(CheckingIntegrity, "Running")
 }
 
 // IsScalingUp returns true if the cluster is scaling up right now
@@ -521,9 +573,34 @@ func (rc *RedisCluster) IsScalingDown() bool {
 	return rc.hasOperation(ScalingDown, "Running")
 }
 
+// IsUpgrading returns true if the cluster is upgrading right now
+func (rc *RedisCluster) IsUpgrading() bool {
+	return rc.hasOperation(Upgrading, "Running")
+}
+
+// IsResettingNode returns true if the cluster nose is being resetted right now
+func (rc *RedisCluster) IsResettingNode(node RedisNode) bool {
+	return rc.hasOperationInNode(Resetting, "Running", node)
+}
+
+// IsResetting returns true if the cluster is resetting right now
+func (rc *RedisCluster) IsResetting() bool {
+	return rc.hasOperation(Resetting, "Running")
+}
+
 // IsScaled returns true if the cluster is scaled. That is, if it has the desired number of replicas, has no missing slots and is balanced
 func (rc *RedisCluster) IsScaled() bool {
 	return rc.HasDesiredReplicas() && !rc.HasMissingSlots() && rc.IsBalanced()
+}
+
+// IsUpgraded returns true if the cluster is correctly configured for an upgrade. That is, if it has the desired number of replicas and has no missing slots
+func (rc *RedisCluster) IsUpgraded() bool {
+	return rc.HasDesiredReplicas() && !rc.HasMissingSlots()
+}
+
+// CanBeUpgraded returns true if the cluster can be upgraded. That is, if its internal status is Ready
+func (rc *RedisCluster) CanBeUpgraded() bool {
+	return !rc.IsRebalancing() && !rc.IsResharding() && !rc.IsFixing() && !rc.IsCheckingIntegrity() && !rc.IsScalingUp() && !rc.IsScalingDown() && !rc.IsResetting()
 }
 
 // HasMissingSlots returns true if the cluster has missing slots
@@ -550,6 +627,12 @@ func (rc *RedisCluster) HasBeenRebalanced() bool {
 // HasBeenResharded returns true if there is a reshard operation between the specified nodes that has finished
 func (rc *RedisCluster) HasBeenResharded(from, to RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Finished", from, to)
+}
+
+// HasNode returns true if the Redis cluster has a node with the specified name
+func (rc *RedisCluster) HasNode(name string) bool {
+	_, ok := rc.nodes[name]
+	return ok
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -591,8 +674,7 @@ func (rc *RedisCluster) removeNode(name string) error {
 // forgetNode removes a node from the cluster
 func (rc *RedisCluster) forgetNode(ctx context.Context, nodeToForget RedisNode) error {
 	// Check if the node exists
-	_, ok := rc.nodes[nodeToForget.Name]
-	if !ok {
+	if !rc.HasNode(nodeToForget.Name) {
 		return fmt.Errorf("node %s not found", nodeToForget.Name)
 	}
 
@@ -716,7 +798,7 @@ func (rc *RedisCluster) needsMeet(ctx context.Context) (bool, error) {
 		// Every cluster node should see all the nodes.
 		// If a node has forgotten any other node we need to meet nodes.
 		if len(rc.nodes) > clusterNodeCount {
-			rc.logger.Info("Cluster needs meet: node has less nodes than expected", "nodes", len(rc.nodes), "clusterNodeCount", clusterNodeCount, "node", node.String())
+			rc.logger.Info("Cluster needs meet: node has less peer nodes than expected", "nodes", len(rc.nodes), "clusterNodeCount", clusterNodeCount, "node", node.String())
 			return true, nil
 		}
 	}
@@ -739,6 +821,14 @@ func (rc *RedisCluster) needsFix(ctx context.Context) (bool, error) {
 	}
 
 	return result.CommandCodeOutput != 0, nil
+}
+
+func (rc *RedisCluster) needsUpscale() bool {
+	return len(rc.GetMasterNodes()) < rc.GetReplicas()
+}
+
+func (rc *RedisCluster) needsDownscale() bool {
+	return len(rc.GetMasterNodes()) > rc.GetReplicas()
 }
 
 // meetNodesIfNeeded meets the nodes of the Redis cluster if needed
@@ -809,8 +899,8 @@ func (rc *RedisCluster) fixClusterIfNeeded(ctx context.Context) error {
 
 // addNewNodesIfNeeded adds new nodes to the Redis cluster if needed
 func (rc *RedisCluster) addNewNodesIfNeeded(ctx context.Context) error {
-	// Check if the cluster has desired replicas
-	if rc.HasDesiredReplicas() {
+	// Check if the cluster needs to be scaled up
+	if !rc.needsUpscale() {
 		return nil
 	}
 
@@ -821,6 +911,42 @@ func (rc *RedisCluster) addNewNodesIfNeeded(ctx context.Context) error {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
 		nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
 		rc.addNode(nodeName, nodeAddr)
+	}
+
+	return nil
+}
+
+func (rc *RedisCluster) removeNodesIfNeeded(ctx context.Context) error {
+	// Check if the cluster needs to be scaled down
+	if !rc.needsDownscale() {
+		return nil
+	}
+
+	// Get nodes to remove
+	nodesToRemove, err := rc.getNodesToRemove(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Rebalance cluster to remove slots from the nodes to remove
+	weights := map[string]int{}
+	for _, node := range nodesToRemove {
+		// Skip nodes with no slots
+		if !node.HasSlots() {
+			continue
+		}
+
+		weights[node.ID] = 0
+	}
+	if len(weights) > 0 {
+		if err := rc.Rebalance(false, weights, true); err != nil {
+			return err
+		}
+	}
+
+	// Forget and remove nodes
+	if err := rc.forgetAndRemoveNodes(ctx, nodesToRemove); err != nil {
+		return err
 	}
 
 	return nil
@@ -888,7 +1014,7 @@ func (rc *RedisCluster) meetNodes(ctx context.Context) error {
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(6 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
@@ -921,6 +1047,11 @@ func (rc *RedisCluster) removeOutdatedNodes(ctx context.Context) error {
 
 			rc.logger.Info("Node forgotten successfully", "node", clusterNode.ID, "from", node.Name)
 		}
+	}
+
+	// Update nodes info
+	if err := rc.refreshNodes(); err != nil {
+		return err
 	}
 
 	return nil
