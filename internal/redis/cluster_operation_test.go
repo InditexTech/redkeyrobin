@@ -149,7 +149,7 @@ func TestRedisClusterHasOperationInNode(t *testing.T) {
 		name            string
 		operationName   string
 		operationStatus string
-		node        RedisNode
+		node            RedisNode
 		expectedResult  bool
 	}{
 		{
@@ -161,14 +161,14 @@ func TestRedisClusterHasOperationInNode(t *testing.T) {
 			name:            "no operation in nodes",
 			operationName:   Rebalancing,
 			operationStatus: "Running",
-			node:        *node1,
+			node:            *node1,
 			expectedResult:  false,
 		},
 		{
 			name:            "operation in nodes",
 			operationName:   Resharding,
 			operationStatus: "Running",
-			node:        *node1,
+			node:            *node1,
 			expectedResult:  true,
 		},
 	}
@@ -581,9 +581,9 @@ func TestRedisClusterWaitForResetNodeToFinish(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			operation := &RedisOperation{
-				Name:   Upgrading,
-				Status: "Running",
-				Cmd:    tt.cmd,
+				Name:     Upgrading,
+				Status:   "Running",
+				Cmd:      tt.cmd,
 				NodeFrom: node1,
 			}
 

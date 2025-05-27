@@ -175,7 +175,7 @@ func TestRedisClusterAskers(t *testing.T) {
 
 	assert.False(t, redisCluster.IsResettingNode(*node1))
 	assert.False(t, redisCluster.IsResetting())
-	
+
 	assert.False(t, redisCluster.IsScaled())
 	assert.False(t, redisCluster.IsUpgraded())
 	assert.False(t, redisCluster.CanBeUpgraded())
@@ -183,7 +183,7 @@ func TestRedisClusterAskers(t *testing.T) {
 	assert.False(t, redisCluster.HasBeenRebalanced())
 	assert.False(t, redisCluster.HasMissingSlots())
 	assert.False(t, redisCluster.HasDesiredReplicas())
-	
+
 	assert.True(t, redisCluster.HasBeenResharded(*node1, *node2))
 	assert.False(t, redisCluster.HasBeenResharded(*node1, *node3))
 
@@ -1134,8 +1134,8 @@ func TestRedisClusterReset(t *testing.T) {
 			prepareTest: func() {
 				redisCluster.operations[Resetting] = []*RedisOperation{
 					{
-						Name:   Resetting,
-						Status: "Running",
+						Name:     Resetting,
+						Status:   "Running",
 						NodeFrom: node1,
 					},
 				}

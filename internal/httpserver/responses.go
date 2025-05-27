@@ -6,6 +6,7 @@ package httpserver
 
 import (
 	"encoding/json"
+	"github.com/inditextech/redisrobin/internal/redis"
 	"net/http"
 )
 
@@ -121,4 +122,12 @@ type ClusterResetNodeResponse struct {
 
 func (r ClusterResetNodeResponse) GetKeys() []string {
 	return []string{"status"}
+}
+
+type ClusterNodesResponse struct {
+	Nodes []*redis.RedisNode `json:"nodes"`
+}
+
+func (r ClusterNodesResponse) GetKeys() []string {
+	return []string{"nodes"}
 }

@@ -25,6 +25,10 @@ tags:
     description: Redis cluster check
   - name: fix
     description: Redis cluster fix
+  - name: reset
+    description: Redis cluster node reset
+  - name: nodes
+    description: Redis cluster nodes
   
 paths:
   /v1/rediscluster/status:
@@ -186,7 +190,7 @@ paths:
   /v1/cluster/reset/{nodeIndex}:
     put:
       tags:
-        - fix
+        - reset
       summary: Reset Cluster node
       description: Launches a cluster node reset
       operationId: ResetNode
@@ -206,6 +210,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClusterFixResponse'
 
+  /v1/cluster/nodes:
+    get:
+      tags:
+        - nodes
+      summary: Get nodes
+      description: Get the nodes of the cluster
+      operationId: GetNodes
+      responses:
+        '200':
+          description: Nodes result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterNodesResponse'
 
 components:
   schemas:
@@ -347,3 +365,64 @@ components:
           enum:
             - InProgress
             - Error
+    ClusterNodesResponse:
+      type: object
+      properties:
+        nodes:
+          type: array
+          description: Redis Cluster nodes
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Redis Cluster node ID
+                example: c3f4bad062e19339e0e07bb836db5e23f09f0dff
+              name:
+                type: string
+                description: Redis Cluster node name
+                example: rediscluster-sample-0
+              flags:
+                type: string
+                description: Redis Cluster node flags
+                example: master
+              slots:
+                type: array
+                description: Redis Cluster node slots
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      start:
+                        type: integer
+                        description: Slot start
+                        example: 0
+                      end:
+                        type: integer
+                        description: Slot end
+                        example: 16383
+              ip:
+                type: string
+                description: Redis Cluster node IP
+                example: "10.0.0.1"     
+              masterId:
+                type: string
+                description: Redis Cluster node master ID
+                example: c3f4bad062e19339e0e07bb836db5e23f09f0dff
+              failures:
+                type: integer
+                description: Redis Cluster node failures
+                example: 0     
+              sent:
+                type: integer
+                description: Redis Cluster node sent
+                example: 0
+              recv:
+                type: integer
+                description: Redis Cluster node recv
+                example: 0
+              linkStatus:
+                type: string
+                description: Redis Cluster node link status
+                example: connected

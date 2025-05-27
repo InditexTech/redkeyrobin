@@ -112,7 +112,7 @@ func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 
 func (r *RedisClusterReconciler) reconcileUpgradingStatus() error {
 	// Check if the cluster needs to be upgraded
-	if !r.redisCluster.CanBeUpgraded() {  // r.redisCluster.IsUpgraded() ||
+	if !r.redisCluster.CanBeUpgraded() { // r.redisCluster.IsUpgraded() ||
 		return nil
 	}
 

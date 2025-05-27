@@ -91,11 +91,6 @@ func (rc *RedisCluster) doScaleDown(ctx context.Context) error {
 		return err
 	}
 
-	// Fix cluster if needed
-	if err := rc.fixClusterIfNeeded(ctx); err != nil {
-		return err
-	}
-
 	// Remove nodes if needed
 	if err := rc.removeNodesIfNeeded(ctx); err != nil {
 		return err
@@ -138,6 +133,11 @@ func (rc *RedisCluster) doUpgrade(ctx context.Context) error {
 	// Ensure cluster ratio
 	if err := rc.ensureClusterRatio(ctx); err != nil {
 		return nil
+	}
+
+	// Assign missing slots if needed
+	if err := rc.assignMissingSlotsIfNeeded(ctx); err != nil {
+		return err
 	}
 
 	// Update nodes info

@@ -20,7 +20,6 @@ func TestNewRedisClusterReconciler(t *testing.T) {
 	assert.NotNil(t, reconciler)
 }
 
-
 func TestRedisClusterReconcilerReconcile(t *testing.T) {
 	tests := []struct {
 		name          string

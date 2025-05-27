@@ -5,6 +5,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -318,7 +319,7 @@ func TestServeHTTP(t *testing.T) {
 		config             config.APIConfig
 		endpoint           string
 		method             string
-		pattern 		  string
+		pattern            string
 		pathValues         map[string]string
 		expectedBody       ResponseInterface
 		expectedStatusCode int
@@ -382,15 +383,15 @@ func TestServeHTTP(t *testing.T) {
 			config: config.APIConfig{
 				Paths: map[string]map[string]interface{}{
 					"/rediscluster/reset/{nodeIndex}": map[string]interface{}{
-					"put": map[string]interface{}{
-						"operationId": "ResetNode",
+						"put": map[string]interface{}{
+							"operationId": "ResetNode",
+						},
 					},
-				},
 				},
 			},
 			endpoint: "/rediscluster/reset/1",
 			method:   "PUT",
-			pattern: "/rediscluster/reset/{nodeIndex}",
+			pattern:  "/rediscluster/reset/{nodeIndex}",
 			pathValues: map[string]string{
 				"nodeIndex": "1",
 			},
@@ -413,7 +414,7 @@ func TestServeHTTP(t *testing.T) {
 	}
 }
 
-func testRequest(t *testing.T, method string, endpoint string, body string, pattern string, pathValues map[string] string,handlerFunc http.HandlerFunc, expectedStatusCode int, expectedBody interface{}) {
+func testRequest(t *testing.T, method string, endpoint string, body string, pattern string, pathValues map[string]string, handlerFunc http.HandlerFunc, expectedStatusCode int, expectedBody interface{}) *bytes.Buffer {
 	// Create a new request
 	req, err := http.NewRequest(method, endpoint, strings.NewReader(body))
 	if err != nil {
@@ -438,17 +439,21 @@ func testRequest(t *testing.T, method string, endpoint string, body string, patt
 	}
 
 	// Check the response body
-	var response interface{}
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("Error decoding response: %v", err)
+	if expectedBody != nil {
+		var response interface{}
+		if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+			t.Fatalf("Error decoding response: %v", err)
+		}
+
+		bodyContent, _ := json.Marshal(response)
+		bodyContentString := string(bodyContent[:])
+		bodyExpectedContent, _ := json.Marshal(expectedBody)
+		bodyExpectedContentString := string(bodyExpectedContent[:])
+
+		if bodyContentString != bodyExpectedContentString {
+			t.Errorf("Handler returned unexpected body: got %v want %v", bodyContentString, bodyExpectedContentString)
+		}
 	}
 
-	bodyContent, _ := json.Marshal(response)
-	bodyContentString := string(bodyContent[:])
-	bodyExpectedContent, _ := json.Marshal(expectedBody)
-	bodyExpectedContentString := string(bodyExpectedContent[:])
-
-	if bodyContentString != bodyExpectedContentString {
-		t.Errorf("Handler returned unexpected body: got %v want %v", bodyContentString, bodyExpectedContentString)
-	}
+	return rr.Body
 }

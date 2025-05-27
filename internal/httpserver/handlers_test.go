@@ -5,8 +5,12 @@
 package httpserver
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetRedisClusterStatus(t *testing.T) {
@@ -338,6 +342,88 @@ func TestResetNode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testRequest(t, "PUT", "/cluster/reset/1", tt.request, "", tt.pathValues, server.ResetNode, tt.expectedStatusCode, tt.expectedBody)
+		})
+	}
+}
+
+func TestGetNodes(t *testing.T) {
+	tests := []struct {
+		name               string
+		request            string
+		expectedBody       ResponseInterface
+		expectedStatusCode int
+	}{
+		{
+			name: "good request",
+			expectedBody: ClusterNodesResponse{
+				Nodes: []*redis.RedisNode{
+					{
+						Name:       "node1",
+						ID:         "1234567890",
+						Addr:       "node1",
+						IP:         "1.1.1.1",
+						Flags:      "master",
+						Slots:      []redis.RedisSlotRange{},
+						MasterID:   "",
+						Failures:   0,
+						Sent:       0,
+						Recv:       0,
+						LinkStatus: "",
+					},
+					{
+						Name:  "test-1",
+						ID:    "0987654321",
+						Addr:  "node2",
+						IP:    "2.2.2.2",
+						Flags: "master",
+						Slots: []redis.RedisSlotRange{
+							{
+								Start: 5,
+								End:   7,
+							},
+						},
+						MasterID:   "",
+						Failures:   0,
+						Sent:       0,
+						Recv:       0,
+						LinkStatus: "",
+					},
+					{
+						Addr:  "node2",
+						Name:  "node3",
+						ID:    "0987654321",
+						IP:    "2.2.2.2",
+						Flags: "master",
+						Slots: []redis.RedisSlotRange{
+							{
+								Start: 7,
+								End:   10,
+							},
+						},
+						MasterID:   "",
+						Failures:   0,
+						Sent:       0,
+						Recv:       0,
+						LinkStatus: "",
+					},
+				},
+			},
+			expectedStatusCode: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := testRequest(t, "PUT", "/cluster/nodes", tt.request, "", nil, server.GetNodes, tt.expectedStatusCode, nil)
+
+			var response ClusterNodesResponse
+			if err := json.NewDecoder(body).Decode(&response); err != nil {
+				t.Fatalf("Error decoding response: %v", err)
+			}
+			assert.NotNil(t, response.Nodes)
+
+			expectedBody := tt.expectedBody.(ClusterNodesResponse)
+			assert.Equal(t, expectedBody.Nodes, response.Nodes)
 		})
 	}
 }

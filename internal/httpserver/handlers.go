@@ -201,3 +201,11 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 
 	s.sendResponse(w, http.StatusOK, response)
 }
+
+func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
+	response := ClusterNodesResponse{
+		Nodes: s.redisCluster.GetNodes(),
+	}
+
+	s.sendResponse(w, http.StatusOK, response)
+}

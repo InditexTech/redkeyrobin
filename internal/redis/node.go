@@ -16,25 +16,24 @@ import (
 
 // RedisNode represents a Redis cluster node.
 type RedisNode struct {
-	Index 	   int
-	Name       string
-	ID         string
-	Addr       string
-	IP         string
-	Flags      string
-	Slots      []RedisSlotRange
-	MasterID   string
-	Failures   int
-	Sent       int
-	Recv       int
-	LinkStatus string
-	MaxRetries int
-	Backoff    time.Duration
+	Name       string           `json:"name"`
+	ID         string           `json:"id"`
+	Addr       string           `json:"-"`
+	IP         string           `json:"ip"`
+	Flags      string           `json:"flags"`
+	Slots      []RedisSlotRange `json:"slots"`
+	MasterID   string           `json:"masterId"`
+	Failures   int              `json:"failures"`
+	Sent       int              `json:"sent"`
+	Recv       int              `json:"recv"`
+	LinkStatus string           `json:"linkStatus"`
+	MaxRetries int              `json:"-"`
+	Backoff    time.Duration    `json:"-"`
 }
 
 type RedisSlotRange struct {
-	Start int
-	End   int
+	Start int `json:"start"`
+	End   int `json:"end"`
 }
 
 func (rn *RedisNode) String() string {
@@ -90,6 +89,9 @@ func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	rn.Slots = nodeInfo.Slots
 	rn.MasterID = nodeInfo.MasterID
 	rn.Failures = nodeInfo.Failures
+	rn.Sent = nodeInfo.Sent
+	rn.Recv = nodeInfo.Recv
+	rn.LinkStatus = nodeInfo.LinkStatus
 }
 
 func (rn *RedisNode) ResetSlots() {
