@@ -160,24 +160,38 @@ func TestRedisClusterGetNodeFromID(t *testing.T) {
 }
 
 func TestRedisClusterAskers(t *testing.T) {
+	assert.True(t, redisCluster.IsBalanced())
 	assert.True(t, redisCluster.IsRebalancing())
-	assert.False(t, redisCluster.HasBeenRebalanced())
 
 	assert.False(t, redisCluster.IsReshardingNodes(*node1, *node2))
 	assert.True(t, redisCluster.IsReshardingNodes(*node1, *node3))
-	assert.True(t, redisCluster.HasBeenResharded(*node1, *node2))
-	assert.False(t, redisCluster.HasBeenResharded(*node1, *node3))
+	assert.True(t, redisCluster.IsResharding())
 
 	assert.False(t, redisCluster.IsFixing())
 	assert.False(t, redisCluster.IsCheckingIntegrity())
-	assert.False(t, redisCluster.HasMissingSlots())
-	assert.True(t, redisCluster.IsBalanced())
-	assert.False(t, redisCluster.HasDesiredReplicas())
-	assert.False(t, redisCluster.IsScaled())
-
 	assert.False(t, redisCluster.IsScalingUp())
 	assert.False(t, redisCluster.IsScalingDown())
 	assert.False(t, redisCluster.IsUpgrading())
+
+	assert.False(t, redisCluster.IsResettingNode(*node1))
+	assert.False(t, redisCluster.IsResetting())
+	
+	assert.False(t, redisCluster.IsScaled())
+	assert.False(t, redisCluster.IsUpgraded())
+	assert.False(t, redisCluster.CanBeUpgraded())
+
+	assert.False(t, redisCluster.HasBeenRebalanced())
+	assert.False(t, redisCluster.HasMissingSlots())
+	assert.False(t, redisCluster.HasDesiredReplicas())
+	
+	assert.True(t, redisCluster.HasBeenResharded(*node1, *node2))
+	assert.False(t, redisCluster.HasBeenResharded(*node1, *node3))
+
+	assert.True(t, redisCluster.HasNode("test-0"))
+	assert.False(t, redisCluster.HasNode("notfound"))
+
+	assert.True(t, redisCluster.needsUpscale())
+	assert.False(t, redisCluster.needsDownscale())
 }
 
 func TestRedisClusterAddNode(t *testing.T) {
@@ -568,7 +582,22 @@ func TestRedisClusterEnsureReplicaSpread(t *testing.T) {
 	}
 }
 
-func TestRedisClusterConvertNodesToMaster(t *testing.T) {
+func TestRedisClusterConvertNodesToReplica(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{
+			name: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+		})
+	}
+}
+
+func TestRedisClusterPromoteNodesToMaster(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -1082,6 +1111,50 @@ func TestRedisClusterUpgrade(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
 			err := redisCluster.Upgrade(tt.force)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestRedisClusterReset(t *testing.T) {
+	tests := []struct {
+		name          string
+		prepareTest   func()
+		force         bool
+		expectedError error
+	}{
+		{
+			name: "resetting",
+			prepareTest: func() {
+				redisCluster.operations[Resetting] = []*RedisOperation{
+					{
+						Name:   Resetting,
+						Status: "Running",
+						NodeFrom: node1,
+					},
+				}
+			},
+			expectedError: &OperationInProgressError{Operation: "Resetting"},
+		},
+		{
+			name: "good",
+			prepareTest: func() {
+				redisCluster.operations[Resetting] = []*RedisOperation{}
+			},
+			force:         true,
+			expectedError: fmt.Errorf("failed to connect after 1 retries"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.prepareTest()
+			err := redisCluster.ResetNode(node1)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

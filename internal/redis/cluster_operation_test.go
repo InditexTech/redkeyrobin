@@ -144,6 +144,42 @@ func TestRedisClusterHasOperation(t *testing.T) {
 	}
 }
 
+func TestRedisClusterHasOperationInNode(t *testing.T) {
+	tests := []struct {
+		name            string
+		operationName   string
+		operationStatus string
+		node        RedisNode
+		expectedResult  bool
+	}{
+		{
+			name:           "operation not found",
+			operationName:  Fixing,
+			expectedResult: false,
+		},
+		{
+			name:            "no operation in nodes",
+			operationName:   Rebalancing,
+			operationStatus: "Running",
+			node:        *node1,
+			expectedResult:  false,
+		},
+		{
+			name:            "operation in nodes",
+			operationName:   Resharding,
+			operationStatus: "Running",
+			node:        *node1,
+			expectedResult:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := redisCluster.hasOperationInNode(tt.operationName, tt.operationStatus, tt.node)
+			assert.Equal(t, result, tt.expectedResult)
+		})
+	}
+}
+
 func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -520,6 +556,39 @@ func TestRedisClusterWaitForUpgradeToFinish(t *testing.T) {
 
 			tt.cmd.cmd.Start()
 			redisCluster.waitForUpgradeToFinish(operation)
+			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
+		})
+	}
+}
+
+func TestRedisClusterWaitForResetNodeToFinish(t *testing.T) {
+	tests := []struct {
+		name           string
+		cmd            *RedisCLICommand
+		expectedStatus string
+	}{
+		{
+			name:           "reset node error",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
+			expectedStatus: Ready,
+		},
+		{
+			name:           "good",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
+			expectedStatus: Ready,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			operation := &RedisOperation{
+				Name:   Upgrading,
+				Status: "Running",
+				Cmd:    tt.cmd,
+				NodeFrom: node1,
+			}
+
+			tt.cmd.cmd.Start()
+			redisCluster.waitForResetNodeToFinish(operation)
 			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
 		})
 	}

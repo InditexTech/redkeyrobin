@@ -164,16 +164,12 @@ func (rc *RedisCluster) doResetNode(ctx context.Context) error {
 	if err := node.Reset(ctx); err != nil {
 		return err
 	}
-	time.Sleep(5 * time.Second)
 
 	// Forget the node if it is ephemeral
 	if rc.IsEphemeral() {
 		if err := rc.forgetNode(ctx, *node); err != nil {
 			return err
 		}
-
-		// Wait for cluster meet so nodes can agree on configuration
-		time.Sleep(5 * time.Second)
 	}
 
 	// Check nodes info
@@ -285,7 +281,7 @@ func (rc *RedisCluster) waitForRebalanceToFinish(operation *RedisOperation) erro
 	}
 	return nil
 }
-//13a69ac3dde975fc5e9556cd9ab415b1a8461fdc
+
 // launchFixOperation launches a fix operation
 func (rc *RedisCluster) launchFixOperation() (*RedisOperation, error) {
 	// Get Redis client and check connection
