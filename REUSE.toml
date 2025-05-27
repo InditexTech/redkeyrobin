@@ -10,6 +10,8 @@ path = [
     ".gitignore",
     ".github/CODEOWNERS",
     "go.sum",
+    "api/openapi-rest.yml",
+    "local/configmap.yml",
 ]
 SPDX-FileCopyrightText = "2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
 SPDX-License-Identifier = "Apache-2.0"
