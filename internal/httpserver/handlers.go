@@ -42,6 +42,7 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	response := ClusterReplicasResponse{
 		Replicas: s.redisCluster.GetReplicas(),
+		ReplicasPerMaster: s.redisCluster.GetReplicasPerMaster(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -56,11 +57,12 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the replicas
-	err := s.redisCluster.SetReplicas(request.Replicas)
+	err := s.redisCluster.SetReplicas(request.Replicas, request.ReplicasPerMaster)
 
 	// Send the response
 	response := ClusterReplicasResponse{
 		Replicas: s.redisCluster.GetReplicas(),
+		ReplicasPerMaster: s.redisCluster.GetReplicasPerMaster(),
 	}
 	if err != nil {
 		if _, ok := err.(*redis.OperationCompletedError); ok {

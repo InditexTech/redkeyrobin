@@ -266,6 +266,12 @@ components:
           type: integer
           description: Cluster replicas
           example: 1
+        replicas_per_master:
+          type: integer
+          description: Replicas per master
+          example: 0
+      required:
+        - replicas
     ClusterReplicasRequest:
       type: object
       properties:
@@ -273,14 +279,10 @@ components:
           type: integer
           description: Cluster replicas
           example: 1
-        status:
-          type: string
-          description: Update replicas status
-          example: InProgress
-          enum:
-            - InProgress
-            - Completed
-            - Error
+        replicas_per_master:
+          type: integer
+          description: Replicas per master
+          example: 0
     ClusterStatusResponse:
       type: object
       properties:

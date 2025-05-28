@@ -77,10 +77,11 @@ func (r RedisClusterStatusResponse) GetKeys() []string {
 
 type ClusterReplicasResponse struct {
 	Replicas int `json:"replicas"`
+	ReplicasPerMaster int `json:"replicas_per_master"`
 }
 
 func (r ClusterReplicasResponse) GetKeys() []string {
-	return []string{"replicas"}
+	return []string{"replicas", "replicas_per_master"}
 }
 
 type ClusterStatusResponse struct {

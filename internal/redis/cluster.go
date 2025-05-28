@@ -105,6 +105,11 @@ func (rc *RedisCluster) GetReplicasPerMaster() int {
 	return rc.conf.Redis.Cluster.ReplicasPerMaster
 }
 
+// GetDesiredReplicas returns the number of nodes needed to reach the desired number of replicas
+func (rc *RedisCluster) GetDesiredReplicas() int {
+	return rc.GetReplicas() + (rc.GetReplicas() * rc.GetReplicasPerMaster())
+}
+
 // GetName returns the name of the Redis cluster
 func (rc *RedisCluster) GetName() string {
 	return rc.conf.Redis.Cluster.Name
@@ -237,15 +242,22 @@ func (rc *RedisCluster) GetReplicasOfMaster(master *RedisNode) []*RedisNode {
 // ----------------------------------------------------------------------------------------------------
 
 // SetReplicas sets the number of replicas in the Redis cluster.
-// It adds or removes nodes to match the desired number of replicas.
 // It returns an OperationAlreadyDoneError if the current number of replicas is equal to the desired number of replicas.
-func (rc *RedisCluster) SetReplicas(replicas int) error {
+func (rc *RedisCluster) SetReplicas(replicas int, replicasPerMaster *int) error {
 	currentReplicas := rc.GetReplicas()
+	currentReplicasPerMaster := rc.GetReplicasPerMaster()
 	rc.logger.Info("Changing Redis Cluster replicas", "current", currentReplicas, "desired", replicas)
+
+	if replicasPerMaster != nil && currentReplicasPerMaster != *replicasPerMaster {
+		rc.logger.Info("Changing Redis Cluster replicas per master", "current", currentReplicasPerMaster, "desired", replicasPerMaster)
+		rc.conf.Redis.Cluster.ReplicasPerMaster = *replicasPerMaster
+	}
 
 	// Check if the current number of replicas is equal to the desired number of replicas
 	if replicas == currentReplicas {
-		return &OperationCompletedError{Operation: "SetReplicas"}
+		if replicasPerMaster == nil || *replicasPerMaster == currentReplicasPerMaster {
+			return &OperationCompletedError{Operation: "SetReplicas"}
+		}
 	}
 
 	// Set the desired replicas
@@ -272,7 +284,7 @@ func (rc *RedisCluster) SetRedisClusterStatus(status string) error {
 // It sets the Robin status from the Redis Cluster status and creates the nodes and initializes them.
 func (rc *RedisCluster) Init() error {
 	// Initialize nodes
-	for i := range rc.GetReplicas() {
+	for i := range rc.GetDesiredReplicas() {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
 		nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
 		rc.addNode(nodeName, nodeAddr)
@@ -598,7 +610,7 @@ func (rc *RedisCluster) IsUpgraded() bool {
 	return rc.HasDesiredReplicas() && !rc.HasMissingSlots()
 }
 
-// CanBeUpgraded returns true if the cluster can be upgraded. That is, if its internal status is Ready
+// CanBeUpgraded returns true if the cluster can be upgraded. That is, if the cluster is not rebalancing, resharding, fixing, checking integrity, scaling up, scaling down or resetting
 func (rc *RedisCluster) CanBeUpgraded() bool {
 	return !rc.IsRebalancing() && !rc.IsResharding() && !rc.IsFixing() && !rc.IsCheckingIntegrity() && !rc.IsScalingUp() && !rc.IsScalingDown() && !rc.IsResetting()
 }
@@ -606,17 +618,15 @@ func (rc *RedisCluster) CanBeUpgraded() bool {
 // HasMissingSlots returns true if the cluster has missing slots
 func (rc *RedisCluster) HasMissingSlots() bool {
 	slotCount := 0
-
 	for _, node := range rc.GetNodes() {
 		slotCount += node.GetNumberOfSlots()
 	}
-
 	return slotCount != RedisClusterTotalSlots
 }
 
 // HasDesiredReplicas returns true if the Redis cluster has the desired number of replicas
 func (rc *RedisCluster) HasDesiredReplicas() bool {
-	return rc.GetReplicas() == len(rc.GetMasterNodes())
+	return rc.GetDesiredReplicas() == len(rc.GetNodes())
 }
 
 // HasBeenRebalanced returns true if the cluster has been rebalanced recently
@@ -716,7 +726,7 @@ func (rc *RedisCluster) refreshNodes() error {
 
 // checkNodes checks the nodes of the Redis cluster
 func (rc *RedisCluster) checkNodes() error {
-	for i := range rc.GetReplicas() {
+	for i := range rc.GetDesiredReplicas() {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
 
 		// Check if the node exists
@@ -824,11 +834,11 @@ func (rc *RedisCluster) needsFix(ctx context.Context) (bool, error) {
 }
 
 func (rc *RedisCluster) needsUpscale() bool {
-	return len(rc.GetMasterNodes()) < rc.GetReplicas()
+	return len(rc.GetNodes()) < rc.GetDesiredReplicas()
 }
 
 func (rc *RedisCluster) needsDownscale() bool {
-	return len(rc.GetMasterNodes()) > rc.GetReplicas()
+	return len(rc.GetNodes()) > rc.GetDesiredReplicas()
 }
 
 // meetNodesIfNeeded meets the nodes of the Redis cluster if needed
@@ -906,7 +916,7 @@ func (rc *RedisCluster) addNewNodesIfNeeded(ctx context.Context) error {
 
 	// Add new nodes
 	currentReplicas := len(rc.nodes)
-	desiredReplicas := rc.GetReplicas()
+	desiredReplicas := rc.GetDesiredReplicas()
 	for i := currentReplicas; i < desiredReplicas; i++ {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
 		nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
@@ -928,20 +938,9 @@ func (rc *RedisCluster) removeNodesIfNeeded(ctx context.Context) error {
 		return err
 	}
 
-	// Rebalance cluster to remove slots from the nodes to remove
-	weights := map[string]int{}
-	for _, node := range nodesToRemove {
-		// Skip nodes with no slots
-		if !node.HasSlots() {
-			continue
-		}
-
-		weights[node.ID] = 0
-	}
-	if len(weights) > 0 {
-		if err := rc.Rebalance(false, weights, true); err != nil {
-			return err
-		}
+	// Remove the slots from the nodes to remove
+	if err := rc.removeSlotsFromNodes(ctx, nodesToRemove); err != nil {
+		return err
 	}
 
 	// Forget and remove nodes
@@ -949,6 +948,50 @@ func (rc *RedisCluster) removeNodesIfNeeded(ctx context.Context) error {
 		return err
 	}
 
+	return nil
+}
+
+func (rc *RedisCluster) removeSlotsFromNodes(ctx context.Context, nodes []*RedisNode) error {
+	// Get the weights for the rebalance
+	weights := map[string]int{}
+	for _, node := range nodes {
+		// Skip nodes with no slots
+		if !node.HasSlots() {
+			continue
+		}
+
+		weights[node.ID] = 0
+	}
+
+	// Skip rebalance if there are no nodes with slots to move
+	nodesToReshard := len(weights)
+	if nodesToReshard < 1 {
+		return nil
+	}
+
+	// Launch the rebalance operation as many times as nodes to remove. This is because the rebalance operation usually fails when resharding multiple nodes after resharding a node.
+	// We retry the rebalance operation until it succeeds or we reach the maximum number of retries, as long as the error is "ERR Please use SETSLOT only with masters". 
+	// The maximum number of retries is the number of nodes to remove plus one, because we also retry the rebalance operation after removing the last node just in case.
+	for i := range len(weights) + 1 {
+		if err := rc.Rebalance(false, weights, true); err != nil {
+			// Return error if the maximum number of retries is reached
+			if i == nodesToReshard {
+				return err
+			}
+
+			// Retry rebalance if the error is "ERR Please use SETSLOT only with masters"
+			if strings.Contains(err.Error(), "ERR Please use SETSLOT only with masters") {
+				rc.logger.Info("Retrying rebalance operation", "attempt", i + 1, "maxAttempts", nodesToReshard + 1)
+				continue
+			}
+
+			// Return the error otherwise
+			return err
+		}
+
+		// Finish loop if rebalance is successful
+		break
+	}
 	return nil
 }
 
@@ -976,20 +1019,21 @@ func (rc *RedisCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*Redis
 func (rc *RedisCluster) getNodesToRemove(ctx context.Context) ([]*RedisNode, error) {
 	namePrefix := fmt.Sprintf("%s-", rc.GetName())
 
-	// Get master nodes
-	masters := rc.GetMasterNodes()
-	if len(masters) <= rc.GetReplicas() {
+	// Get nodes
+	nodes := rc.GetNodes()
+	desiredReplicas := int(rc.GetDesiredReplicas())
+	if len(nodes) <= desiredReplicas {
 		return nil, fmt.Errorf("not enough nodes to remove")
 	}
 
-	// Sort masters by name to remove the ones with the highest ordinal
-	sort.Slice(masters, func(i, j int) bool {
-		ordinalI, _ := strconv.Atoi(strings.TrimPrefix(masters[i].Name, namePrefix))
-		ordinalJ, _ := strconv.Atoi(strings.TrimPrefix(masters[j].Name, namePrefix))
+	// Sort nodes by name to remove the ones with the highest ordinal
+	sort.Slice(nodes, func(i, j int) bool {
+		ordinalI, _ := strconv.Atoi(strings.TrimPrefix(nodes[i].Name, namePrefix))
+		ordinalJ, _ := strconv.Atoi(strings.TrimPrefix(nodes[j].Name, namePrefix))
 		return ordinalI < ordinalJ
 	})
 
-	return masters[int(rc.GetReplicas()):], nil
+	return nodes[desiredReplicas:], nil
 }
 
 // meetNodes meets the nodes of the Redis cluster
@@ -1103,9 +1147,8 @@ func (rc *RedisCluster) ensureClusterRatio(ctx context.Context) error {
 	}
 
 	// We have replicas but we don't want any: promote all to masters
-	if len(activeReplicas) > 0 && rc.GetReplicasPerMaster() == 0 {
+	if len(activeReplicas) > 0 && desiredReplicas == 0 {
 		rc.logger.Info("Promoting all replicas to masters", "replicas", len(activeReplicas))
-
 		if err := rc.promoteNodesToMaster(ctx, activeReplicas); err != nil {
 			return err
 		}
@@ -1157,6 +1200,11 @@ func (rc *RedisCluster) ensureReplicaSpread(ctx context.Context) error {
 		}
 	}
 
+	// We have more masters that need replicas than replicas we have
+	if len(replicaNeedsMove) < len(masterNeedsReplicas) {
+		return fmt.Errorf("there are not enough replicas to move. masters=%d replicas=%d", len(masterNeedsReplicas), len(replicaNeedsMove))
+	}
+
 	// Replicas that need to be moved
 	for i := 0; i < len(masterNeedsReplicas); i++ {
 		rc.logger.Info("Converting node to replica", "replica", replicaNeedsMove[i].Name, "master", masterNeedsReplicas[i].Name)
@@ -1177,11 +1225,7 @@ func (rc *RedisCluster) ensureReplicaSpread(ctx context.Context) error {
 // convertNodesToReplicas converts the specified nodes to replicas of the specified nodes to keep
 func (rc *RedisCluster) convertNodesToReplica(ctx context.Context, nodesToConvert []*RedisNode, nodesToKeep []*RedisNode) error {
 	// Rebalance cluster removing slots from the masters we want to delete
-	weights := map[string]int{}
-	for _, deletable := range nodesToConvert {
-		weights[deletable.ID] = 0
-	}
-	if err := rc.Rebalance(false, weights, true); err != nil {
+	if err := rc.removeSlotsFromNodes(ctx, nodesToConvert); err != nil {
 		return err
 	}
 
@@ -1216,7 +1260,7 @@ func (rc *RedisCluster) promoteNodesToMaster(ctx context.Context, nodes []*Redis
 		if err := node.Reset(ctx); err != nil {
 			return err
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 
 	// Meet the cluster to promote the nodes to masters

@@ -47,11 +47,15 @@ func (r *RedisClusterStatusRequest) Validate() error {
 
 type ClusterReplicasRequest struct {
 	Replicas int `json:"replicas"`
+	ReplicasPerMaster *int `json:"replicas_per_master"`
 }
 
 func (r *ClusterReplicasRequest) Validate() error {
 	if r.Replicas < 0 {
 		return fmt.Errorf("'replicas' must be positive")
+	}
+	if r.ReplicasPerMaster != nil && *r.ReplicasPerMaster < 0 {
+		return fmt.Errorf("'replicas_per_master' must be positive")
 	}
 	return nil
 }

@@ -42,7 +42,7 @@ func (rc *RedisCluster) doCheckIntegrity(ctx context.Context) error {
 
 	// Ensure cluster ratio
 	if err := rc.ensureClusterRatio(ctx); err != nil {
-		rc.logger.Error(err, "Error ensuring cluster ratio")
+		return err
 	}
 
 	// Assign missing slots if needed
@@ -85,7 +85,6 @@ func (rc *RedisCluster) doScaleUp(ctx context.Context) error {
 
 // doScaleDown scales down the Redis cluster
 func (rc *RedisCluster) doScaleDown(ctx context.Context) error {
-	// TODO: check scale down with replicas
 	// Check nodes info
 	if err := rc.checkNodes(); err != nil {
 		return err
@@ -228,8 +227,7 @@ func (rc *RedisCluster) waitForReshardToFinish(operation *RedisOperation) error 
 	// Reshard failed
 	if err != nil {
 		rc.status = ReshardingError
-		rc.logger.Info("Error resharding node", "error", err, "from", operation.NodeFrom.Name, "to", operation.NodeTo.Name)
-		return err
+		return fmt.Errorf("error moving slots from node '%s' to node '%s': %v", operation.NodeFrom.Name, operation.NodeTo.Name, err)
 	}
 
 	// Reshard finished successfully
@@ -268,8 +266,7 @@ func (rc *RedisCluster) waitForRebalanceToFinish(operation *RedisOperation) erro
 
 	// Rebalance failed
 	if err != nil {
-		rc.logger.Info("Error rebalancing cluster", "error", err)
-		return err
+		return fmt.Errorf("error rebalancing cluster: %v", err)
 	}
 
 	// Rebalance finished successfully
@@ -307,8 +304,7 @@ func (rc *RedisCluster) waitForFixToFinish(operation *RedisOperation) error {
 
 	// Fix failed
 	if err != nil {
-		rc.logger.Info("Error fixing cluster", "error", err, "stdout", operation.Cmd.GetStdout(), "stderr", operation.Cmd.GetStderr())
-		return err
+		return fmt.Errorf("error fixing cluster: %v", err)
 	}
 
 	// Fix finished successfully
@@ -341,8 +337,7 @@ func (rc *RedisCluster) waitForCheckIntegrityToFinish(operation *RedisOperation)
 	// Reconcile failed
 	if err != nil {
 		rc.status = CheckingIntegrityError
-		rc.logger.Info("Error checking cluster integrity", "error", err)
-		return err
+		return fmt.Errorf("error checking cluster integrity: %v", err)
 	}
 
 	// Check integrity finished successfully
@@ -369,8 +364,7 @@ func (rc *RedisCluster) waitForScaleUpToFinish(operation *RedisOperation) error 
 	// Scale up failed
 	if err != nil {
 		rc.status = ScalingUpError
-		rc.logger.Info("Error scaling up cluster", "error", err)
-		return err
+		return fmt.Errorf("error scaling up cluster: %v", err)
 	}
 
 	// Scale up finished successfully
@@ -397,8 +391,7 @@ func (rc *RedisCluster) waitForScaleDownToFinish(operation *RedisOperation) erro
 	// Scale down failed
 	if err != nil {
 		rc.status = ScalingDownError
-		rc.logger.Info("Error scaling down cluster", "error", err)
-		return err
+		return fmt.Errorf("error scaling down cluster: %v", err)
 	}
 
 	// Scale down finished successfully
@@ -425,8 +418,7 @@ func (rc *RedisCluster) waitForUpgradeToFinish(operation *RedisOperation) error 
 	// Upgrading failed
 	if err != nil {
 		rc.status = UpgradingError
-		rc.logger.Info("Error upgrading cluster", "error", err)
-		return err
+		return fmt.Errorf("error upgrading cluster: %v", err)
 	}
 
 	// Upgrading finished successfully
@@ -471,8 +463,7 @@ func (rc *RedisCluster) waitForResetNodeToFinish(operation *RedisOperation) erro
 
 	// Reset node failed
 	if err != nil {
-		rc.logger.Info("Error resetting cluster node", "error", err, "node", operation.NodeFrom.Name)
-		return err
+		return fmt.Errorf("error resetting cluster node '%s': %v", operation.NodeFrom.Name, err)
 	}
 
 	// Reset node finished successfully

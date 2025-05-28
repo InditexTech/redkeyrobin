@@ -396,7 +396,7 @@ func TestServeHTTP(t *testing.T) {
 				"nodeIndex": "1",
 			},
 			expectedBody: ErrorResponse{
-				Error: "Error reseting node: maxRetries must be greater than 0",
+				Error: "Error reseting node: error resetting cluster node 'test-1': maxRetries must be greater than 0",
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 		},

@@ -84,6 +84,7 @@ func TestGetClusterReplicas(t *testing.T) {
 			name: "good request",
 			expectedBody: ClusterReplicasResponse{
 				Replicas: 0,
+				ReplicasPerMaster: 0,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -111,10 +112,19 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
+			name:    "invalid request replicas per master",
+			request: `{"replicas": 0, "replicas_per_master": -1}`,
+			expectedBody: ErrorResponse{
+				Error: "Invalid request: 'replicas_per_master' must be positive",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
 			name:    "same replicas",
 			request: `{"replicas": 0}`,
 			expectedBody: ClusterReplicasResponse{
 				Replicas: 0,
+				ReplicasPerMaster: 0,
 			},
 			expectedStatusCode: http.StatusAccepted,
 		},
@@ -123,8 +133,27 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			request: `{"replicas": 3}`,
 			expectedBody: ClusterReplicasResponse{
 				Replicas: 3,
+				ReplicasPerMaster: 0,
 			},
 			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:    "good request with replicas per master",
+			request: `{"replicas": 3, "replicas_per_master": 2}`,
+			expectedBody: ClusterReplicasResponse{
+				Replicas: 3,
+				ReplicasPerMaster: 2,
+			},
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:    "same replicas and replicas per master",
+			request: `{"replicas": 3, "replicas_per_master": 2}`,
+			expectedBody: ClusterReplicasResponse{
+				Replicas: 3,
+				ReplicasPerMaster: 2,
+			},
+			expectedStatusCode: http.StatusAccepted,
 		},
 	}
 	for _, tt := range tests {
@@ -331,7 +360,7 @@ func TestResetNode(t *testing.T) {
 		{
 			name: "good request",
 			expectedBody: ErrorResponse{
-				Error: "Error reseting node: maxRetries must be greater than 0",
+				Error: "Error reseting node: error resetting cluster node 'test-1': maxRetries must be greater than 0",
 			},
 			pathValues: map[string]string{
 				"nodeIndex": "1",
@@ -360,7 +389,6 @@ func TestGetNodes(t *testing.T) {
 					{
 						Name:       "node1",
 						ID:         "1234567890",
-						Addr:       "node1",
 						IP:         "1.1.1.1",
 						Flags:      "master",
 						Slots:      []redis.RedisSlotRange{},
@@ -373,7 +401,6 @@ func TestGetNodes(t *testing.T) {
 					{
 						Name:  "test-1",
 						ID:    "0987654321",
-						Addr:  "node2",
 						IP:    "2.2.2.2",
 						Flags: "master",
 						Slots: []redis.RedisSlotRange{
@@ -389,7 +416,6 @@ func TestGetNodes(t *testing.T) {
 						LinkStatus: "",
 					},
 					{
-						Addr:  "node2",
 						Name:  "node3",
 						ID:    "0987654321",
 						IP:    "2.2.2.2",

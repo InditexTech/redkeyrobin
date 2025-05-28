@@ -45,12 +45,9 @@ func (r *RedisClusterReconciler) Start(ctx context.Context) {
 }
 
 func (r *RedisClusterReconciler) Reconcile() {
-	r.logger.Info("Reconciling cluster")
 	if err := r.doReconcile(); err != nil {
 		r.logger.Error(err, "Error reconciling cluster")
-	} else {
-		r.logger.Info("Cluster reconciled successfully")
-	}
+	} 
 }
 
 func (r *RedisClusterReconciler) doReconcile() error {
@@ -112,7 +109,7 @@ func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 
 func (r *RedisClusterReconciler) reconcileUpgradingStatus() error {
 	// Check if the cluster needs to be upgraded
-	if !r.redisCluster.CanBeUpgraded() { // r.redisCluster.IsUpgraded() ||
+	if !r.redisCluster.CanBeUpgraded() {
 		return nil
 	}
 
