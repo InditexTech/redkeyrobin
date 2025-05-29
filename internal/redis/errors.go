@@ -14,6 +14,7 @@ func (e *OperationInProgressError) Error() string {
 
 type OperationCompletedError struct {
 	Operation string
+	Reason    string
 }
 
 func (e *OperationCompletedError) Error() string {

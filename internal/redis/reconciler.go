@@ -47,7 +47,7 @@ func (r *RedisClusterReconciler) Start(ctx context.Context) {
 func (r *RedisClusterReconciler) Reconcile() {
 	if err := r.doReconcile(); err != nil {
 		r.logger.Error(err, "Error reconciling cluster")
-	} 
+	}
 }
 
 func (r *RedisClusterReconciler) doReconcile() error {
@@ -71,8 +71,7 @@ func (r *RedisClusterReconciler) doReconcile() error {
 
 func (r *RedisClusterReconciler) reconcileReadyStatus() error {
 	// Check cluster integrity
-	err := r.redisCluster.CheckIntegrity(false, true)
-	if err != nil {
+	if err := r.redisCluster.CheckIntegrity(false, true); err != nil {
 		return err
 	}
 
@@ -95,7 +94,8 @@ func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
 
 func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 	// Check if the cluster needs to be scaled down
-	if r.redisCluster.IsScaled() {
+	// If the status is Unknown, ScaleDown should be called to check if the cluster is scaled and update the status. This can happen if Robin is restarted while the cluster is being scaled down.
+	if r.redisCluster.IsScaled() && r.redisCluster.GetStatus() != Unknown {
 		return nil
 	}
 

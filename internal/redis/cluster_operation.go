@@ -56,7 +56,7 @@ func (rc *RedisCluster) doCheckIntegrity(ctx context.Context) error {
 	}
 
 	// Balance cluster if needed
-	if err := rc.balanceNodesIfNeeded(ctx, nil); err != nil {
+	if err := rc.balanceClusterIfNeeded(ctx, nil); err != nil {
 		return err
 	}
 
@@ -201,6 +201,13 @@ func (rc *RedisCluster) doResetNode(ctx context.Context) error {
 
 // launchReshardOperation launches a reshard operation between the specified nodes
 func (rc *RedisCluster) launchReshardOperation(from, to *RedisNode, slots int) (*RedisOperation, error) {
+	// Asure destination node is master
+	if !to.IsMaster() {
+		if err := rc.convertNodesToMaster(rc.ctx, []*RedisNode{to}); err != nil {
+			return nil, fmt.Errorf("error converting node '%s' to master: %v", to.Name, err)
+		}
+	}
+
 	// Get Redis client and check connection
 	redisClient, err := rc.getAndCheckRedisClient(true)
 	if err != nil {

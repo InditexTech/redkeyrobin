@@ -369,3 +369,11 @@ func (rc *RedisClient) ClusterAddSlots(slots ...int) error {
 	}
 	return nil
 }
+
+func (rc *RedisClient) ClusterFailover() error {
+	_, err := rc.client.ClusterFailover(rc.ctx).Result()
+	if err != nil {
+		return fmt.Errorf("failed to failover node: %v", err)
+	}
+	return nil
+}

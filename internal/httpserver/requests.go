@@ -46,7 +46,7 @@ func (r *RedisClusterStatusRequest) Validate() error {
 }
 
 type ClusterReplicasRequest struct {
-	Replicas int `json:"replicas"`
+	Replicas          int  `json:"replicas"`
 	ReplicasPerMaster *int `json:"replicas_per_master"`
 }
 

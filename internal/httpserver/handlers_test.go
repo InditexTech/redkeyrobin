@@ -83,7 +83,7 @@ func TestGetClusterReplicas(t *testing.T) {
 		{
 			name: "good request",
 			expectedBody: ClusterReplicasResponse{
-				Replicas: 0,
+				Replicas:          0,
 				ReplicasPerMaster: 0,
 			},
 			expectedStatusCode: http.StatusOK,
@@ -123,7 +123,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			name:    "same replicas",
 			request: `{"replicas": 0}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas: 0,
+				Replicas:          0,
 				ReplicasPerMaster: 0,
 			},
 			expectedStatusCode: http.StatusAccepted,
@@ -132,7 +132,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			name:    "good request",
 			request: `{"replicas": 3}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas: 3,
+				Replicas:          3,
 				ReplicasPerMaster: 0,
 			},
 			expectedStatusCode: http.StatusOK,
@@ -141,7 +141,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			name:    "good request with replicas per master",
 			request: `{"replicas": 3, "replicas_per_master": 2}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas: 3,
+				Replicas:          3,
 				ReplicasPerMaster: 2,
 			},
 			expectedStatusCode: http.StatusOK,
@@ -150,7 +150,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 			name:    "same replicas and replicas per master",
 			request: `{"replicas": 3, "replicas_per_master": 2}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas: 3,
+				Replicas:          3,
 				ReplicasPerMaster: 2,
 			},
 			expectedStatusCode: http.StatusAccepted,

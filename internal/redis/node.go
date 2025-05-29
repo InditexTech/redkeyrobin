@@ -195,3 +195,13 @@ func (rn *RedisNode) AddSlots(ctx context.Context, slots ...int) error {
 
 	return redisClient.ClusterAddSlots(slots...)
 }
+
+func (rn *RedisNode) Failover(ctx context.Context) error {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
+
+	return redisClient.ClusterFailover()
+}

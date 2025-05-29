@@ -76,7 +76,7 @@ func (r RedisClusterStatusResponse) GetKeys() []string {
 }
 
 type ClusterReplicasResponse struct {
-	Replicas int `json:"replicas"`
+	Replicas          int `json:"replicas"`
 	ReplicasPerMaster int `json:"replicas_per_master"`
 }
 

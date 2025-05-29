@@ -781,3 +781,49 @@ func TestClusterAddSlots(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterFailover(t *testing.T) {
+	tests := []struct {
+		name               string
+		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
+		expectedError      error
+	}{
+		{
+			name: "failed to replicate node",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "failover").SetErr(fmt.Errorf("failed failover"))
+				return client, mock
+			},
+			expectedError: fmt.Errorf("failed to failover node: failed failover"),
+		},
+		{
+			name: "success",
+			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
+				client, mock := redismock.NewClientMock()
+				mock.ExpectDo("cluster", "failover").SetVal("theawesomeid")
+				return client, mock
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := tt.getRedisClientMock()
+			rc := &RedisClient{
+				client: client,
+				ctx:    context.Background(),
+			}
+
+			err := rc.ClusterFailover()
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.Nil(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}

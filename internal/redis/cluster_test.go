@@ -94,7 +94,7 @@ var redisCluster = NewFakeRedisCluster(
 )
 
 func getIntPointer(val int) *int {
-    return &val
+	return &val
 }
 
 func TestRedisClusterGetters(t *testing.T) {
@@ -133,9 +133,13 @@ func TestRedisClusterGetters(t *testing.T) {
 	assert.Len(t, replicaNodes, 1)
 	assert.Contains(t, replicaNodes, node3)
 
-	replicasOfMaster := redisCluster.GetReplicasOfMaster(node1)
+	replicasOfMaster := redisCluster.GetReplicasOfNode(node1)
 	assert.Len(t, replicasOfMaster, 1)
 	assert.Contains(t, replicasOfMaster, node3)
+	replicasOfMaster = redisCluster.GetReplicasOfNode(node2)
+	assert.Len(t, replicasOfMaster, 0)
+	replicasOfMaster = redisCluster.GetReplicasOfNode(node3)
+	assert.Len(t, replicasOfMaster, 0)
 }
 
 func TestRedisClusterGetNodeFromID(t *testing.T) {
@@ -180,19 +184,23 @@ func TestRedisClusterAskers(t *testing.T) {
 	assert.False(t, redisCluster.IsResettingNode(*node1))
 	assert.False(t, redisCluster.IsResetting())
 
-	assert.True(t, redisCluster.IsScaled())
-	assert.True(t, redisCluster.IsUpgraded())
+	assert.False(t, redisCluster.IsScaled())
+	assert.False(t, redisCluster.IsUpgraded())
 	assert.False(t, redisCluster.CanBeUpgraded())
 
 	assert.False(t, redisCluster.HasBeenRebalanced())
 	assert.False(t, redisCluster.HasMissingSlots())
-	assert.True(t, redisCluster.HasDesiredReplicas())
+	assert.False(t, redisCluster.HasDesiredReplicas())
 
 	assert.True(t, redisCluster.HasBeenResharded(*node1, *node2))
 	assert.False(t, redisCluster.HasBeenResharded(*node1, *node3))
 
 	assert.True(t, redisCluster.HasNode("test-0"))
 	assert.False(t, redisCluster.HasNode("notfound"))
+
+	assert.True(t, redisCluster.NodeHasReplicas(node1))
+	assert.False(t, redisCluster.NodeHasReplicas(node2))
+	assert.False(t, redisCluster.NodeHasReplicas(node3))
 
 	assert.False(t, redisCluster.needsUpscale())
 	assert.False(t, redisCluster.needsDownscale())
@@ -616,7 +624,22 @@ func TestRedisClusterConvertNodesToReplica(t *testing.T) {
 	}
 }
 
-func TestRedisClusterPromoteNodesToMaster(t *testing.T) {
+func TestRedisClusterPromoteReplicasOfNode(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{
+			name: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+		})
+	}
+}
+
+func TestRedisClusterConvertNodesToMaster(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -702,10 +725,10 @@ func TestRedisClusterInit(t *testing.T) {
 
 func TestRedisClusterSetReplicas(t *testing.T) {
 	tests := []struct {
-		name          string
-		replicas      int
+		name              string
+		replicas          int
 		replicasPerMaster *int
-		expectedError error
+		expectedError     error
 	}{
 		{
 			name:          "same replicas",
@@ -713,10 +736,10 @@ func TestRedisClusterSetReplicas(t *testing.T) {
 			expectedError: &OperationCompletedError{Operation: "SetReplicas"},
 		},
 		{
-			name:          "same replicas per master",
-			replicas:      3,
+			name:              "same replicas per master",
+			replicas:          3,
 			replicasPerMaster: getIntPointer(0),
-			expectedError: &OperationCompletedError{Operation: "SetReplicas"},
+			expectedError:     &OperationCompletedError{Operation: "SetReplicas"},
 		},
 		{
 			name:          "less replicas",
@@ -724,10 +747,10 @@ func TestRedisClusterSetReplicas(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:          "more replicas per master",
-			replicas:      2,
+			name:              "more replicas per master",
+			replicas:          2,
 			replicasPerMaster: getIntPointer(1),
-			expectedError: nil,
+			expectedError:     nil,
 		},
 		{
 			name:          "more replicas",
@@ -735,16 +758,16 @@ func TestRedisClusterSetReplicas(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:          "less replicas per master",
-			replicas:      4,
+			name:              "less replicas per master",
+			replicas:          4,
 			replicasPerMaster: getIntPointer(0),
-			expectedError: nil,
+			expectedError:     nil,
 		},
 		{
-			name:          "both replicas and replicas per master",
-			replicas:      3,
+			name:              "both replicas and replicas per master",
+			replicas:          3,
 			replicasPerMaster: getIntPointer(1),
-			expectedError: nil,
+			expectedError:     nil,
 		},
 	}
 	for _, tt := range tests {
@@ -873,20 +896,52 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 			expectedError: &OperationInProgressError{Operation: "Resharding"},
 		},
 		{
-			name: "moved",
+			name: "origin has no slots",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []*RedisOperation{
-					{
-						Name:     Rebalancing,
-						Status:   "Finished",
-						NodeFrom: node1,
-						NodeTo:   node3,
-					},
-				}
+				redisCluster.operations[Resharding] = []*RedisOperation{}
+				node1.Slots = []RedisSlotRange{}
 			},
 			from:          node1,
 			to:            node3,
-			expectedError: &OperationCompletedError{Operation: "Resharding"},
+			expectedError: &OperationCompletedError{Operation: "Resharding", Reason: "Origin node has no slots"},
+		},
+		{
+			name: "node is a replica",
+			prepareTest: func() {
+				redisCluster.operations[Resharding] = []*RedisOperation{}
+			},
+			from:          node3,
+			to:            node1,
+			expectedError: &OperationCompletedError{Operation: "Resharding", Reason: "Origin node is a replica"},
+		},
+		{
+			name: "node has replicas",
+			prepareTest: func() {
+				redisCluster.operations[Resharding] = []*RedisOperation{}
+				node1.Slots = []RedisSlotRange{
+					{
+						Start: 1,
+						End:   5461,
+					},
+				}
+				node1.ID = "1234567890"
+				node1.Flags = "master"
+				node3.MasterID = "1234567890"
+				node3.Flags = "slave"
+
+				redisCluster.nodes = map[string]*RedisNode{
+					"test-0": node1,
+					"test-1": node2,
+					"test-2": node3,
+				}
+				node1.MaxRetries = 1
+				node1.Backoff = time.Microsecond * 10
+				node3.MaxRetries = 1
+				node3.Backoff = time.Microsecond * 10
+			},
+			from:          node1,
+			to:            node3,
+			expectedError: fmt.Errorf("error promoting replica of node 'test-0': failed to connect after 1 retries"),
 		},
 		{
 			name: "bad redis client",
