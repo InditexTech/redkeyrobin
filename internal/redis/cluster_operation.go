@@ -201,6 +201,11 @@ func (rc *RedisCluster) doResetNode(ctx context.Context) error {
 
 // launchReshardOperation launches a reshard operation between the specified nodes
 func (rc *RedisCluster) launchReshardOperation(from, to *RedisNode, slots int) (*RedisOperation, error) {
+	// Assure all nodes are up (redis-cli needs all nodes to be up)
+	if err := rc.ensureNodesAreUp(rc.ctx); err != nil {
+		return nil, fmt.Errorf("error ensuring nodes are up: %v", err)
+	}
+
 	// Asure destination node is master
 	if !to.IsMaster() {
 		if err := rc.convertNodesToMaster(rc.ctx, []*RedisNode{to}); err != nil {
@@ -250,6 +255,11 @@ func (rc *RedisCluster) waitForReshardToFinish(operation *RedisOperation) error 
 
 // launchRebalanceOperation launches a rebalance operation with the specified weights
 func (rc *RedisCluster) launchRebalanceOperation(weights map[string]int) (*RedisOperation, error) {
+	// Assure all nodes are up (redis-cli needs all nodes to be up)
+	if err := rc.ensureNodesAreUp(rc.ctx); err != nil {
+		return nil, fmt.Errorf("error ensuring nodes are up: %v", err)
+	}
+
 	// Get Redis client and check connection
 	redisClient, err := rc.getAndCheckRedisClient(true)
 	if err != nil {
@@ -288,6 +298,11 @@ func (rc *RedisCluster) waitForRebalanceToFinish(operation *RedisOperation) erro
 
 // launchFixOperation launches a fix operation
 func (rc *RedisCluster) launchFixOperation() (*RedisOperation, error) {
+	// Assure all nodes are up (redis-cli needs all nodes to be up)
+	if err := rc.ensureNodesAreUp(rc.ctx); err != nil {
+		return nil, fmt.Errorf("error ensuring nodes are up: %v", err)
+	}
+
 	// Get Redis client and check connection
 	redisClient, err := rc.getAndCheckRedisClient(true)
 	if err != nil {

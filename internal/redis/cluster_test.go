@@ -853,7 +853,7 @@ func TestRedisClusterRebalance(t *testing.T) {
 				redisCluster.operations[Rebalancing] = []*RedisOperation{}
 			},
 			force:         true,
-			expectedError: fmt.Errorf("error getting and checking Redis client: failed to connect after 1 retries"),
+			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
 		},
 	}
 	for _, tt := range tests {
@@ -950,7 +950,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 			},
 			from:          node2,
 			to:            node3,
-			expectedError: fmt.Errorf("error getting and checking Redis client: failed to connect after 1 retries"),
+			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
 		},
 	}
 	for _, tt := range tests {
@@ -1023,7 +1023,7 @@ func TestRedisClusterFix(t *testing.T) {
 				}
 			},
 			force:         true,
-			expectedError: fmt.Errorf("error getting and checking Redis client: failed to connect after 1 retries"),
+			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
 		},
 	}
 	for _, tt := range tests {

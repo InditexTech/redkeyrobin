@@ -161,25 +161,25 @@ func (y *YAMLConfigLoader) LoadAPIConfig(path string) (*APIConfig, error) {
 
 // GetConfiguration returns the singleton Configuration loaded from the default file.
 // The configuration is loaded only once using sync.Once.
-func GetConfiguration() (*Configuration, error) {
+func GetConfiguration(filePath string) (*Configuration, error) {
 	var config *Configuration
 	var err error
 	var once sync.Once
 	once.Do(func() {
 		loader := &YAMLConfigLoader{}
-		config, err = loader.LoadConfig("/opt/conf/configmap/application-configmap.yml")
+		config, err = loader.LoadConfig(filePath)
 	})
 	return config, err
 }
 
 // GetAPIConfiguration returns the singleton APIConfiguration loaded from the default file.
-func GetAPIConfiguration() (*APIConfig, error) {
+func GetAPIConfiguration(filePath string) (*APIConfig, error) {
 	var config *APIConfig
 	var err error
 	var once sync.Once
 	once.Do(func() {
 		loader := &YAMLConfigLoader{}
-		config, err = loader.LoadAPIConfig("/opt/conf/api/openapi-rest.yml")
+		config, err = loader.LoadAPIConfig(filePath)
 	})
 	return config, err
 }

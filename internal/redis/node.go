@@ -81,6 +81,15 @@ func (rn *RedisNode) getClient(ctx context.Context) (*RedisClient, error) {
 	return redisClient, nil
 }
 
+func (rn *RedisNode) CheckConnection(ctx context.Context) error {
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer redisClient.Close()
+	return nil
+}
+
 func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	if nodeInfo.IP != "" {
 		rn.IP = nodeInfo.IP

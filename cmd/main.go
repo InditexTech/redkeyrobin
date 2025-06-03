@@ -19,24 +19,31 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-const configmapFilePath = "/opt/conf/configmap/application-configmap.yml"
+const (
+	defaultConfigmapFilePath = "/opt/conf/configmap/application-configmap.yml"
+	defaultApiFilePath       = "/opt/conf/api/openapi-rest.yml"
+)
 
 func main() {
-	var metricsAddr string
+	var metricsAddr, configmapFilePath, apiConfigFilePath string
+	var disableMetrics bool
 
 	// Parse CLI flags (e.g., --metrics-bind-address :8080).
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&configmapFilePath, "configmap", defaultConfigmapFilePath, "The path to the ConfigMap file.")
+	flag.StringVar(&apiConfigFilePath, "api-config", defaultApiFilePath, "The path to the API Config file.")
+	flag.BoolVar(&disableMetrics, "disable-metrics", false, "Disable the metrics server.")
 	flag.Parse()
 
 	logger := util.InitLogger()
 
 	// Load configuration
-	conf, err := config.GetConfiguration()
+	conf, err := config.GetConfiguration(configmapFilePath)
 	if err != nil {
 		logger.Error(err, "Unable to read configuration")
 		os.Exit(1)
 	}
-	apiConf, err := config.GetAPIConfiguration()
+	apiConf, err := config.GetAPIConfiguration(apiConfigFilePath)
 	if err != nil {
 		logger.Error(err, "Unable to read API configuration")
 		os.Exit(1)
@@ -76,14 +83,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create and launch the RedisPollMetrics instance to gather metrics in the background.
-	metricsManager := metrics.NewMetricsManager(conf.Metadata)
-	redisPollMetrics, err := metrics.NewRedisPollMetrics(redisCluster, metricsManager)
-	if err != nil {
-		logger.Error(err, "Unable to create Redis metrics poller")
-		os.Exit(1)
+	if !disableMetrics {
+		// Create and launch the RedisPollMetrics instance to gather metrics in the background.
+		metricsManager := metrics.NewMetricsManager(conf.Metadata)
+		redisPollMetrics, err := metrics.NewRedisPollMetrics(redisCluster, metricsManager)
+		if err != nil {
+			logger.Error(err, "Unable to create Redis metrics poller")
+			os.Exit(1)
+		}
+		go redisPollMetrics.Start(ctx)
 	}
-	go redisPollMetrics.Start(ctx)
 
 	// Create and launch the redis cluster reconciler
 	redisClusterReconciler, err := redis.NewRedisClusterReconciler(redisCluster, channel)

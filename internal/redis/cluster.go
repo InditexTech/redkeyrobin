@@ -524,7 +524,7 @@ func (rc *RedisCluster) ResetNode(node *RedisNode) error {
 
 	// Check if the cluster node is already being resetted
 	if rc.IsResettingNode(*node) {
-		rc.logger.Info("Cluster node is already resetted", "node", node.Name)
+		rc.logger.Info("Cluster node is already being resetted", "node", node.Name)
 		return &OperationInProgressError{Operation: "Resetting"}
 	}
 
@@ -628,9 +628,15 @@ func (rc *RedisCluster) IsUpgraded() bool {
 	return rc.HasDesiredReplicas() && !rc.HasMissingSlots()
 }
 
-// CanBeUpgraded returns true if the cluster can be upgraded. That is, if the cluster is not rebalancing, resharding, fixing, checking integrity, scaling up, scaling down or resetting
+// CanBeUpgraded returns true if there is not a conflicting operation with a cluster upgrade. That is, if the cluster is not rebalancing, resharding, fixing,
+// checking integrity, scaling up, scaling down or resetting
 func (rc *RedisCluster) CanBeUpgraded() bool {
 	return !rc.IsRebalancing() && !rc.IsResharding() && !rc.IsFixing() && !rc.IsCheckingIntegrity() && !rc.IsScalingUp() && !rc.IsScalingDown() && !rc.IsResetting()
+}
+
+// CanBeChecked returns true if there is not a conflicting operationr with a check cluster integrity. That is, if the cluster is not resharding, checking integrity or resetting
+func (rc *RedisCluster) CanBeChecked() bool {
+	return !rc.IsResharding() && !rc.IsCheckingIntegrity() && !rc.IsResetting()
 }
 
 // HasMissingSlots returns true if the cluster has missing slots
@@ -1249,7 +1255,7 @@ func (rc *RedisCluster) ensureReplicaSpread(ctx context.Context) error {
 
 	// Replicas that need to be converted to masters
 	for i := 0; i < len(masterNeedsReplicas); i++ {
-		rc.logger.Info("Converting node to replica", "replica", replicaNeedsMove[i].Name, "master", masterNeedsReplicas[i].Name)
+		rc.logger.Info("Converting node to replica", "node", replicaNeedsMove[i].Name, "master", masterNeedsReplicas[i].Name)
 
 		if err := replicaNeedsMove[i].ReplicateNode(ctx, *masterNeedsReplicas[i]); err != nil {
 			return err
@@ -1351,6 +1357,16 @@ func (rc *RedisCluster) promoteReplicaOfNode(ctx context.Context, node *RedisNod
 		return err
 	}
 
+	return nil
+}
+
+// ensureNodesAreUp checks if the nodes received are up and running
+func (rc *RedisCluster) ensureNodesAreUp(ctx context.Context) error {
+	for _, node := range rc.GetNodes() {
+		if err := node.CheckConnection(ctx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
