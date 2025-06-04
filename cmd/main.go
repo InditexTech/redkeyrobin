@@ -16,6 +16,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/httpserver"
 	"github.com/inditextech/redisrobin/internal/metrics"
 	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/reconciler"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -95,7 +96,7 @@ func main() {
 	}
 
 	// Create and launch the redis cluster reconciler
-	redisClusterReconciler, err := redis.NewRedisClusterReconciler(redisCluster, channel)
+	redisClusterReconciler, err := reconciler.NewRedisClusterReconciler(redisCluster, channel)
 	if err != nil {
 		logger.Error(err, "Unable to create Redis reconciler")
 		os.Exit(1)

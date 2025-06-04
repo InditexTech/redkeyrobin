@@ -97,13 +97,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClusterReplicasResponse'
         '201':
-          description: Cluster replicas has been updated and operation has been launched
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ClusterReplicasResponse'
-        '202':
-          description: Cluster replicas has been updated and operation is already in progress
+          description: Cluster replicas has been updated
           content:
             application/json:
               schema:
