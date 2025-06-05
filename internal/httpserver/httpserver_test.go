@@ -107,8 +107,8 @@ func TestInit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := NewServer(&util.Options{}, redis.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})))
-			err := server.Init()
+			server := NewServer(redis.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})))
+			err := server.Init(&util.Options{})
 			assert.Equal(t, tt.err, err)
 		})
 	}

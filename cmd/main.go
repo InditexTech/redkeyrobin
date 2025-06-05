@@ -42,8 +42,8 @@ func main() {
 	}
 
 	// Build the HTTP server with the provided APIConfig.
-	server := httpserver.NewServer(opts, redisCluster)
-	if err := server.Init(); err != nil {
+	server := httpserver.NewServer(redisCluster)
+	if err := server.Init(opts); err != nil {
 		logger.Error(err, "Unable to initialize HTTP server")
 		os.Exit(1)
 	}
@@ -68,7 +68,7 @@ func main() {
 	go redisClusterReconciler.Start(ctx)
 
 	// Start the server (blocking call until shutdown).
-	if err := server.Start(); err != nil {
+	if err := server.Start(ctx); err != nil {
 		logger.Error(err, "Unable to run HTTP server")
 		os.Exit(1)
 	}

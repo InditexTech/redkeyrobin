@@ -5,8 +5,11 @@
 package httpserver
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
+	"fmt"
 
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
@@ -19,47 +22,73 @@ import (
 type Server struct {
 	logger       logr.Logger
 	redisCluster *redis.RedisCluster
-	mux 		*http.ServeMux
-	options 	*util.Options
+	server 		 *http.Server
 }
 
-func NewServer(options *util.Options, redisCluster *redis.RedisCluster) *Server {
+func NewServer(redisCluster *redis.RedisCluster) *Server {
 	return &Server{
 		logger:       util.GetLogger("http-server"),
 		redisCluster: redisCluster,
-		mux: http.NewServeMux(),
-		options: options,
 	}
 }
 
 // Init initializes the Server by attaching the handler to the metrics server.
-func (s *Server) Init() error {
+func (s *Server) Init(opts *util.Options) error {
+	mux := http.NewServeMux()
+
 	// Metrics endpoint
-	if !s.options.DisableMetrics {
-		s.mux.Handle("GET /metrics", promhttp.Handler())
+	if !opts.DisableMetrics {
+		mux.Handle("GET /metrics", promhttp.Handler())
 	}
 
 	// Rediscluster endpoints
-	s.mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
-	s.mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
-	s.mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
-	s.mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
+	mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
+	mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
+	mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
+	mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
 
 	// Cluster endpoints
-	s.mux.HandleFunc("GET /v1/cluster/status", s.GetClusterStatus)
-	s.mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
-	s.mux.HandleFunc("GET /v1/cluster/check", s.CheckCluster)
-	s.mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
-	s.mux.HandleFunc("PUT /v1/cluster/reset/{nodeIndex}", s.ResetNode)
-	s.mux.HandleFunc("GET /v1/cluster/nodes", s.GetNodes)
+	mux.HandleFunc("GET /v1/cluster/status", s.GetClusterStatus)
+	mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
+	mux.HandleFunc("GET /v1/cluster/check", s.CheckCluster)
+	mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
+	mux.HandleFunc("PUT /v1/cluster/reset/{nodeIndex}", s.ResetNode)
+	mux.HandleFunc("GET /v1/cluster/nodes", s.GetNodes)
+
+	// Create the server
+	s.server = &http.Server{
+		Addr: opts.Address,
+		Handler: mux,
+	}
 
 	return nil
 }
 
 // Start starts the Server.
-func (s *Server) Start() error {
+func (s *Server) Start(ctx context.Context) error {
+	if s.server == nil {
+		return fmt.Errorf("server not initialized. You must call Init() first")
+	}
+
+	// Handle context cancellation
+	go func() {
+        for {
+			select {
+			case <-ctx.Done():
+				s.logger.Info("Context cancelled, stopping HTTP server")
+				time.Sleep(1 * time.Second)
+
+				if err := s.server.Shutdown(ctx); err != nil {
+					s.logger.Info("HTTP shutdown error: %v", err)
+				}
+				return
+			case <-time.After(5 * time.Second):
+			}
+		}
+    }()
+
 	// Start the HTTP server
-	if err := http.ListenAndServe(s.options.Address, s.mux); !errors.Is(err, http.ErrServerClosed) {
+	if err := s.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
