@@ -917,6 +917,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "node has replicas",
 			prepareTest: func() {
+				redisCluster.conf.Redis.Cluster.MaxRetries = 1
 				redisCluster.operations[Resharding] = []*RedisOperation{}
 				node1.Slots = []RedisSlotRange{
 					{

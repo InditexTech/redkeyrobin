@@ -126,7 +126,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 				Replicas:          0,
 				ReplicasPerMaster: 0,
 			},
-			expectedStatusCode: http.StatusAccepted,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:    "good request",
@@ -135,7 +135,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 				Replicas:          3,
 				ReplicasPerMaster: 0,
 			},
-			expectedStatusCode: http.StatusOK,
+			expectedStatusCode: http.StatusCreated,
 		},
 		{
 			name:    "good request with replicas per master",
@@ -144,7 +144,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 				Replicas:          3,
 				ReplicasPerMaster: 2,
 			},
-			expectedStatusCode: http.StatusOK,
+			expectedStatusCode: http.StatusCreated,
 		},
 		{
 			name:    "same replicas and replicas per master",
@@ -153,7 +153,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 				Replicas:          3,
 				ReplicasPerMaster: 2,
 			},
-			expectedStatusCode: http.StatusAccepted,
+			expectedStatusCode: http.StatusOK,
 		},
 	}
 	for _, tt := range tests {

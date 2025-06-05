@@ -5,115 +5,63 @@
 package httpserver
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
-	"strings"
 
-	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 
 	"github.com/go-logr/logr"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
 	logger       logr.Logger
 	redisCluster *redis.RedisCluster
-	config       config.APIConfig
+	mux 		*http.ServeMux
+	options 	*util.Options
 }
 
-func NewServer(redisCluster *redis.RedisCluster, config config.APIConfig) *Server {
+func NewServer(options *util.Options, redisCluster *redis.RedisCluster) *Server {
 	return &Server{
 		logger:       util.GetLogger("http-server"),
 		redisCluster: redisCluster,
-		config:       config,
+		mux: http.NewServeMux(),
+		options: options,
 	}
 }
 
-// Init initializes the Server using the Config in the provided Manager.
-func (s *Server) Init(mgr ctrl.Manager) error {
-	// Set up the HTTP server with the provided Config
-	for path, pathConfiguration := range s.config.Paths {
-		// Check the path configuration and delete it if it is invalid
-		if err := s.checkPathConfiguration(pathConfiguration); err != nil {
-			s.logger.Error(err, "Error checking path configuration", "path", path)
-			delete(s.config.Paths, path)
-			continue
-		}
-
-		// Attach the handler to the metrics server
-		if err := mgr.AddMetricsServerExtraHandler(path, s); err != nil {
-			return fmt.Errorf("unable to attach %s handler: %v", path, err)
-		}
+// Init initializes the Server by attaching the handler to the metrics server.
+func (s *Server) Init() error {
+	// Metrics endpoint
+	if !s.options.DisableMetrics {
+		s.mux.Handle("GET /metrics", promhttp.Handler())
 	}
+
+	// Rediscluster endpoints
+	s.mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
+	s.mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
+	s.mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
+	s.mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
+
+	// Cluster endpoints
+	s.mux.HandleFunc("GET /v1/cluster/status", s.GetClusterStatus)
+	s.mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
+	s.mux.HandleFunc("GET /v1/cluster/check", s.CheckCluster)
+	s.mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
+	s.mux.HandleFunc("PUT /v1/cluster/reset/{nodeIndex}", s.ResetNode)
+	s.mux.HandleFunc("GET /v1/cluster/nodes", s.GetNodes)
+
 	return nil
 }
 
-// ServeHTTP routes incoming HTTP requests to the appropriate handler methods.
-// It implements the http.Handler interface.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Received request", "path", r.URL.Path, "method", r.Method)
-
-	// Check if the path is configured
-	pathConfiguration, err := s.getPathConfiguration(r)
-	if err != nil {
-		s.sendError(w, http.StatusNotFound, err.Error())
-		return
+// Start starts the Server.
+func (s *Server) Start() error {
+	// Start the HTTP server
+	if err := http.ListenAndServe(s.options.Address, s.mux); !errors.Is(err, http.ErrServerClosed) {
+		return err
 	}
-
-	// Check if the method is allowed
-	methodConfiguration, found := pathConfiguration[strings.ToLower(r.Method)].(map[string]interface{})
-	if !found {
-		s.sendError(w, http.StatusMethodNotAllowed, fmt.Sprintf("Method %s not allowed in path %s", r.Method, r.URL.Path))
-		return
-	}
-
-	// Invoke the method that handles the request
-	util.Invoke(s, methodConfiguration["operationId"].(string), w, r)
-}
-
-func (s *Server) getPathConfiguration(r *http.Request) (map[string]interface{}, error) {
-	// Check if we have the exact path in the configuration
-	if pathConfiguration, found := s.config.Paths[r.URL.Path]; found {
-		return pathConfiguration, nil
-	}
-
-	// Check if we have a pattern that matches the path in the configuration
-	if pathConfiguration, found := s.config.Paths[r.Pattern]; found {
-		return pathConfiguration, nil
-	}
-
-	// Return an error if the path is not found
-	return nil, fmt.Errorf("Unknown path %s", r.URL.Path)
-}
-
-func (s *Server) checkPathConfiguration(pathConfiguration map[string]interface{}) error {
-	// Path configuration is not empty
-	if len(pathConfiguration) == 0 {
-		return fmt.Errorf("no methods configured for path")
-	}
-
-	for method, methodConfiguration := range pathConfiguration {
-		// Method configuration is a valid map
-		methodConfigurationMap, ok := methodConfiguration.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("invalid method configuration for method %s", method)
-		}
-
-		// Method configuration has an operationId and it is an string
-		operationID, ok := methodConfigurationMap["operationId"].(string)
-		if !ok {
-			return fmt.Errorf("invalid operationId for method %s", method)
-		}
-
-		// Check if the method exists and is valid
-		if err := util.MethodIsValid(s, operationID); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

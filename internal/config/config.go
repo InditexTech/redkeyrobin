@@ -107,18 +107,6 @@ func (cfg *Configuration) validate() []string {
 	return missing
 }
 
-type APIConfig struct {
-	Paths map[string]map[string]interface{} `yaml:"paths"`
-}
-
-func (cfg *APIConfig) validate() []string {
-	var missing []string
-	if len(cfg.Paths) == 0 {
-		missing = append(missing, "paths")
-	}
-	return missing
-}
-
 // ConfigLoader defines the interface for loading a configuration.
 type ConfigLoader interface {
 	LoadConfig(path string) (*Configuration, error)
@@ -143,22 +131,6 @@ func (y *YAMLConfigLoader) LoadConfig(path string) (*Configuration, error) {
 	return &cfg, nil
 }
 
-// LoadAPIConfig reads and decodes the YAML configuration from the specified file path.
-func (y *YAMLConfigLoader) LoadAPIConfig(path string) (*APIConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read configuration file %s: %w", path, err)
-	}
-	var cfg APIConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal configuration file %s: %w", path, err)
-	}
-	if missing := cfg.validate(); len(missing) > 0 {
-		return nil, fmt.Errorf("missing required configuration fields: %v", missing)
-	}
-	return &cfg, nil
-}
-
 // GetConfiguration returns the singleton Configuration loaded from the default file.
 // The configuration is loaded only once using sync.Once.
 func GetConfiguration(filePath string) (*Configuration, error) {
@@ -168,18 +140,6 @@ func GetConfiguration(filePath string) (*Configuration, error) {
 	once.Do(func() {
 		loader := &YAMLConfigLoader{}
 		config, err = loader.LoadConfig(filePath)
-	})
-	return config, err
-}
-
-// GetAPIConfiguration returns the singleton APIConfiguration loaded from the default file.
-func GetAPIConfiguration(filePath string) (*APIConfig, error) {
-	var config *APIConfig
-	var err error
-	var once sync.Once
-	once.Do(func() {
-		loader := &YAMLConfigLoader{}
-		config, err = loader.LoadAPIConfig(filePath)
 	})
 	return config, err
 }

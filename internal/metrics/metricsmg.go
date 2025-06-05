@@ -12,7 +12,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 	"github.com/prometheus/client_golang/prometheus"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // Label keys for metrics.
@@ -69,14 +69,14 @@ func NewMetricsManager(extraLabels map[string]string) *MetricsManager {
 
 	m := &MetricsManager{
 		logger: util.GetLogger("manager"),
-		clusterInfo: prometheus.NewGaugeVec(
+		clusterInfo: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "redis_cluster_metrics",
 				Help: "Redis cluster info metrics",
 			},
 			clusterInfoLabelKeys,
 		),
-		nodeInfo: prometheus.NewGaugeVec(
+		nodeInfo: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "redis_nodes_metrics",
 				Help: "Redis nodes metrics",
@@ -85,9 +85,6 @@ func NewMetricsManager(extraLabels map[string]string) *MetricsManager {
 		),
 		dynamicMetrics: make(map[string]*prometheus.GaugeVec),
 	}
-
-	metrics.Registry.MustRegister(m.clusterInfo)
-	metrics.Registry.MustRegister(m.nodeInfo)
 
 	return m
 }
@@ -127,17 +124,13 @@ func (m *MetricsManager) UpdateDynamicMetric(
 	// Check if the dynamic metric is already registered.
 	gaugeVec, exists := m.dynamicMetrics[name]
 	if !exists {
-		gaugeVec = prometheus.NewGaugeVec(
+		gaugeVec = promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "redis_" + name,
 				Help: fmt.Sprintf("Redis dynamic metric: %s", name),
 			},
 			sortedLabelKeys,
 		)
-		if err := metrics.Registry.Register(gaugeVec); err != nil {
-			m.logger.Error(err, "Error registering dynamic metric", "name", name)
-			return
-		}
 		m.dynamicMetrics[name] = gaugeVec
 	}
 

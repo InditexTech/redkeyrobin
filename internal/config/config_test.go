@@ -56,11 +56,3 @@ func TestConfigurationValidate(t *testing.T) {
 	assert.Contains(t, missing, "redis.cluster.healing_time_seconds")
 	assert.Contains(t, missing, "redis.metrics.interval_seconds")
 }
-
-func TestAPIConfigurationValidate(t *testing.T) {
-	cfg := &APIConfig{}
-	missing := cfg.validate()
-
-	assert.Len(t, missing, 1)
-	assert.Contains(t, missing, "paths")
-}
