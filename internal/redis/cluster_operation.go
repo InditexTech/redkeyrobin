@@ -32,7 +32,7 @@ func (rc *RedisCluster) doCheckIntegrity(ctx context.Context) error {
 
 	// Forget outdated nodes
 	if err := rc.removeOutdatedNodes(ctx); err != nil {
-		rc.logger.Error(err, "Error removing outdated nodes")
+		rc.logger.Error("Error removing outdated nodes", "error", err)
 	}
 
 	// Meet nodes if needed

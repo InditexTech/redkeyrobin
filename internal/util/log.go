@@ -5,24 +5,24 @@
 package util
 
 import (
-	"flag"
-
-	"github.com/go-logr/logr"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"fmt"
+	"log/slog"
+	"os"
 )
 
-var rootLogger logr.Logger
+var rootLogger *slog.Logger
 
-func InitLogger() logr.Logger {
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
+func InitLogger() *slog.Logger {
+	handler := slog.NewTextHandler(os.Stdout, nil)
 
-	rootLogger = zap.New(zap.UseFlagOptions(&opts)).WithName("robin")
+	rootLogger = slog.New(handler)
 	return rootLogger
 }
 
-func GetLogger(name string) logr.Logger {
-	return rootLogger.WithName(name)
+func GetLogger(name string) *slog.Logger {
+	if rootLogger == nil {
+		rootLogger = InitLogger()
+	}
+
+	return rootLogger.With("component", fmt.Sprintf("robin.%s", name))
 }

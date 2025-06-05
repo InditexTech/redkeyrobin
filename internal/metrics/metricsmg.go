@@ -6,9 +6,9 @@ package metrics
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 
-	"github.com/go-logr/logr"
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 	"github.com/prometheus/client_golang/prometheus"
@@ -53,7 +53,7 @@ var (
 
 // MetricsManager encapsulates Prometheus metrics for Redis.
 type MetricsManager struct {
-	logger         logr.Logger
+	logger         *slog.Logger
 	clusterInfo    *prometheus.GaugeVec
 	nodeInfo       *prometheus.GaugeVec
 	dynamicMetrics map[string]*prometheus.GaugeVec

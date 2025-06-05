@@ -58,6 +58,7 @@ var node3 = &redis.RedisNode{
 }
 
 var server = Server{
+	logger: util.GetLogger("http-server"),
 	redisCluster: redis.NewFakeRedisCluster(
 		context.TODO(),
 		&config.Configuration{

@@ -25,7 +25,7 @@ func main() {
 	// Load configuration
 	conf, err := config.GetConfiguration(opts.ConfigMapPath)
 	if err != nil {
-		logger.Error(err, "Unable to read configuration")
+		logger.Error("Unable to read configuration", "error", err)
 		os.Exit(1)
 	}
 	ctx := util.SetupSignalHandler()
@@ -37,14 +37,14 @@ func main() {
 	// Initialize the Redis cluster.
 	redisCluster := redis.NewRedisCluster(ctx, conf, channel)
 	if err := redisCluster.Init(); err != nil {
-		logger.Error(err, "Unable to initialize Redis Cluster")
+		logger.Error("Unable to initialize Redis Cluster", "error", err)
 		os.Exit(1)
 	}
 
 	// Build the HTTP server with the provided APIConfig.
 	server := httpserver.NewServer(redisCluster)
 	if err := server.Init(opts); err != nil {
-		logger.Error(err, "Unable to initialize HTTP server")
+		logger.Error("Unable to initialize HTTP server", "error", err)
 		os.Exit(1)
 	}
 
@@ -53,7 +53,7 @@ func main() {
 		metricsManager := metrics.NewMetricsManager(conf.Metadata)
 		redisPollMetrics, err := metrics.NewRedisPollMetrics(redisCluster, metricsManager)
 		if err != nil {
-			logger.Error(err, "Unable to create Redis metrics poller")
+			logger.Error("Unable to create Redis metrics poller", "error", err)
 			os.Exit(1)
 		}
 		go redisPollMetrics.Start(ctx)
@@ -62,14 +62,14 @@ func main() {
 	// Create and launch the redis cluster reconciler
 	redisClusterReconciler, err := reconciler.NewRedisClusterReconciler(redisCluster, channel)
 	if err != nil {
-		logger.Error(err, "Unable to create Redis reconciler")
+		logger.Error("Unable to create Redis reconciler", "error", err)
 		os.Exit(1)
 	}
 	go redisClusterReconciler.Start(ctx)
 
 	// Start the server (blocking call until shutdown).
 	if err := server.Start(ctx); err != nil {
-		logger.Error(err, "Unable to run HTTP server")
+		logger.Error("Unable to run HTTP server", "error", err)
 		os.Exit(1)
 	}
 }

@@ -7,6 +7,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"slices"
@@ -14,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 )
@@ -27,7 +27,7 @@ var metricNameReplacer = strings.NewReplacer("-", "_")
 
 // RedisPollMetrics is responsible for orchestrating the continuous polling of Redis
 type RedisPollMetrics struct {
-	logger         logr.Logger
+	logger         *slog.Logger
 	redisCluster   *redis.RedisCluster
 	metricsManager *MetricsManager
 	clusterMgr     *ClusterManager
@@ -59,7 +59,7 @@ func (p *RedisPollMetrics) Start(ctx context.Context) {
 		case <-time.After(timeout):
 			err := p.pollRedisMetrics(ctx)
 			if err != nil {
-				p.logger.Error(err, "Error polling Redis metrics")
+				p.logger.Error("Error polling Redis metrics", "error", err)
 			}
 		}
 	}
@@ -175,7 +175,7 @@ func (p *RedisPollMetrics) pollClusterInfo(redisClient *redis.RedisClient) error
 func (p *RedisPollMetrics) pollRedisNodeLevelMetrics(ctx context.Context) error {
 	for _, node := range p.redisCluster.GetNodes() {
 		if err := p.pollRedisInfoAllMetrics(ctx, node.Addr, node.Name); err != nil {
-			p.logger.Error(err, "Error polling Redis metrics", "node", node.Name)
+			p.logger.Error("Error polling Redis metrics", "node", node.Name, "error", err)
 		}
 	}
 	return nil

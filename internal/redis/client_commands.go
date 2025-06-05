@@ -32,7 +32,7 @@ func (rc *RedisClient) ClusterCheck(ctx context.Context) (*ClusterCheckResult, e
 			return nil, fmt.Errorf("redis-cli command canceled or timed out: %w", ctx.Err())
 		}
 
-		rc.logger.Error(cmd.Err, "Error executing 'redis-cli --cluster check'", "output", cmd.GetCombinedOutput())
+		rc.logger.Error("Error executing 'redis-cli --cluster check'", "output", cmd.GetCombinedOutput(), "error", cmd.Err)
 	}
 
 	// Parse the CLI output (whether complete or partial) to fill a ClusterCheckResult.

@@ -13,7 +13,7 @@ import (
 
 // GetRedisClusterStatus returns the status of the Redis cluster
 func (s *Server) GetRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Getting redis cluster status")
+	s.logger.Info("Get redis cluster status")
 
 	response := RedisClusterStatusResponse{
 		Status: s.redisCluster.GetRedisClusterStatus(),
@@ -23,12 +23,12 @@ func (s *Server) GetRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
 
 // UpdateRedisClusterStatus updates the status of the Redis Cluster
 func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Updating redis cluster status")
+	s.logger.Info("Update redis cluster status")
 
 	// Parse the request body
 	request := RedisClusterStatusRequest{}
 	if err := ParseRequest(r, &request); err != nil {
-		s.logger.Info("Invalid request", "error", err)
+		s.logger.Error("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}
@@ -44,7 +44,7 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Getting redis cluster replicas")
+	s.logger.Info("Get redis cluster replicas")
 
 	response := ClusterReplicasResponse{
 		Replicas:          s.redisCluster.GetReplicas(),
@@ -54,12 +54,12 @@ func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Updating redis cluster replicas")
+	s.logger.Info("Update redis cluster replicas")
 
 	// Parse the request body
 	request := ClusterReplicasRequest{}
 	if err := ParseRequest(r, &request); err != nil {
-		s.logger.Info("Invalid request", "error", err)
+		s.logger.Error("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}
@@ -85,7 +85,7 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Getting cluster status")
+	s.logger.Info("Get cluster status")
 
 	response := ClusterStatusResponse{
 		Status: s.redisCluster.GetStatus(),
@@ -94,12 +94,12 @@ func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Moving cluster node slots")
+	s.logger.Info("Move cluster node slots")
 
 	// Parse the request body
 	request := ClusterMoveSlotsRequest{}
 	if err := ParseRequest(r, &request); err != nil {
-		s.logger.Info("Invalid request", "error", err)
+		s.logger.Error("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}
@@ -149,7 +149,7 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Checking cluster")
+	s.logger.Info("Check cluster")
 
 	// Launch the check
 	result, err := s.redisCluster.Check()
@@ -167,7 +167,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Fixing cluster")
+	s.logger.Info("Fix cluster")
 
 	// Launch the fix
 	err := s.redisCluster.CheckIntegrity(true, false)
@@ -189,7 +189,7 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Resetting node")
+	s.logger.Info("Reset node")
 
 	// Parse the request path to get the node index
 	nodeIndex := r.PathValue("nodeIndex")
@@ -223,7 +223,7 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Getting cluster nodes")
+	s.logger.Info("Get cluster nodes")
 
 	response := ClusterNodesResponse{
 		Nodes: s.redisCluster.GetNodes(),

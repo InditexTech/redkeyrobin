@@ -6,15 +6,15 @@ package reconciler
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
-	"github.com/go-logr/logr"
-	"github.com/inditextech/redisrobin/internal/util"
 	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/util"
 )
 
 type RedisClusterReconciler struct {
-	logger       logr.Logger
+	logger       *slog.Logger
 	redisCluster *redis.RedisCluster
 	channel      chan struct{}
 }
@@ -47,7 +47,7 @@ func (r *RedisClusterReconciler) Start(ctx context.Context) {
 
 func (r *RedisClusterReconciler) Reconcile() {
 	if err := r.doReconcile(); err != nil {
-		r.logger.Error(err, "Error reconciling cluster")
+		r.logger.Error("Error reconciling cluster", "error", err)
 	}
 }
 

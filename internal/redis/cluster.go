@@ -7,6 +7,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"sort"
@@ -14,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/util"
 )
@@ -48,7 +48,7 @@ const (
 // RedisCluster represents a Redis cluster
 type RedisCluster struct {
 	ctx        context.Context
-	logger     logr.Logger
+	logger     *slog.Logger
 	conf       *config.Configuration
 	status     string
 	nodes      map[string]*RedisNode
@@ -699,7 +699,7 @@ func (rc *RedisCluster) addNode(name, addr string) *RedisNode {
 
 	rc.logger.Info("Initializing node", "node", node.Name)
 	if err := node.Init(rc.ctx); err != nil {
-		rc.logger.Info("Error initializing node", "error", err, "node", node.Name)
+		rc.logger.Error("Error initializing node", "error", err, "node", node.Name)
 	} else {
 		rc.logger.Info("Node initialized successfully", "node", node.Name, "ID", node.ID, "IP", node.IP)
 	}
@@ -770,7 +770,7 @@ func (rc *RedisCluster) checkNodes() error {
 		// Check if the node exists
 		node := rc.GetNode(nodeName)
 		if node == nil {
-			rc.logger.Info("Node not found", "node", nodeName)
+			rc.logger.Error("Node not found", "node", nodeName)
 			continue
 		}
 

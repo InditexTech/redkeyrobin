@@ -7,11 +7,11 @@ package redis
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/inditextech/redisrobin/internal/util"
 	redisgo "github.com/redis/go-redis/v9"
 )
@@ -72,7 +72,7 @@ const (
 
 // RedisClient encapsulates a connection to Redis.
 type RedisClient struct {
-	logger logr.Logger
+	logger *slog.Logger
 	client *redisgo.Client
 	ctx    context.Context
 }

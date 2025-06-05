@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redismock/v9"
+	"github.com/inditextech/redisrobin/internal/util"
 	redisgo "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
@@ -237,6 +238,7 @@ fail-line
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -433,6 +435,7 @@ malformed-line
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -485,6 +488,7 @@ func TestGetMyID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -533,6 +537,7 @@ func TestClusterForgetNode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -579,6 +584,7 @@ func TestClusterMeet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -625,6 +631,7 @@ func TestClusterReplicate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -673,6 +680,7 @@ func TestClusterReset(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -719,6 +727,7 @@ func TestClusterForget(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -765,6 +774,7 @@ func TestClusterAddSlots(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}
@@ -811,6 +821,7 @@ func TestClusterFailover(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, mock := tt.getRedisClientMock()
 			rc := &RedisClient{
+				logger: util.GetLogger("redis-cluster"),
 				client: client,
 				ctx:    context.Background(),
 			}

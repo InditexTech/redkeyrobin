@@ -7,22 +7,22 @@ package httpserver
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
-	"fmt"
 
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 
-	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
-	logger       logr.Logger
+	logger       *slog.Logger
 	redisCluster *redis.RedisCluster
-	server 		 *http.Server
+	server       *http.Server
 }
 
 func NewServer(redisCluster *redis.RedisCluster) *Server {
@@ -57,7 +57,7 @@ func (s *Server) Init(opts *util.Options) error {
 
 	// Create the server
 	s.server = &http.Server{
-		Addr: opts.Address,
+		Addr:    opts.Address,
 		Handler: mux,
 	}
 
@@ -72,20 +72,20 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Handle context cancellation
 	go func() {
-        for {
+		for {
 			select {
 			case <-ctx.Done():
 				s.logger.Info("Context cancelled, stopping HTTP server")
 				time.Sleep(1 * time.Second)
 
 				if err := s.server.Shutdown(ctx); err != nil {
-					s.logger.Info("HTTP shutdown error: %v", err)
+					s.logger.Error("HTTP shutdown error: %v", "error", err)
 				}
 				return
 			case <-time.After(5 * time.Second):
 			}
 		}
-    }()
+	}()
 
 	// Start the HTTP server
 	if err := s.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
