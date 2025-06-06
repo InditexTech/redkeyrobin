@@ -52,7 +52,7 @@ type RedisCluster struct {
 	conf       *config.Configuration
 	status     string
 	nodes      map[string]*RedisNode
-	operations map[string][]*RedisOperation
+	operations map[string][]RedisOperation
 	channel    chan struct{}
 }
 
@@ -64,12 +64,12 @@ func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel ch
 		conf:       conf,
 		status:     Unknown,
 		nodes:      make(map[string]*RedisNode),
-		operations: make(map[string][]*RedisOperation),
+		operations: make(map[string][]RedisOperation),
 		channel:    channel,
 	}
 }
 
-func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*RedisNode, operations map[string][]*RedisOperation, channel chan struct{}) *RedisCluster {
+func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*RedisNode, operations map[string][]RedisOperation, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
 		ctx:        ctx,
 		logger:     util.GetLogger("redis-cluster"),
@@ -295,7 +295,7 @@ func (rc *RedisCluster) Init() error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return fmt.Errorf("Error refreshing nodes info: %v", err)
 	}
 
@@ -307,8 +307,6 @@ func (rc *RedisCluster) Init() error {
 // It returns an OperationInProgressError if the cluster is already rebalancing
 // It returns an OperationAlreadyDoneError if the cluster is already rebalanced
 func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool) error {
-	rc.logger.Info("Rebalancing cluster")
-
 	// Check if the cluster is already rebalancing or has been rebalanced
 	if rc.IsRebalancing() {
 		if force {
@@ -327,27 +325,15 @@ func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool
 	}
 
 	// Launch cluster rebalance operation
-	operation, err := rc.launchRebalanceOperation(weights)
-	if err != nil {
-		return err
-	}
-
-	// Launch wait for rebalance to finish synchronously or asynchronously depending on the async flag
-	if async {
-		go rc.waitForRebalanceToFinish(operation)
-	} else {
-		return rc.waitForRebalanceToFinish(operation)
-	}
-
-	return nil
+	return rc.launchOperation(NewRedisOperationRebalance(rc.ctx, rc, weights), Rebalancing, async)
 }
 
 // MoveSlots moves slots from one Redis node to another
 func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
 	rc.logger.Info("Moving slots", "slots", slots, "from", from.Name, "to", to.Name)
 
-	// Check if a reshard operation should be launched
-	if rc.IsReshardingNodes(*from, *to) { // There is an ongoing reshard between the specified nodes
+	// Check if a move operation should be launched
+	if rc.IsReshardingNodes(*from, *to) { // There is an ongoing move between the specified nodes
 		rc.logger.Info("There is already a reshard operation between nodes", "from", from.Name, "to", to.Name)
 		return &OperationInProgressError{Operation: "Resharding"}
 
@@ -369,25 +355,24 @@ func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
 		return &OperationCompletedError{Operation: "Resharding", Reason: "Promoted replica of origin node"}
 	}
 
-	// Launch reshard operation
-	operation, err := rc.launchReshardOperation(from, to, slots)
-	if err != nil {
-		return err
-	}
-
-	// Wait for reshard to finish asynchronously
-	go rc.waitForReshardToFinish(operation)
-	return nil
+	// Launch move operation
+	return rc.launchOperation(NewRedisOperationMove(rc.ctx, rc, from, to, slots), Resharding, true)
 }
 
 // Check checks the Redis cluster
 func (rc *RedisCluster) Check() (*ClusterCheckResult, error) {
 	rc.logger.Info("Checking cluster")
 
-	// Launch cluster check operation
-	result, err := rc.launchCheckOperation()
+	// Get Redis client and check connection
+	redisClient, err := rc.GetAndCheckRedisClient(true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting and checking Redis client: %v", err)
+	}
+
+	// Launch check operation
+	result, err := redisClient.ClusterCheck(rc.ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error checking cluster: %v", err)
 	}
 
 	return result, nil
@@ -411,20 +396,8 @@ func (rc *RedisCluster) Fix(async bool, force bool) error {
 		}
 	}
 
-	// Launch cluster fixing operation
-	operation, err := rc.launchFixOperation()
-	if err != nil {
-		return err
-	}
-
-	// Launch wait for fixing to finish synchronously or asynchronously depending on the async flag
-	if async {
-		go rc.waitForFixToFinish(operation)
-	} else {
-		return rc.waitForFixToFinish(operation)
-	}
-
-	return nil
+	// Launch cluster fix operation
+	return rc.launchOperation(NewRedisOperationFix(rc.ctx, rc), Fixing, async)
 }
 
 // CheckIntegrity checks the integrity of the Redis cluster
@@ -446,19 +419,7 @@ func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
 	}
 
 	// Launch cluster check integrity operation
-	operation, err := rc.launchCheckIntegrityOperation()
-	if err != nil {
-		return err
-	}
-
-	// Launch wait for reconcile synchronously or asynchronously depending on the async flag
-	if async {
-		go rc.waitForCheckIntegrityToFinish(operation)
-	} else {
-		return rc.waitForCheckIntegrityToFinish(operation)
-	}
-
-	return nil
+	return rc.launchOperation(NewRedisOperationCheckIntegrity(rc.ctx, rc), CheckingIntegrity, async)
 }
 
 func (rc *RedisCluster) ScaleUp(force bool) error {
@@ -471,13 +432,7 @@ func (rc *RedisCluster) ScaleUp(force bool) error {
 	}
 
 	// Launch cluster scaling up operation
-	operation, err := rc.launchScaleUpOperation()
-	if err != nil {
-		return err
-	}
-
-	// Launch wait for scaling up to finish synchronously
-	return rc.waitForScaleUpToFinish(operation)
+	return rc.launchOperation(NewRedisOperationScaleUp(rc.ctx, rc), ScalingUp, false)
 }
 
 func (rc *RedisCluster) ScaleDown(force bool) error {
@@ -490,13 +445,7 @@ func (rc *RedisCluster) ScaleDown(force bool) error {
 	}
 
 	// Launch cluster scaling down operation
-	operation, err := rc.launchScaleDownOperation()
-	if err != nil {
-		return err
-	}
-
-	// Launch wait for scaling down to finish synchronously
-	return rc.waitForScaleDownToFinish(operation)
+	return rc.launchOperation(NewRedisOperationScaleDown(rc.ctx, rc), ScalingDown, false)
 }
 
 func (rc *RedisCluster) Upgrade(force bool) error {
@@ -508,14 +457,8 @@ func (rc *RedisCluster) Upgrade(force bool) error {
 		return &OperationInProgressError{Operation: "Upgrade"}
 	}
 
-	// Launch cluster upgrading operation
-	operation, err := rc.launchUpgradeOperation()
-	if err != nil {
-		return err
-	}
-
-	// Launch wait for upgrading to finish synchronously
-	return rc.waitForUpgradeToFinish(operation)
+	// Launch cluster upgrade operation
+	return rc.launchOperation(NewRedisOperationUpgrade(rc.ctx, rc), Upgrading, false)
 }
 
 // Check reset a Redis node in the cluster
@@ -529,13 +472,7 @@ func (rc *RedisCluster) ResetNode(node *RedisNode) error {
 	}
 
 	// Launch reset node operation
-	operation, err := rc.launchResetNodeOperation(node)
-	if err != nil {
-		return err
-	}
-
-	// Launch wait for reset node to finish synchronously
-	return rc.waitForResetNodeToFinish(operation)
+	return rc.launchOperation(NewRedisOperationResetNode(rc.ctx, rc, node), Upgrading, false)
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -742,10 +679,10 @@ func (rc *RedisCluster) forgetNode(ctx context.Context, nodeToForget RedisNode) 
 	return nil
 }
 
-// refreshNodes refreshes the nodes info of the Redis cluster
-func (rc *RedisCluster) refreshNodes() error {
+// RefreshNodes refreshes the nodes info of the Redis cluster
+func (rc *RedisCluster) RefreshNodes() error {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(false)
+	redisClient, err := rc.GetAndCheckRedisClient(false)
 	if err != nil {
 		return err
 	}
@@ -798,7 +735,7 @@ func (rc *RedisCluster) checkNodes() error {
 	}
 
 	// Update nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return err
 	}
 
@@ -856,7 +793,7 @@ func (rc *RedisCluster) needsMeet(ctx context.Context) (bool, error) {
 // needsFix checks if the Redis cluster needs to be fixed
 func (rc *RedisCluster) needsFix(ctx context.Context) (bool, error) {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(false)
+	redisClient, err := rc.GetAndCheckRedisClient(false)
 	if err != nil {
 		return false, fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -1032,7 +969,7 @@ func (rc *RedisCluster) removeSlotsFromNodes(ctx context.Context, nodes []*Redis
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %w", err)
 	}
 	return nil
@@ -1109,7 +1046,7 @@ func (rc *RedisCluster) meetNodes(ctx context.Context) error {
 	time.Sleep(5 * time.Second)
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %w", err)
 	}
 
@@ -1142,7 +1079,7 @@ func (rc *RedisCluster) removeOutdatedNodes(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return err
 	}
 
@@ -1263,7 +1200,7 @@ func (rc *RedisCluster) ensureReplicaSpread(ctx context.Context) error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return err
 	}
 
@@ -1301,7 +1238,7 @@ func (rc *RedisCluster) convertNodesToReplica(ctx context.Context, nodesToConver
 	time.Sleep(5 * time.Second)
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return err
 	}
 
@@ -1353,7 +1290,7 @@ func (rc *RedisCluster) promoteReplicaOfNode(ctx context.Context, node *RedisNod
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return err
 	}
 
@@ -1429,7 +1366,7 @@ func (rc *RedisCluster) assignMissingSlots(ctx context.Context) error {
 	time.Sleep(5 * time.Second)
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.RefreshNodes(); err != nil {
 		return err
 	}
 
@@ -1437,8 +1374,8 @@ func (rc *RedisCluster) assignMissingSlots(ctx context.Context) error {
 	return nil
 }
 
-// getAndCheckRedisClient creates a Redis client and checks the connection
-func (rc *RedisCluster) getAndCheckRedisClient(close bool) (*RedisClient, error) {
+// GetAndCheckRedisClient creates a Redis client and checks the connection
+func (rc *RedisCluster) GetAndCheckRedisClient(close bool) (*RedisClient, error) {
 	// Create Redis client
 	redisClient := NewRedisClient(rc.ctx, rc.GetAddress(), os.Getenv("REDISAUTH"), 0)
 	if close {

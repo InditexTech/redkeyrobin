@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/redis"
@@ -75,20 +76,10 @@ var server = Server{
 			"test-1": node2,
 			"test-2": node3,
 		},
-		map[string][]*redis.RedisOperation{
+		map[string][]redis.RedisOperation{
 			"Resharding": {
-				{
-					Name:     "Resharding",
-					Status:   "Running",
-					NodeFrom: node1,
-					NodeTo:   node3,
-				},
-				{
-					Name:     "Resharding",
-					Status:   "Finished",
-					NodeFrom: node1,
-					NodeTo:   node2,
-				},
+				redis.NewFakeRedisOperationMove(context.TODO(), &redis.RedisCluster{}, "Running", node1, node3, 10, time.Time{}),
+				redis.NewFakeRedisOperationMove(context.TODO(), &redis.RedisCluster{}, "Finished", node1, node2, 10, time.Time{}),
 			},
 		},
 		make(chan struct{}, 5),

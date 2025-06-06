@@ -89,7 +89,7 @@ var redisCluster = NewFakeRedisCluster(
 		"test-1": node2,
 		"test-2": node3,
 	},
-	map[string][]*RedisOperation{},
+	map[string][]RedisOperation{},
 	make(chan struct{}, 5),
 )
 
@@ -316,7 +316,7 @@ func TestRedisClusterRefreshNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.refreshNodes()
+			err := redisCluster.RefreshNodes()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -685,7 +685,7 @@ func TestRedisClusterGetAndCheckRedisClient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := redisCluster.getAndCheckRedisClient(tt.close)
+			client, err := redisCluster.GetAndCheckRedisClient(tt.close)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -826,11 +826,8 @@ func TestRedisClusterRebalance(t *testing.T) {
 		{
 			name: "rebalancing",
 			prepareTest: func() {
-				redisCluster.operations[Rebalancing] = []*RedisOperation{
-					{
-						Name:   Rebalancing,
-						Status: "Running",
-					},
+				redisCluster.operations[Rebalancing] = []RedisOperation{
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Rebalance"},
@@ -838,11 +835,8 @@ func TestRedisClusterRebalance(t *testing.T) {
 		{
 			name: "rebalanced",
 			prepareTest: func() {
-				redisCluster.operations[Rebalancing] = []*RedisOperation{
-					{
-						Name:   Rebalancing,
-						Status: "Finished",
-					},
+				redisCluster.operations[Rebalancing] = []RedisOperation{
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Time{}),
 				}
 			},
 			expectedError: &OperationCompletedError{Operation: "Rebalance"},
@@ -850,7 +844,7 @@ func TestRedisClusterRebalance(t *testing.T) {
 		{
 			name: "bad redis client",
 			prepareTest: func() {
-				redisCluster.operations[Rebalancing] = []*RedisOperation{}
+				redisCluster.operations[Rebalancing] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
@@ -882,13 +876,8 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "moving",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []*RedisOperation{
-					{
-						Name:     Resharding,
-						Status:   "Running",
-						NodeFrom: node1,
-						NodeTo:   node3,
-					},
+				redisCluster.operations[Resharding] = []RedisOperation{
+					NewFakeRedisOperationMove(t.Context(), redisCluster, "Running", node1, node3, 10, time.Time{}),
 				}
 			},
 			from:          node1,
@@ -898,7 +887,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "origin has no slots",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []*RedisOperation{}
+				redisCluster.operations[Resharding] = []RedisOperation{}
 				node1.Slots = []RedisSlotRange{}
 			},
 			from:          node1,
@@ -908,7 +897,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "node is a replica",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []*RedisOperation{}
+				redisCluster.operations[Resharding] = []RedisOperation{}
 			},
 			from:          node3,
 			to:            node1,
@@ -918,7 +907,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 			name: "node has replicas",
 			prepareTest: func() {
 				redisCluster.conf.Redis.Cluster.MaxRetries = 1
-				redisCluster.operations[Resharding] = []*RedisOperation{}
+				redisCluster.operations[Resharding] = []RedisOperation{}
 				node1.Slots = []RedisSlotRange{
 					{
 						Start: 1,
@@ -947,7 +936,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "bad redis client",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []*RedisOperation{}
+				redisCluster.operations[Resharding] = []RedisOperation{}
 			},
 			from:          node2,
 			to:            node3,
@@ -1003,11 +992,8 @@ func TestRedisClusterFix(t *testing.T) {
 		{
 			name: "fixing",
 			prepareTest: func() {
-				redisCluster.operations[Fixing] = []*RedisOperation{
-					{
-						Name:   Fixing,
-						Status: "Running",
-					},
+				redisCluster.operations[Fixing] = []RedisOperation{
+					NewFakeRedisOperationFix(t.Context(), redisCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Fixing"},
@@ -1015,13 +1001,8 @@ func TestRedisClusterFix(t *testing.T) {
 		{
 			name: "bad redis client",
 			prepareTest: func() {
-				redisCluster.operations[Fixing] = []*RedisOperation{
-					{
-						Name:   Fixing,
-						Status: "Running",
-						Cmd:    NewRedisLibraryCommand(t.Context(), func(ctx context.Context) error { return nil }),
-					},
-				}
+				redisCluster.operations[Fixing] = []RedisOperation{}
+				redisCluster.conf.Redis.Cluster.MaxRetries = 1
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
@@ -1052,11 +1033,8 @@ func TestRedisClusterCheckIntegrity(t *testing.T) {
 		{
 			name: "checking integrity",
 			prepareTest: func() {
-				redisCluster.operations[CheckingIntegrity] = []*RedisOperation{
-					{
-						Name:   CheckingIntegrity,
-						Status: "Running",
-					},
+				redisCluster.operations[CheckingIntegrity] = []RedisOperation{
+					NewFakeRedisOperationCheckIntegrity(t.Context(), redisCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "CheckingIntegrity"},
@@ -1064,13 +1042,7 @@ func TestRedisClusterCheckIntegrity(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[CheckingIntegrity] = []*RedisOperation{
-					{
-						Name:   CheckingIntegrity,
-						Status: "Running",
-						Cmd:    NewRedisLibraryCommand(t.Context(), func(ctx context.Context) error { return nil }),
-					},
-				}
+				redisCluster.operations[CheckingIntegrity] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error checking cluster integrity: failed to connect after 1 retries"),
@@ -1101,11 +1073,8 @@ func TestRedisClusterScaleUp(t *testing.T) {
 		{
 			name: "scaling up",
 			prepareTest: func() {
-				redisCluster.operations[ScalingUp] = []*RedisOperation{
-					{
-						Name:   ScalingUp,
-						Status: "Running",
-					},
+				redisCluster.operations[ScalingUp] = []RedisOperation{
+					NewFakeRedisOperationScaleUp(t.Context(), redisCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "ScaleUp"},
@@ -1113,13 +1082,7 @@ func TestRedisClusterScaleUp(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[ScalingUp] = []*RedisOperation{
-					{
-						Name:   ScalingUp,
-						Status: "Running",
-						Cmd:    NewRedisLibraryCommand(t.Context(), func(ctx context.Context) error { return nil }),
-					},
-				}
+				redisCluster.operations[ScalingUp] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error scaling up cluster: failed to connect after 1 retries"),
@@ -1150,11 +1113,8 @@ func TestRedisClusterScaleDown(t *testing.T) {
 		{
 			name: "scaling down",
 			prepareTest: func() {
-				redisCluster.operations[ScalingDown] = []*RedisOperation{
-					{
-						Name:   ScalingDown,
-						Status: "Running",
-					},
+				redisCluster.operations[ScalingDown] = []RedisOperation{
+					NewFakeRedisOperationScaleDown(t.Context(), redisCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "ScaleDown"},
@@ -1162,7 +1122,7 @@ func TestRedisClusterScaleDown(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[ScalingDown] = []*RedisOperation{}
+				redisCluster.operations[ScalingDown] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error scaling down cluster: failed to connect after 1 retries"),
@@ -1193,11 +1153,8 @@ func TestRedisClusterUpgrade(t *testing.T) {
 		{
 			name: "upgrading",
 			prepareTest: func() {
-				redisCluster.operations[Upgrading] = []*RedisOperation{
-					{
-						Name:   Upgrading,
-						Status: "Running",
-					},
+				redisCluster.operations[Upgrading] = []RedisOperation{
+					NewFakeRedisOperationUpgrade(t.Context(), redisCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Upgrade"},
@@ -1205,7 +1162,7 @@ func TestRedisClusterUpgrade(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[Upgrading] = []*RedisOperation{}
+				redisCluster.operations[Upgrading] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error upgrading cluster: failed to connect after 1 retries"),
@@ -1236,12 +1193,8 @@ func TestRedisClusterReset(t *testing.T) {
 		{
 			name: "resetting",
 			prepareTest: func() {
-				redisCluster.operations[Resetting] = []*RedisOperation{
-					{
-						Name:     Resetting,
-						Status:   "Running",
-						NodeFrom: node1,
-					},
+				redisCluster.operations[Resetting] = []RedisOperation{
+					NewFakeRedisOperationResetNode(t.Context(), redisCluster, "Running", node1),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Resetting"},
@@ -1249,7 +1202,7 @@ func TestRedisClusterReset(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[Resetting] = []*RedisOperation{}
+				redisCluster.operations[Resetting] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error resetting cluster node 'test-0': failed to connect after 1 retries"),

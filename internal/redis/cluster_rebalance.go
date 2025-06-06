@@ -1,0 +1,91 @@
+// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package redis
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/inditextech/redisrobin/internal/util"
+)
+
+type RedisOperationRebalance struct {
+	RedisOperationBase
+	weights map[string]int
+}
+
+func NewRedisOperationRebalance(ctx context.Context, redisCluster *RedisCluster, weights map[string]int) *RedisOperationRebalance {
+	return &RedisOperationRebalance{
+		RedisOperationBase: RedisOperationBase{
+			name:   "Rebalance",
+			status: "Pending",
+			logger: util.GetLogger("operation.rebalance"),
+			ctx: ctx,
+			redisCluster: redisCluster,
+		},
+		weights: weights,
+	}
+}
+
+func NewFakeRedisOperationRebalance(ctx context.Context, redisCluster *RedisCluster, status string, endTimestamp time.Time) *RedisOperationRebalance {
+	return &RedisOperationRebalance{
+		RedisOperationBase: RedisOperationBase{
+			name:   "Rebalance",
+			status: status, 
+			logger: util.GetLogger("operation.rebalance"),
+			ctx: ctx,
+			redisCluster: redisCluster,
+			endTimestamp: endTimestamp,
+		},
+	}
+}
+
+func (ro *RedisOperationRebalance) Launch() error {
+	ro.logger.Info("Rebalancing cluster")
+
+	// Assure all nodes are up (redis-cli needs all nodes to be up)
+	if err := ro.redisCluster.ensureNodesAreUp(ro.ctx); err != nil {
+		return fmt.Errorf("error ensuring nodes are up: %v", err)
+	}
+
+	// Get Redis client and check connection
+	redisClient, err := ro.redisCluster.GetAndCheckRedisClient(true)
+	if err != nil {
+		return fmt.Errorf("error getting and checking Redis client: %v", err)
+	}
+
+	// Launch rebalance operation
+	cmd := redisClient.ClusterRebalance(ro.ctx, ro.weights)
+	if cmd.Err != nil {
+		return fmt.Errorf("error rebalancing cluster: %v", cmd.Err)
+	}
+
+	// Update operation
+	ro.cmd = cmd
+	ro.status = "Running"
+	ro.initTimestamp = time.Now()
+
+	return nil
+}
+
+func (ro *RedisOperationRebalance) Wait() error {
+	// Wait for rebalance to finish
+	err := ro.Run()
+
+	// Rebalance failed
+	if err != nil {
+		return fmt.Errorf("error rebalancing cluster: %v", err)
+	}
+
+	// Rebalance finished successfully
+	ro.logger.Info("Cluster rebalanced successfully")
+
+	// Update nodes info
+	if err := ro.redisCluster.RefreshNodes(); err != nil {
+		return err
+	}
+	return nil
+}

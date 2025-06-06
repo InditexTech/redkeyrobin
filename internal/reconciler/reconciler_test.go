@@ -107,7 +107,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 				tt.config,
 				"Unknown",
 				map[string]*redis.RedisNode{},
-				map[string][]*redis.RedisOperation{},
+				map[string][]redis.RedisOperation{},
 				make(chan struct{}, 5),
 			)
 

@@ -16,54 +16,40 @@ func TestRedisClusterAddOperation(t *testing.T) {
 	tests := []struct {
 		name               string
 		operationName      string
-		nodeFrom           *RedisNode
-		nodeTo             *RedisNode
+		operation 	   	   RedisOperation
 		expectedOperations int
-		newState           string
 	}{
 		{
 			name:               "add operation rebalancing",
 			operationName:      Rebalancing,
+			operation: NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
 			expectedOperations: 1,
 		},
 		{
 			name:               "add operation resharding",
 			operationName:      Resharding,
-			nodeFrom:           node1,
-			nodeTo:             node3,
+			operation: NewFakeRedisOperationMove(t.Context(), redisCluster, "Running", node1, node3, 10, time.Time{}),
 			expectedOperations: 1,
 		},
 		{
 			name:               "add operation resharding",
 			operationName:      Resharding,
-			nodeFrom:           node1,
-			nodeTo:             node2,
+			operation: NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node2, 10, time.Time{}),
 			expectedOperations: 2,
-			newState:           "Finished",
 		},
 		{
 			name:               "add operation fixing",
 			operationName:      Fixing,
-			nodeFrom:           node1,
+			operation: NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
 			expectedOperations: 1,
-			newState:           "Finished",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := redisCluster.addOperation(tt.operationName, nil, tt.nodeFrom, tt.nodeTo)
+			redisCluster.addOperation(tt.operationName, tt.operation)
 
 			assert.NotNil(t, redisCluster.operations[tt.operationName])
 			assert.Len(t, redisCluster.operations[tt.operationName], tt.expectedOperations)
-			assert.Equal(t, operation.Name, tt.operationName)
-			assert.Equal(t, operation.NodeFrom, tt.nodeFrom)
-			assert.Equal(t, operation.NodeTo, tt.nodeTo)
-			assert.Equal(t, operation.Status, "Running")
-
-			if tt.newState != "" {
-				operation.Status = tt.newState
-				assert.Equal(t, operation.Status, tt.newState)
-			}
 		})
 	}
 }
@@ -73,7 +59,7 @@ func TestRedisClusterGetOperation(t *testing.T) {
 		name            string
 		operationName   string
 		operationStatus string
-		expectedResult  *RedisOperation
+		expectedResult  RedisOperation
 	}{
 		{
 			name:           "operation not found",
@@ -90,10 +76,7 @@ func TestRedisClusterGetOperation(t *testing.T) {
 			name:            "operation with status",
 			operationName:   Fixing,
 			operationStatus: "Finished",
-			expectedResult: &RedisOperation{
-				Name:   Fixing,
-				Status: "Finished",
-			},
+			expectedResult: NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
 		},
 	}
 	for _, tt := range tests {
@@ -102,8 +85,7 @@ func TestRedisClusterGetOperation(t *testing.T) {
 
 			if tt.expectedResult != nil {
 				assert.NotNil(t, result)
-				assert.Equal(t, result.Name, tt.operationName)
-				assert.Equal(t, result.Status, tt.operationStatus)
+				assert.Equal(t, result.GetStatus(), tt.operationStatus)
 			} else {
 				assert.Nil(t, result)
 			}
@@ -222,7 +204,7 @@ func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := redisCluster.hasOperationBetweenNodes(tt.operationName, tt.operationStatus, tt.nodeFrom, tt.nodeTo)
-			assert.Equal(t, result, tt.expectedResult)
+			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
 }
@@ -230,24 +212,17 @@ func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
 func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 	tests := []struct {
 		name               string
-		operations         map[string][]*RedisOperation
+		operations         map[string][]RedisOperation
 		expectedOperations map[string]int
 	}{
 		{
 			name: "no expired operations",
-			operations: map[string][]*RedisOperation{
+			operations: map[string][]RedisOperation{
 				Rebalancing: {
-					{
-						Name:   Rebalancing,
-						Status: "Running",
-					},
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
 				},
 				Resharding: {
-					{
-						Name:         Resharding,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 2),
-					},
+					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second * 2)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -257,24 +232,13 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 		},
 		{
 			name: "one expired operation",
-			operations: map[string][]*RedisOperation{
+			operations: map[string][]RedisOperation{
 				Rebalancing: {
-					{
-						Name:   Rebalancing,
-						Status: "Running",
-					},
-					{
-						Name:         Rebalancing,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 100),
-					},
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second * 100)),
 				},
 				Resharding: {
-					{
-						Name:         Resharding,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 2),
-					},
+					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second * 2)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -284,29 +248,14 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 		},
 		{
 			name: "several expired operations",
-			operations: map[string][]*RedisOperation{
+			operations: map[string][]RedisOperation{
 				Rebalancing: {
-					{
-						Name:         Rebalancing,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 1000),
-					},
-					{
-						Name:   Rebalancing,
-						Status: "Running",
-					},
-					{
-						Name:         Rebalancing,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 100),
-					},
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second * 1000)),
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second * 100)),
 				},
 				Resharding: {
-					{
-						Name:         Resharding,
-						Status:       "Finished",
-						EndTimestamp: time.Now().Add(-time.Second * 20),
-					},
+					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second * 20)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -337,259 +286,6 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 			for operation, ops := range rdcl.operations {
 				assert.Len(t, ops, tt.expectedOperations[operation], "operation %s", operation)
 			}
-		})
-	}
-}
-
-func TestRedisClusterWaitForReshardToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name:           "resharding error",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: ReshardingError,
-		},
-		{
-			name:           "good",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
-			expectedStatus: Ready,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:     Resharding,
-				Status:   "Running",
-				NodeFrom: node1,
-				NodeTo:   node3,
-				Cmd:      tt.cmd,
-			}
-			tt.cmd.cmd.Start()
-			redisCluster.waitForReshardToFinish(operation)
-
-			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
-		})
-	}
-}
-
-func TestRedisClusterWaitForRebalanceToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name: "rebalancing error",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
-		},
-		{
-			name: "good",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:   Rebalancing,
-				Status: "Running",
-				Cmd:    tt.cmd,
-			}
-
-			tt.cmd.cmd.Start()
-			redisCluster.waitForRebalanceToFinish(operation)
-		})
-	}
-}
-
-func TestRedisClusterWaitForFixToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name: "fix error",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
-		},
-		{
-			name: "good",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:   Fixing,
-				Status: "Running",
-				Cmd:    tt.cmd,
-			}
-
-			tt.cmd.cmd.Start()
-			redisCluster.waitForFixToFinish(operation)
-		})
-	}
-}
-
-func TestRedisClusterWaitForCheckIntegrityToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name:           "check integrity error",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: CheckingIntegrityError,
-		},
-		{
-			name:           "good",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
-			expectedStatus: Ready,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:   CheckingIntegrity,
-				Status: "Running",
-				Cmd:    tt.cmd,
-			}
-
-			tt.cmd.cmd.Start()
-			redisCluster.waitForCheckIntegrityToFinish(operation)
-			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
-		})
-	}
-}
-
-func TestRedisClusterWaitForScaleUpeToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name:           "scale up error",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: ScalingUpError,
-		},
-		{
-			name:           "good",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
-			expectedStatus: Ready,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:   ScalingDown,
-				Status: "Running",
-				Cmd:    tt.cmd,
-			}
-
-			tt.cmd.cmd.Start()
-			redisCluster.waitForScaleUpToFinish(operation)
-			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
-		})
-	}
-}
-
-func TestRedisClusterWaitForScaleDownToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name:           "scale down error",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: ScalingDownError,
-		},
-		{
-			name:           "good",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
-			expectedStatus: Ready,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:   ScalingDown,
-				Status: "Running",
-				Cmd:    tt.cmd,
-			}
-
-			tt.cmd.cmd.Start()
-			redisCluster.waitForScaleDownToFinish(operation)
-			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
-		})
-	}
-}
-
-func TestRedisClusterWaitForUpgradeToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name:           "upgrade error",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: UpgradingError,
-		},
-		{
-			name:           "good",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
-			expectedStatus: Ready,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:   Upgrading,
-				Status: "Running",
-				Cmd:    tt.cmd,
-			}
-
-			tt.cmd.cmd.Start()
-			redisCluster.waitForUpgradeToFinish(operation)
-			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
-		})
-	}
-}
-
-func TestRedisClusterWaitForResetNodeToFinish(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		expectedStatus string
-	}{
-		{
-			name:           "reset node error",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: Ready,
-		},
-		{
-			name:           "good",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
-			expectedStatus: Ready,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			operation := &RedisOperation{
-				Name:     Upgrading,
-				Status:   "Running",
-				Cmd:      tt.cmd,
-				NodeFrom: node1,
-			}
-
-			tt.cmd.cmd.Start()
-			redisCluster.waitForResetNodeToFinish(operation)
-			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
 		})
 	}
 }
