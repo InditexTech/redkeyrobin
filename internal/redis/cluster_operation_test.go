@@ -16,31 +16,31 @@ func TestRedisClusterAddOperation(t *testing.T) {
 	tests := []struct {
 		name               string
 		operationName      string
-		operation 	   	   RedisOperation
+		operation          RedisOperation
 		expectedOperations int
 	}{
 		{
 			name:               "add operation rebalancing",
 			operationName:      Rebalancing,
-			operation: NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
+			operation:          NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
 			expectedOperations: 1,
 		},
 		{
 			name:               "add operation resharding",
 			operationName:      Resharding,
-			operation: NewFakeRedisOperationMove(t.Context(), redisCluster, "Running", node1, node3, 10, time.Time{}),
+			operation:          NewFakeRedisOperationMove(t.Context(), redisCluster, "Running", node1, node3, 10, time.Time{}),
 			expectedOperations: 1,
 		},
 		{
 			name:               "add operation resharding",
 			operationName:      Resharding,
-			operation: NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node2, 10, time.Time{}),
+			operation:          NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node2, 10, time.Time{}),
 			expectedOperations: 2,
 		},
 		{
 			name:               "add operation fixing",
 			operationName:      Fixing,
-			operation: NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
+			operation:          NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
 			expectedOperations: 1,
 		},
 	}
@@ -76,7 +76,7 @@ func TestRedisClusterGetOperation(t *testing.T) {
 			name:            "operation with status",
 			operationName:   Fixing,
 			operationStatus: "Finished",
-			expectedResult: NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
+			expectedResult:  NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
 		},
 	}
 	for _, tt := range tests {
@@ -222,7 +222,7 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
 				},
 				Resharding: {
-					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second * 2)),
+					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*2)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -235,10 +235,10 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 			operations: map[string][]RedisOperation{
 				Rebalancing: {
 					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second * 100)),
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second*100)),
 				},
 				Resharding: {
-					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second * 2)),
+					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*2)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -250,12 +250,12 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 			name: "several expired operations",
 			operations: map[string][]RedisOperation{
 				Rebalancing: {
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second * 1000)),
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second*1000)),
 					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second * 100)),
+					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second*100)),
 				},
 				Resharding: {
-					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second * 20)),
+					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*20)),
 				},
 			},
 			expectedOperations: map[string]int{

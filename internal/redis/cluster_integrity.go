@@ -19,10 +19,10 @@ type RedisOperationCheckIntegrity struct {
 func NewRedisOperationCheckIntegrity(ctx context.Context, redisCluster *RedisCluster) *RedisOperationCheckIntegrity {
 	return &RedisOperationCheckIntegrity{
 		RedisOperationBase: RedisOperationBase{
-			name:   "CheckIntegrity",
-			status: "Pending",
-			logger: util.GetLogger("operation.integrity"),
-			ctx: ctx,
+			name:         "CheckIntegrity",
+			status:       "Pending",
+			logger:       util.GetLogger("operation.integrity"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -31,10 +31,10 @@ func NewRedisOperationCheckIntegrity(ctx context.Context, redisCluster *RedisClu
 func NewFakeRedisOperationCheckIntegrity(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationCheckIntegrity {
 	return &RedisOperationCheckIntegrity{
 		RedisOperationBase: RedisOperationBase{
-			name:   "CheckIntegrity",
-			status: status, 
-			logger: util.GetLogger("operation.integrity"),
-			ctx: ctx,
+			name:         "CheckIntegrity",
+			status:       status,
+			logger:       util.GetLogger("operation.integrity"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -112,7 +112,7 @@ func (ro *RedisOperationCheckIntegrity) doCheckIntegrity(ctx context.Context) er
 	}
 
 	// Update nodes info
-	if err := ro.redisCluster.RefreshNodes(); err != nil {
+	if err := ro.redisCluster.refreshNodes(); err != nil {
 		return err
 	}
 

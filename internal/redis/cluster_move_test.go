@@ -19,19 +19,19 @@ func TestRedisOperationMoveWait(t *testing.T) {
 		name           string
 		cmd            *RedisCLICommand
 		expectedStatus string
-		err			error
+		err            error
 	}{
 		{
-			name: "move error",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
+			name:           "move error",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
 			expectedStatus: ReshardingError,
-			err: fmt.Errorf("error moving slots from node 'test-0' to node 'node2': "),
+			err:            fmt.Errorf("error moving slots from node 'test-0' to node 'node2': "),
 		},
 		{
-			name: "good",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
+			name:           "good",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
 			expectedStatus: Ready,
-			err: nil,
+			err:            nil,
 		},
 	}
 	for _, tt := range tests {

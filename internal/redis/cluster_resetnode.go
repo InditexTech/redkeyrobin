@@ -19,12 +19,12 @@ type RedisOperationResetNode struct {
 func NewRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster, node *RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
-			name:   "ResetNode",
-			status: "Pending",
-			logger: util.GetLogger("operation.resetnode"),
-			ctx: ctx,
+			name:         "ResetNode",
+			status:       "Pending",
+			logger:       util.GetLogger("operation.resetnode"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
-			nodeFrom: node,
+			nodeFrom:     node,
 		},
 	}
 }
@@ -32,12 +32,12 @@ func NewRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster,
 func NewFakeRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster, status string, node *RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
-			name:   "ResetNode",
-			status: status, 
-			logger: util.GetLogger("operation.resetnode"),
-			ctx: ctx,
+			name:         "ResetNode",
+			status:       status,
+			logger:       util.GetLogger("operation.resetnode"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
-			nodeFrom: node,
+			nodeFrom:     node,
 		},
 	}
 }
@@ -121,7 +121,7 @@ func (ro *RedisOperationResetNode) doResetNode(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := ro.redisCluster.RefreshNodes(); err != nil {
+	if err := ro.redisCluster.refreshNodes(); err != nil {
 		return err
 	}
 

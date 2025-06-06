@@ -20,15 +20,15 @@ type RedisOperationMove struct {
 func NewRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, from, to *RedisNode, slots int) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Move",
-			status: "Pending",
-			logger: util.GetLogger("operation.move"),
-			ctx: ctx,
+			name:         "Move",
+			status:       "Pending",
+			logger:       util.GetLogger("operation.move"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
-			nodeFrom: from,
-			nodeTo: to,
+			nodeFrom:     from,
+			nodeTo:       to,
 		},
-		
+
 		slots: slots,
 	}
 }
@@ -36,14 +36,14 @@ func NewRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, from
 func NewFakeRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, status string, from, to *RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Move",
-			status: status, 
-			logger: util.GetLogger("operation.move"),
-			ctx: ctx,
+			name:         "Move",
+			status:       status,
+			logger:       util.GetLogger("operation.move"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 			endTimestamp: endTimestamp,
-			nodeFrom: from,
-			nodeTo: to,
+			nodeFrom:     from,
+			nodeTo:       to,
 		},
 		slots: slots,
 	}
@@ -65,7 +65,7 @@ func (ro *RedisOperationMove) Launch() error {
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.redisCluster.GetAndCheckRedisClient(true)
+	redisClient, err := ro.redisCluster.getAndCheckRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -95,7 +95,7 @@ func (ro *RedisOperationMove) Wait() error {
 	ro.logger.Info("Slots moved successfully between nodes", "from", ro.nodeFrom.Name, "to", ro.nodeTo.Name)
 
 	// Update nodes info
-	if err := ro.redisCluster.RefreshNodes(); err != nil {
+	if err := ro.redisCluster.refreshNodes(); err != nil {
 		return err
 	}
 	return nil

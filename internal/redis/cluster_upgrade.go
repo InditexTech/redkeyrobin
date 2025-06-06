@@ -19,10 +19,10 @@ type RedisOperationUpgrade struct {
 func NewRedisOperationUpgrade(ctx context.Context, redisCluster *RedisCluster) *RedisOperationUpgrade {
 	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Upgrade",
-			status: "Pending",
-			logger: util.GetLogger("operation.ugrade"),
-			ctx: ctx,
+			name:         "Upgrade",
+			status:       "Pending",
+			logger:       util.GetLogger("operation.ugrade"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -31,10 +31,10 @@ func NewRedisOperationUpgrade(ctx context.Context, redisCluster *RedisCluster) *
 func NewFakeRedisOperationUpgrade(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationUpgrade {
 	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Upgrade",
-			status: status, 
-			logger: util.GetLogger("operation.upgrade"),
-			ctx: ctx,
+			name:         "Upgrade",
+			status:       status,
+			logger:       util.GetLogger("operation.upgrade"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -112,7 +112,7 @@ func (ro *RedisOperationUpgrade) doUpgrade(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := ro.redisCluster.RefreshNodes(); err != nil {
+	if err := ro.redisCluster.refreshNodes(); err != nil {
 		return err
 	}
 

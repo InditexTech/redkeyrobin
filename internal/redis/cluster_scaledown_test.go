@@ -18,19 +18,19 @@ func TestRedisOperationScaleDownWait(t *testing.T) {
 		name           string
 		cmd            *RedisCLICommand
 		expectedStatus string
-		err			error
+		err            error
 	}{
 		{
-			name: "scale up error",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
+			name:           "scale up error",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
 			expectedStatus: ScalingDownError,
-			err: fmt.Errorf("error scaling down cluster: "),
+			err:            fmt.Errorf("error scaling down cluster: "),
 		},
 		{
-			name: "good",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
+			name:           "good",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
 			expectedStatus: Ready,
-			err: nil,
+			err:            nil,
 		},
 	}
 	for _, tt := range tests {

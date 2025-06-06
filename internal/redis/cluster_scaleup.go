@@ -19,10 +19,10 @@ type RedisOperationScaleUp struct {
 func NewRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster) *RedisOperationScaleUp {
 	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:   "ScaleUp",
-			status: "Pending",
-			logger: util.GetLogger("operation.scaleup"),
-			ctx: ctx,
+			name:         "ScaleUp",
+			status:       "Pending",
+			logger:       util.GetLogger("operation.scaleup"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -31,10 +31,10 @@ func NewRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster) *
 func NewFakeRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationScaleUp {
 	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:   "ScaleUp",
-			status: status, 
-			logger: util.GetLogger("operation.scaleup"),
-			ctx: ctx,
+			name:         "ScaleUp",
+			status:       status,
+			logger:       util.GetLogger("operation.scaleup"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -117,7 +117,7 @@ func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := ro.redisCluster.RefreshNodes(); err != nil {
+	if err := ro.redisCluster.refreshNodes(); err != nil {
 		return err
 	}
 

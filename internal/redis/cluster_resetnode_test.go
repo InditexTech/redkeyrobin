@@ -15,19 +15,19 @@ import (
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
 func TestRedisOperatioResetNodeWait(t *testing.T) {
 	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		err			error
+		name string
+		cmd  *RedisCLICommand
+		err  error
 	}{
 		{
 			name: "scale up error",
 			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
-			err: fmt.Errorf("error resetting cluster node 'test-0': "),
+			err:  fmt.Errorf("error resetting cluster node 'test-0': "),
 		},
 		{
 			name: "good",
 			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
-			err: nil,
+			err:  nil,
 		},
 	}
 	for _, tt := range tests {

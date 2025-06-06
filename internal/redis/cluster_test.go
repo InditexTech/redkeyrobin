@@ -316,7 +316,7 @@ func TestRedisClusterRefreshNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.RefreshNodes()
+			err := redisCluster.refreshNodes()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -685,7 +685,7 @@ func TestRedisClusterGetAndCheckRedisClient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := redisCluster.GetAndCheckRedisClient(tt.close)
+			client, err := redisCluster.getAndCheckRedisClient(tt.close)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

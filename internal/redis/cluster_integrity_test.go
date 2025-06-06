@@ -18,19 +18,19 @@ func TestRedisOperationCheckIntegrityWait(t *testing.T) {
 		name           string
 		cmd            *RedisCLICommand
 		expectedStatus string
-		err			error
+		err            error
 	}{
 		{
-			name: "check integrity error",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
+			name:           "check integrity error",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
 			expectedStatus: CheckingIntegrityError,
-			err: fmt.Errorf("error checking cluster integrity: "),
+			err:            fmt.Errorf("error checking cluster integrity: "),
 		},
 		{
-			name: "good",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
+			name:           "good",
+			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
 			expectedStatus: Ready,
-			err: nil,
+			err:            nil,
 		},
 	}
 	for _, tt := range tests {

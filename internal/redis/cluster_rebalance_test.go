@@ -16,19 +16,19 @@ import (
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
 func TestRedisOperationRebalanceWait(t *testing.T) {
 	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		err			error
+		name string
+		cmd  *RedisCLICommand
+		err  error
 	}{
 		{
 			name: "rebalance error",
 			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
-			err: fmt.Errorf("error rebalancing cluster: "),
+			err:  fmt.Errorf("error rebalancing cluster: "),
 		},
 		{
 			name: "good",
 			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
-			err: nil,
+			err:  nil,
 		},
 	}
 	for _, tt := range tests {

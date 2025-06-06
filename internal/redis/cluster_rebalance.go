@@ -20,10 +20,10 @@ type RedisOperationRebalance struct {
 func NewRedisOperationRebalance(ctx context.Context, redisCluster *RedisCluster, weights map[string]int) *RedisOperationRebalance {
 	return &RedisOperationRebalance{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Rebalance",
-			status: "Pending",
-			logger: util.GetLogger("operation.rebalance"),
-			ctx: ctx,
+			name:         "Rebalance",
+			status:       "Pending",
+			logger:       util.GetLogger("operation.rebalance"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 		weights: weights,
@@ -33,10 +33,10 @@ func NewRedisOperationRebalance(ctx context.Context, redisCluster *RedisCluster,
 func NewFakeRedisOperationRebalance(ctx context.Context, redisCluster *RedisCluster, status string, endTimestamp time.Time) *RedisOperationRebalance {
 	return &RedisOperationRebalance{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Rebalance",
-			status: status, 
-			logger: util.GetLogger("operation.rebalance"),
-			ctx: ctx,
+			name:         "Rebalance",
+			status:       status,
+			logger:       util.GetLogger("operation.rebalance"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 			endTimestamp: endTimestamp,
 		},
@@ -52,7 +52,7 @@ func (ro *RedisOperationRebalance) Launch() error {
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.redisCluster.GetAndCheckRedisClient(true)
+	redisClient, err := ro.redisCluster.getAndCheckRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -84,7 +84,7 @@ func (ro *RedisOperationRebalance) Wait() error {
 	ro.logger.Info("Cluster rebalanced successfully")
 
 	// Update nodes info
-	if err := ro.redisCluster.RefreshNodes(); err != nil {
+	if err := ro.redisCluster.refreshNodes(); err != nil {
 		return err
 	}
 	return nil

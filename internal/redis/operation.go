@@ -1,10 +1,13 @@
+// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package redis
 
-
 import (
-	"time"
-	"log/slog"
 	"context"
+	"log/slog"
+	"time"
 )
 
 type RedisBaseOperationInterface interface {
@@ -35,8 +38,8 @@ type RedisOperationBase struct {
 	initTimestamp time.Time
 	endTimestamp  time.Time
 	cmd           RedisCommand
-	logger     	  *slog.Logger
-	ctx 		 context.Context
+	logger        *slog.Logger
+	ctx           context.Context
 }
 
 // Wait waits for the command to finish and updates the operation status

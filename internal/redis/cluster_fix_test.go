@@ -5,30 +5,29 @@
 package redis
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
 func TestRedisOperationFixWait(t *testing.T) {
 	tests := []struct {
-		name           string
-		cmd            *RedisCLICommand
-		err			error
+		name string
+		cmd  *RedisCLICommand
+		err  error
 	}{
 		{
 			name: "fix error",
 			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
-			err: fmt.Errorf("error fixing cluster: "),
+			err:  fmt.Errorf("error fixing cluster: "),
 		},
 		{
 			name: "good",
 			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
-			err: nil,
+			err:  nil,
 		},
 	}
 	for _, tt := range tests {

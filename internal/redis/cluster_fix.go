@@ -19,10 +19,10 @@ type RedisOperationFix struct {
 func NewRedisOperationFix(ctx context.Context, redisCluster *RedisCluster) *RedisOperationFix {
 	return &RedisOperationFix{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Fix",
-			status: "Pending",
-			logger: util.GetLogger("operation.fix"),
-			ctx: ctx,
+			name:         "Fix",
+			status:       "Pending",
+			logger:       util.GetLogger("operation.fix"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -31,10 +31,10 @@ func NewRedisOperationFix(ctx context.Context, redisCluster *RedisCluster) *Redi
 func NewFakeRedisOperationFix(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationFix {
 	return &RedisOperationFix{
 		RedisOperationBase: RedisOperationBase{
-			name:   "Fix",
-			status: status, 
-			logger: util.GetLogger("operation.fix"),
-			ctx: ctx,
+			name:         "Fix",
+			status:       status,
+			logger:       util.GetLogger("operation.fix"),
+			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
@@ -49,7 +49,7 @@ func (ro *RedisOperationFix) Launch() error {
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.redisCluster.GetAndCheckRedisClient(true)
+	redisClient, err := ro.redisCluster.getAndCheckRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -81,7 +81,7 @@ func (ro *RedisOperationFix) Wait() error {
 	ro.logger.Info("Cluster fixed successfully")
 
 	// Update nodes info
-	if err := ro.redisCluster.RefreshNodes(); err != nil {
+	if err := ro.redisCluster.refreshNodes(); err != nil {
 		return err
 	}
 	return nil
