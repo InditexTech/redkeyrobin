@@ -2,13 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -44,7 +45,7 @@ func (ro *RedisOperationScaleDown) Launch() error {
 	ro.logger.Info("Scaling down cluster")
 
 	// Launch scale down operation
-	cmd := NewRedisLibraryCommand(ro.ctx, ro.doScaleDown)
+	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doScaleDown)
 	cmd.Start()
 
 	// Update operation

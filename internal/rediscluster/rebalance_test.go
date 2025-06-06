@@ -2,40 +2,42 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
-func TestRedisOperationFixWait(t *testing.T) {
+func TestRedisOperationRebalanceWait(t *testing.T) {
 	tests := []struct {
 		name string
-		cmd  *RedisCLICommand
+		cmd  *redis.RedisCLICommand
 		err  error
 	}{
 		{
-			name: "fix error",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 1"),
-			err:  fmt.Errorf("error fixing cluster: "),
+			name: "rebalance error",
+			cmd:  redis.NewRedisCLICommand(t.Context(), "exit 1"),
+			err:  fmt.Errorf("error rebalancing cluster: "),
 		},
 		{
 			name: "good",
-			cmd:  NewRedisCLICommand(t.Context(), "exit 0"),
+			cmd:  redis.NewRedisCLICommand(t.Context(), "exit 0"),
 			err:  nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationFix(context.Background(), redisCluster, "Running")
+			operation := NewFakeRedisOperationRebalance(context.Background(), redisCluster, "Running", time.Time{})
 			operation.cmd = tt.cmd
 
-			tt.cmd.cmd.Start()
+			tt.cmd.Start()
 			err := operation.Wait()
 			if tt.err != nil {
 				assert.NotNil(t, err)

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -28,14 +29,14 @@ var metricNameReplacer = strings.NewReplacer("-", "_")
 // RedisPollMetrics is responsible for orchestrating the continuous polling of Redis
 type RedisPollMetrics struct {
 	logger         *slog.Logger
-	redisCluster   *redis.RedisCluster
+	redisCluster   *rediscluster.RedisCluster
 	metricsManager *MetricsManager
 	clusterMgr     *ClusterManager
 }
 
 // NewRedisPollMetrics constructs a RedisPollMetrics by delegating the K8s client retrieval,
 // storing the given config & metrics manager, etc.
-func NewRedisPollMetrics(redisCluster *redis.RedisCluster, metricsManager *MetricsManager) (*RedisPollMetrics, error) {
+func NewRedisPollMetrics(redisCluster *rediscluster.RedisCluster, metricsManager *MetricsManager) (*RedisPollMetrics, error) {
 	// Create a cluster manager for IP tracking & reset logic.
 	clusterMgr := NewClusterManager(metricsManager)
 
@@ -69,7 +70,7 @@ func (p *RedisPollMetrics) Start(ctx context.Context) {
 // polls both cluster-level metrics and Redis INFO per node.
 func (p *RedisPollMetrics) pollRedisMetrics(ctx context.Context) error {
 	// Do nothing if the cluster is not ready
-	if p.redisCluster.GetStatus() != redis.Ready {
+	if p.redisCluster.GetStatus() != rediscluster.Ready {
 		return nil
 	}
 

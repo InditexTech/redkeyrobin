@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/rediscluster"
 )
 
 // GetRedisClusterStatus returns the status of the Redis cluster
@@ -73,7 +73,7 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 		ReplicasPerMaster: s.redisCluster.GetReplicasPerMaster(),
 	}
 	if err != nil {
-		if _, ok := err.(*redis.OperationCompletedError); ok {
+		if _, ok := err.(*rediscluster.OperationCompletedError); ok {
 			s.sendResponse(w, http.StatusOK, response)
 			return
 		}
@@ -131,11 +131,11 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	err := s.redisCluster.MoveSlots(from, to, slots)
 	response := ClusterMoveSlotsResponse{}
 	if err != nil {
-		if _, ok := err.(*redis.OperationInProgressError); ok {
+		if _, ok := err.(*rediscluster.OperationInProgressError); ok {
 			response.Status = "In progress"
 			s.sendResponse(w, http.StatusAccepted, response)
 			return
-		} else if _, ok := err.(*redis.OperationCompletedError); ok {
+		} else if _, ok := err.(*rediscluster.OperationCompletedError); ok {
 			response.Status = "Completed"
 			s.sendResponse(w, http.StatusOK, response)
 			return
@@ -177,7 +177,7 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 		Status: "In progress",
 	}
 	if err != nil {
-		if _, ok := err.(*redis.OperationInProgressError); ok {
+		if _, ok := err.(*rediscluster.OperationInProgressError); ok {
 			s.sendResponse(w, http.StatusAccepted, response)
 			return
 		}
@@ -209,7 +209,7 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 		Status: "Completed",
 	}
 	if err != nil {
-		if _, ok := err.(*redis.OperationInProgressError); ok {
+		if _, ok := err.(*rediscluster.OperationInProgressError); ok {
 			response.Status = "In progress"
 			s.sendResponse(w, http.StatusAccepted, response)
 			return

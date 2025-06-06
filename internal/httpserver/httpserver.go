@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/util"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -21,11 +21,11 @@ import (
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
 	logger       *slog.Logger
-	redisCluster *redis.RedisCluster
+	redisCluster *rediscluster.RedisCluster
 	server       *http.Server
 }
 
-func NewServer(redisCluster *redis.RedisCluster) *Server {
+func NewServer(redisCluster *rediscluster.RedisCluster) *Server {
 	return &Server{
 		logger:       util.GetLogger("http-server"),
 		redisCluster: redisCluster,

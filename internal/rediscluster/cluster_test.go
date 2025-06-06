@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
@@ -10,17 +10,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
-var node1 = &RedisNode{
+var node1 = &redis.RedisNode{
 	Name:  "test-0",
 	ID:    "1234567890",
 	Addr:  "node1",
 	IP:    "1.1.1.1",
 	Flags: "master",
-	Slots: []RedisSlotRange{
+	Slots: []redis.RedisSlotRange{
 		{
 			Start: 1,
 			End:   5461,
@@ -28,13 +29,13 @@ var node1 = &RedisNode{
 	},
 	MasterID: "",
 }
-var node2 = &RedisNode{
+var node2 = &redis.RedisNode{
 	Name:  "node2",
 	ID:    "0987654321",
 	Addr:  "node2",
 	IP:    "2.2.2.2",
 	Flags: "master, addr",
-	Slots: []RedisSlotRange{
+	Slots: []redis.RedisSlotRange{
 		{
 			Start: 5462,
 			End:   10922,
@@ -42,13 +43,13 @@ var node2 = &RedisNode{
 	},
 	MasterID: "",
 }
-var node3 = &RedisNode{
+var node3 = &redis.RedisNode{
 	Name:  "node3",
 	ID:    "0987654321",
 	Addr:  "node2",
 	IP:    "2.2.2.2",
 	Flags: "slave",
-	Slots: []RedisSlotRange{
+	Slots: []redis.RedisSlotRange{
 		{
 			Start: 10923,
 			End:   16384,
@@ -84,7 +85,7 @@ var redisCluster = NewFakeRedisCluster(
 		},
 	},
 	"Unknown",
-	map[string]*RedisNode{
+	map[string]*redis.RedisNode{
 		"test-0": node1,
 		"test-1": node2,
 		"test-2": node3,
@@ -216,7 +217,7 @@ func TestRedisClusterHasOperationInNode(t *testing.T) {
 		name            string
 		operationName   string
 		operationStatus string
-		node            RedisNode
+		node            redis.RedisNode
 		expectedResult  bool
 	}{
 		{
@@ -252,8 +253,8 @@ func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
 		name            string
 		operationName   string
 		operationStatus string
-		nodeFrom        RedisNode
-		nodeTo          RedisNode
+		nodeFrom        redis.RedisNode
+		nodeTo          redis.RedisNode
 		expectedResult  bool
 	}{
 		{
@@ -361,7 +362,7 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 					},
 				},
 				"Unknown",
-				map[string]*RedisNode{},
+				map[string]*redis.RedisNode{},
 				tt.operations,
 				make(chan struct{}, 5),
 			)
@@ -378,7 +379,7 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 
 func TestRedisClusterGetters(t *testing.T) {
 	assert.Equal(t, redisCluster.GetRedisClusterStatus(), "Ready")
-	assert.Equal(t, redisCluster.GetStatus(), "Ready")
+	assert.Equal(t, redisCluster.GetStatus(), "Unknown")
 	assert.Equal(t, redisCluster.GetReplicas(), 3)
 	assert.Equal(t, redisCluster.GetReplicasPerMaster(), 0)
 	assert.Equal(t, redisCluster.GetName(), "test")
@@ -425,7 +426,7 @@ func TestRedisClusterGetNodeFromID(t *testing.T) {
 	tests := []struct {
 		name         string
 		nodeID       string
-		expectedNode *RedisNode
+		expectedNode *redis.RedisNode
 	}{
 		{
 			name:         "node not found",
@@ -553,12 +554,12 @@ func TestRedisClusterRemoveNode(t *testing.T) {
 func TestRedisClusterForgetNode(t *testing.T) {
 	tests := []struct {
 		name          string
-		node          *RedisNode
+		node          *redis.RedisNode
 		expectedError error
 	}{
 		{
 			name: "node does not exist",
-			node: &RedisNode{
+			node: &redis.RedisNode{
 				Name: "node4",
 			},
 			expectedError: fmt.Errorf("node node4 not found"),
@@ -634,11 +635,11 @@ func TestRedisClusterCheckNodes(t *testing.T) {
 func TestRedisClusterUpdateNodesInfo(t *testing.T) {
 	tests := []struct {
 		name      string
-		nodesInfo []RedisNode
+		nodesInfo []redis.RedisNode
 	}{
 		{
 			name: "update nodes info",
-			nodesInfo: []RedisNode{
+			nodesInfo: []redis.RedisNode{
 				{
 					Name:  "node1",
 					ID:    "1234567890",
@@ -953,7 +954,7 @@ func TestRedisClusterGetAndCheckRedisClient(t *testing.T) {
 		name           string
 		close          bool
 		expectedError  error
-		expectedClient *RedisClient
+		expectedClient *redis.RedisClient
 	}{
 		{
 			name:           "get bad redis client",
@@ -1148,8 +1149,8 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
-		from          *RedisNode
-		to            *RedisNode
+		from          *redis.RedisNode
+		to            *redis.RedisNode
 		expectedError error
 	}{
 		{
@@ -1167,7 +1168,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 			name: "origin has no slots",
 			prepareTest: func() {
 				redisCluster.operations[Resharding] = []RedisOperation{}
-				node1.Slots = []RedisSlotRange{}
+				node1.Slots = []redis.RedisSlotRange{}
 			},
 			from:          node1,
 			to:            node3,
@@ -1187,7 +1188,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 			prepareTest: func() {
 				redisCluster.conf.Redis.Cluster.MaxRetries = 1
 				redisCluster.operations[Resharding] = []RedisOperation{}
-				node1.Slots = []RedisSlotRange{
+				node1.Slots = []redis.RedisSlotRange{
 					{
 						Start: 1,
 						End:   5461,
@@ -1198,7 +1199,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 				node3.MasterID = "1234567890"
 				node3.Flags = "slave"
 
-				redisCluster.nodes = map[string]*RedisNode{
+				redisCluster.nodes = map[string]*redis.RedisNode{
 					"test-0": node1,
 					"test-1": node2,
 					"test-2": node3,

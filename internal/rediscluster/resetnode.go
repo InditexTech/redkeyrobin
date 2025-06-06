@@ -2,13 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -16,7 +17,7 @@ type RedisOperationResetNode struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster, node *RedisNode) *RedisOperationResetNode {
+func NewRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster, node *redis.RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
 			name:         "ResetNode",
@@ -29,7 +30,7 @@ func NewRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster,
 	}
 }
 
-func NewFakeRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster, status string, node *RedisNode) *RedisOperationResetNode {
+func NewFakeRedisOperationResetNode(ctx context.Context, redisCluster *RedisCluster, status string, node *redis.RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
 			name:         "ResetNode",
@@ -49,7 +50,7 @@ func (ro *RedisOperationResetNode) Launch() error {
 	ctx := context.WithValue(ro.ctx, "nodeName", ro.nodeFrom.Name)
 
 	// Launch upgrade operation
-	cmd := NewRedisLibraryCommand(ctx, ro.doResetNode)
+	cmd := redis.NewRedisLibraryCommand(ctx, ro.doResetNode)
 	cmd.Start()
 
 	// Update operation

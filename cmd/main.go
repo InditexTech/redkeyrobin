@@ -11,7 +11,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/httpserver"
 	"github.com/inditextech/redisrobin/internal/metrics"
 	"github.com/inditextech/redisrobin/internal/reconciler"
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -35,7 +35,7 @@ func main() {
 	defer close(channel)
 
 	// Initialize the Redis cluster.
-	redisCluster := redis.NewRedisCluster(ctx, conf, channel)
+	redisCluster := rediscluster.NewRedisCluster(ctx, conf, channel)
 	if err := redisCluster.Init(); err != nil {
 		logger.Error("Unable to initialize Redis Cluster", "error", err)
 		os.Exit(1)

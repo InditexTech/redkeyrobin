@@ -2,49 +2,50 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-type RedisOperationCheckIntegrity struct {
+type RedisOperationScaleUp struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationCheckIntegrity(ctx context.Context, redisCluster *RedisCluster) *RedisOperationCheckIntegrity {
-	return &RedisOperationCheckIntegrity{
+func NewRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster) *RedisOperationScaleUp {
+	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:         "CheckIntegrity",
+			name:         "ScaleUp",
 			status:       "Pending",
-			logger:       util.GetLogger("operation.integrity"),
+			logger:       util.GetLogger("operation.scaleup"),
 			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationCheckIntegrity(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationCheckIntegrity {
-	return &RedisOperationCheckIntegrity{
+func NewFakeRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationScaleUp {
+	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:         "CheckIntegrity",
+			name:         "ScaleUp",
 			status:       status,
-			logger:       util.GetLogger("operation.integrity"),
+			logger:       util.GetLogger("operation.scaleup"),
 			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
 }
 
-func (ro *RedisOperationCheckIntegrity) Launch() error {
-	ro.logger.Info("Checking cluster integrity")
+func (ro *RedisOperationScaleUp) Launch() error {
+	ro.logger.Info("Scaling up cluster")
 
-	// Launch check integrity operation
-	cmd := NewRedisLibraryCommand(ro.ctx, ro.doCheckIntegrity)
+	// Launch scale up operation
+	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doScaleUp)
 	cmd.Start()
 
 	// Update operation
@@ -55,27 +56,32 @@ func (ro *RedisOperationCheckIntegrity) Launch() error {
 	return nil
 }
 
-func (ro *RedisOperationCheckIntegrity) Wait() error {
-	ro.redisCluster.status = CheckingIntegrity
+func (ro *RedisOperationScaleUp) Wait() error {
+	ro.redisCluster.status = ScalingUp
 
-	// Wait for check cluster integrity to finish
+	// Wait for scale up to finish
 	err := ro.Run()
 
-	// Fix failed
+	// Scale up failed
 	if err != nil {
-		ro.redisCluster.status = CheckingIntegrityError
-		return fmt.Errorf("error checking cluster integrity: %v", err)
+		ro.redisCluster.status = ScalingUpError
+		return fmt.Errorf("error scaling up cluster: %v", err)
 	}
 
-	// Check integrity finished successfully
+	// Scale up finished successfully
 	ro.redisCluster.status = Ready
-	ro.logger.Info("Cluster integrity successfully checked")
+	ro.logger.Info("Cluster scaled up successfully")
 
 	return nil
 }
 
-// doCheckIntegrity checks the integrity of the Redis cluster
-func (ro *RedisOperationCheckIntegrity) doCheckIntegrity(ctx context.Context) error {
+// doScaleUp scales up the Redis cluster
+func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
+	// Add new nodes if needed
+	if err := ro.redisCluster.addNewNodesIfNeeded(ctx); err != nil {
+		return err
+	}
+
 	// Check nodes info
 	if err := ro.redisCluster.checkNodes(); err != nil {
 		return err

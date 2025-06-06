@@ -9,17 +9,17 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
 type RedisClusterReconciler struct {
 	logger       *slog.Logger
-	redisCluster *redis.RedisCluster
+	redisCluster *rediscluster.RedisCluster
 	channel      chan struct{}
 }
 
-func NewRedisClusterReconciler(redisCluster *redis.RedisCluster, channel chan struct{}) (*RedisClusterReconciler, error) {
+func NewRedisClusterReconciler(redisCluster *rediscluster.RedisCluster, channel chan struct{}) (*RedisClusterReconciler, error) {
 	return &RedisClusterReconciler{
 		logger:       util.GetLogger("reconciler"),
 		redisCluster: redisCluster,
@@ -57,13 +57,13 @@ func (r *RedisClusterReconciler) doReconcile() error {
 
 	// Reconcile based on the current status
 	switch r.redisCluster.GetRedisClusterStatus() {
-	case redis.Ready:
+	case rediscluster.Ready:
 		return r.reconcileReadyStatus()
-	case redis.ScalingUp:
+	case rediscluster.ScalingUp:
 		return r.reconcileScalingUpStatus()
-	case redis.ScalingDown:
+	case rediscluster.ScalingDown:
 		return r.reconcileScalingDownStatus()
-	case redis.Upgrading:
+	case rediscluster.Upgrading:
 		return r.reconcileUpgradingStatus()
 	default:
 		return nil
@@ -96,7 +96,7 @@ func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
 func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 	// Check if the cluster needs to be scaled down
 	// If the status is Unknown, ScaleDown should be called to check if the cluster is scaled and update the status. This can happen if Robin is restarted while the cluster is being scaled down.
-	if r.redisCluster.IsScaled() && r.redisCluster.GetStatus() != redis.Unknown {
+	if r.redisCluster.IsScaled() && r.redisCluster.GetStatus() != rediscluster.Unknown {
 		return nil
 	}
 

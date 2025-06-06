@@ -2,12 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/inditextech/redisrobin/internal/redis"
 )
 
 type RedisBaseOperationInterface interface {
@@ -18,8 +20,8 @@ type RedisBaseOperationInterface interface {
 	GetElapsedTimeFromEnd() time.Duration
 	GetStatus() string
 	GetName() string
-	GetNodeFrom() *RedisNode
-	GetNodeTo() *RedisNode
+	GetNodeFrom() *redis.RedisNode
+	GetNodeTo() *redis.RedisNode
 }
 
 type RedisOperation interface {
@@ -33,11 +35,11 @@ type RedisOperationBase struct {
 	name          string
 	status        string
 	redisCluster  *RedisCluster
-	nodeFrom      *RedisNode
-	nodeTo        *RedisNode
+	nodeFrom      *redis.RedisNode
+	nodeTo        *redis.RedisNode
 	initTimestamp time.Time
 	endTimestamp  time.Time
-	cmd           RedisCommand
+	cmd           redis.RedisCommand
 	logger        *slog.Logger
 	ctx           context.Context
 }
@@ -95,11 +97,11 @@ func (ro *RedisOperationBase) GetName() string {
 }
 
 // GetNodeFrom returns the source node of the operation
-func (ro *RedisOperationBase) GetNodeFrom() *RedisNode {
+func (ro *RedisOperationBase) GetNodeFrom() *redis.RedisNode {
 	return ro.nodeFrom
 }
 
 // GetNodeTo returns the destination node of the operation
-func (ro *RedisOperationBase) GetNodeTo() *RedisNode {
+func (ro *RedisOperationBase) GetNodeTo() *redis.RedisNode {
 	return ro.nodeTo
 }

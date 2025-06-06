@@ -2,13 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -17,7 +18,7 @@ type RedisOperationMove struct {
 	slots int
 }
 
-func NewRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, from, to *RedisNode, slots int) *RedisOperationMove {
+func NewRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, from, to *redis.RedisNode, slots int) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
 			name:         "Move",
@@ -33,7 +34,7 @@ func NewRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, from
 	}
 }
 
-func NewFakeRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, status string, from, to *RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
+func NewFakeRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, status string, from, to *redis.RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
 			name:         "Move",
@@ -59,7 +60,7 @@ func (ro *RedisOperationMove) Launch() error {
 
 	// Asure destination node is master
 	if !ro.nodeTo.IsMaster() {
-		if err := ro.redisCluster.convertNodesToMaster(ro.ctx, []*RedisNode{ro.nodeTo}); err != nil {
+		if err := ro.redisCluster.convertNodesToMaster(ro.ctx, []*redis.RedisNode{ro.nodeTo}); err != nil {
 			return fmt.Errorf("error converting node '%s' to master: %v", ro.nodeTo.Name, err)
 		}
 	}

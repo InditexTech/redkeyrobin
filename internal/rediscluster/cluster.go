@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/util"
 )
@@ -51,7 +52,7 @@ type RedisCluster struct {
 	logger     *slog.Logger
 	conf       *config.Configuration
 	status     string
-	nodes      map[string]*RedisNode
+	nodes      map[string]*redis.RedisNode
 	operations map[string][]RedisOperation
 	channel    chan struct{}
 }
@@ -63,13 +64,13 @@ func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel ch
 		logger:     util.GetLogger("redis-cluster"),
 		conf:       conf,
 		status:     Unknown,
-		nodes:      make(map[string]*RedisNode),
+		nodes:      make(map[string]*redis.RedisNode),
 		operations: make(map[string][]RedisOperation),
 		channel:    channel,
 	}
 }
 
-func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*RedisNode, operations map[string][]RedisOperation, channel chan struct{}) *RedisCluster {
+func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*redis.RedisNode, operations map[string][]RedisOperation, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
 		ctx:        ctx,
 		logger:     util.GetLogger("redis-cluster"),
@@ -171,8 +172,8 @@ func (rc *RedisCluster) GetMetricsInterval() int {
 }
 
 // GetNodes returns the Redis nodes in the cluster
-func (rc *RedisCluster) GetNodes() []*RedisNode {
-	nodes := []*RedisNode{}
+func (rc *RedisCluster) GetNodes() []*redis.RedisNode {
+	nodes := []*redis.RedisNode{}
 	for _, node := range rc.nodes {
 		nodes = append(nodes, node)
 	}
@@ -186,7 +187,7 @@ func (rc *RedisCluster) GetMetadata() map[string]string {
 }
 
 // GetNode returns the Redis node with the specified name or nil if it doesn't exist
-func (rc *RedisCluster) GetNode(name string) *RedisNode {
+func (rc *RedisCluster) GetNode(name string) *redis.RedisNode {
 	// If the name is a number, add the cluster name as a prefix
 	if _, err := strconv.Atoi(name); err == nil {
 		name = fmt.Sprintf("%s-%s", rc.GetName(), name)
@@ -195,7 +196,7 @@ func (rc *RedisCluster) GetNode(name string) *RedisNode {
 }
 
 // GetNodeFromID returns the Redis node with the specified ID or nil if it doesn't exist
-func (rc *RedisCluster) GetNodeFromID(nodeID string) *RedisNode {
+func (rc *RedisCluster) GetNodeFromID(nodeID string) *redis.RedisNode {
 	for _, node := range rc.nodes {
 		if node.ID == nodeID {
 			return node
@@ -205,8 +206,8 @@ func (rc *RedisCluster) GetNodeFromID(nodeID string) *RedisNode {
 }
 
 // GetMasterNodes returns the masters in the Redis cluster
-func (rc *RedisCluster) GetMasterNodes() []*RedisNode {
-	masters := make([]*RedisNode, 0)
+func (rc *RedisCluster) GetMasterNodes() []*redis.RedisNode {
+	masters := make([]*redis.RedisNode, 0)
 	for _, node := range rc.nodes {
 		if node.IsMaster() {
 			masters = append(masters, node)
@@ -216,8 +217,8 @@ func (rc *RedisCluster) GetMasterNodes() []*RedisNode {
 }
 
 // GetReplicaNodes returns the replicas in the Redis cluster
-func (rc *RedisCluster) GetReplicaNodes() []*RedisNode {
-	replicas := make([]*RedisNode, 0)
+func (rc *RedisCluster) GetReplicaNodes() []*redis.RedisNode {
+	replicas := make([]*redis.RedisNode, 0)
 	for _, node := range rc.nodes {
 		if node.IsReplica() {
 			replicas = append(replicas, node)
@@ -227,12 +228,12 @@ func (rc *RedisCluster) GetReplicaNodes() []*RedisNode {
 }
 
 // GetReplicasOfNode returns the replicas of the specified node
-func (rc *RedisCluster) GetReplicasOfNode(node *RedisNode) []*RedisNode {
+func (rc *RedisCluster) GetReplicasOfNode(node *redis.RedisNode) []*redis.RedisNode {
 	if node.IsReplica() {
-		return []*RedisNode{}
+		return []*redis.RedisNode{}
 	}
 
-	replicas := make([]*RedisNode, 0)
+	replicas := make([]*redis.RedisNode, 0)
 	for _, other := range rc.nodes {
 		if other.IsReplica() && other.MasterID == node.ID {
 			replicas = append(replicas, other)
@@ -347,7 +348,7 @@ func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool
 }
 
 // MoveSlots moves slots from one Redis node to another
-func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
+func (rc *RedisCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	rc.logger.Info("Moving slots", "slots", slots, "from", from.Name, "to", to.Name)
 
 	// Check if a move operation should be launched
@@ -378,7 +379,7 @@ func (rc *RedisCluster) MoveSlots(from, to *RedisNode, slots int) error {
 }
 
 // Check checks the Redis cluster
-func (rc *RedisCluster) Check() (*ClusterCheckResult, error) {
+func (rc *RedisCluster) Check() (*redis.ClusterCheckResult, error) {
 	rc.logger.Info("Checking cluster")
 
 	// Get Redis client and check connection
@@ -480,7 +481,7 @@ func (rc *RedisCluster) Upgrade(force bool) error {
 }
 
 // Check reset a Redis node in the cluster
-func (rc *RedisCluster) ResetNode(node *RedisNode) error {
+func (rc *RedisCluster) ResetNode(node *redis.RedisNode) error {
 	rc.logger.Info("Reseting node", "node", node.Name)
 
 	// Check if the cluster node is already being resetted
@@ -529,7 +530,7 @@ func (rc *RedisCluster) IsRebalancing() bool {
 }
 
 // IsReshardingNodes returns true if there is a reshard operation between the specified nodes
-func (rc *RedisCluster) IsReshardingNodes(from, to RedisNode) bool {
+func (rc *RedisCluster) IsReshardingNodes(from, to redis.RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Running", from, to)
 }
 
@@ -564,7 +565,7 @@ func (rc *RedisCluster) IsUpgrading() bool {
 }
 
 // IsResettingNode returns true if the cluster nose is being resetted right now
-func (rc *RedisCluster) IsResettingNode(node RedisNode) bool {
+func (rc *RedisCluster) IsResettingNode(node redis.RedisNode) bool {
 	return rc.hasOperationInNode(Resetting, "Running", node)
 }
 
@@ -614,7 +615,7 @@ func (rc *RedisCluster) HasBeenRebalanced() bool {
 }
 
 // HasBeenResharded returns true if there is a reshard operation between the specified nodes that has finished
-func (rc *RedisCluster) HasBeenResharded(from, to RedisNode) bool {
+func (rc *RedisCluster) HasBeenResharded(from, to redis.RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Finished", from, to)
 }
 
@@ -625,7 +626,7 @@ func (rc *RedisCluster) HasNode(name string) bool {
 }
 
 // NodeHasReplicas returns true if the specified node has replicas
-func (rc *RedisCluster) NodeHasReplicas(node *RedisNode) bool {
+func (rc *RedisCluster) NodeHasReplicas(node *redis.RedisNode) bool {
 	if node.IsReplica() {
 		return false
 	}
@@ -644,8 +645,8 @@ func (rc *RedisCluster) NodeHasReplicas(node *RedisNode) bool {
 
 // addNode creates and adds a new Redis node to the cluster
 // It just initializes the node, adds it internally and returns it. The node is not added to the cluster until the cluster is reconciled
-func (rc *RedisCluster) addNode(name, addr string) *RedisNode {
-	node := &RedisNode{
+func (rc *RedisCluster) addNode(name, addr string) *redis.RedisNode {
+	node := &redis.RedisNode{
 		Name:       name,
 		Addr:       addr,
 		MaxRetries: rc.GetClusterMaxRetries(),
@@ -675,7 +676,7 @@ func (rc *RedisCluster) removeNode(name string) error {
 }
 
 // forgetNode removes a node from the cluster
-func (rc *RedisCluster) forgetNode(ctx context.Context, nodeToForget RedisNode) error {
+func (rc *RedisCluster) forgetNode(ctx context.Context, nodeToForget redis.RedisNode) error {
 	// Check if the node exists
 	if !rc.HasNode(nodeToForget.Name) {
 		return fmt.Errorf("node %s not found", nodeToForget.Name)
@@ -730,7 +731,7 @@ func (rc *RedisCluster) checkNodes() error {
 		}
 
 		// Init a fresh node to check if IP or ID have changed. This can happen if the node has been restarted
-		freshNode := RedisNode{
+		freshNode := redis.RedisNode{
 			Name:       nodeName,
 			Addr:       node.Addr,
 			MaxRetries: rc.GetClusterMaxRetries(),
@@ -761,7 +762,7 @@ func (rc *RedisCluster) checkNodes() error {
 }
 
 // updateNodesInfo updates the info of the Redis nodes in the cluster
-func (rc *RedisCluster) updateNodesInfo(nodesInfo []RedisNode) {
+func (rc *RedisCluster) updateNodesInfo(nodesInfo []redis.RedisNode) {
 	for _, nodeInfo := range nodesInfo {
 		node := rc.GetNodeFromID(nodeInfo.ID)
 		if node == nil {
@@ -944,7 +945,7 @@ func (rc *RedisCluster) removeNodesIfNeeded(ctx context.Context) error {
 	return nil
 }
 
-func (rc *RedisCluster) removeSlotsFromNodes(ctx context.Context, nodes []*RedisNode) error {
+func (rc *RedisCluster) removeSlotsFromNodes(ctx context.Context, nodes []*redis.RedisNode) error {
 	// Get the weights for the rebalance
 	weights := map[string]int{}
 	for _, node := range nodes {
@@ -994,7 +995,7 @@ func (rc *RedisCluster) removeSlotsFromNodes(ctx context.Context, nodes []*Redis
 }
 
 // forgetAndRemoveNodes forgets and removes nodes from the Redis cluster
-func (rc *RedisCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*RedisNode) error {
+func (rc *RedisCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*redis.RedisNode) error {
 	for _, node := range nodes {
 		// Forget the node
 		if err := rc.forgetNode(ctx, *node); err != nil {
@@ -1014,7 +1015,7 @@ func (rc *RedisCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*Redis
 }
 
 // getNodesToRemove returns the nodes to remove in order of preference
-func (rc *RedisCluster) getNodesToRemove(ctx context.Context) ([]*RedisNode, error) {
+func (rc *RedisCluster) getNodesToRemove(ctx context.Context) ([]*redis.RedisNode, error) {
 	namePrefix := fmt.Sprintf("%s-", rc.GetName())
 
 	// Get nodes
@@ -1163,8 +1164,8 @@ func (rc *RedisCluster) ensureClusterRatio(ctx context.Context) error {
 
 // ensureReplicaSpread ensures that the number of replicas is spread across the masters
 func (rc *RedisCluster) ensureReplicaSpread(ctx context.Context) error {
-	var masterNeedsReplicas []*RedisNode
-	var replicaNeedsMove []*RedisNode
+	var masterNeedsReplicas []*redis.RedisNode
+	var replicaNeedsMove []*redis.RedisNode
 
 	masters := rc.GetMasterNodes()
 	replicas := rc.GetReplicaNodes()
@@ -1226,7 +1227,7 @@ func (rc *RedisCluster) ensureReplicaSpread(ctx context.Context) error {
 }
 
 // convertNodesToReplicas converts the specified nodes to replicas of the specified nodes to keep
-func (rc *RedisCluster) convertNodesToReplica(ctx context.Context, nodesToConvert []*RedisNode, nodesToKeep []*RedisNode) error {
+func (rc *RedisCluster) convertNodesToReplica(ctx context.Context, nodesToConvert []*redis.RedisNode, nodesToKeep []*redis.RedisNode) error {
 	// Rebalance cluster removing slots from the masters we want to delete
 	if err := rc.removeSlotsFromNodes(ctx, nodesToConvert); err != nil {
 		return err
@@ -1264,7 +1265,7 @@ func (rc *RedisCluster) convertNodesToReplica(ctx context.Context, nodesToConver
 }
 
 // convertNodesToMaster promotes the specified nodes to masters
-func (rc *RedisCluster) convertNodesToMaster(ctx context.Context, nodes []*RedisNode) error {
+func (rc *RedisCluster) convertNodesToMaster(ctx context.Context, nodes []*redis.RedisNode) error {
 	// Reset nodes that will be promoted to masters
 	for _, node := range nodes {
 		// Skip nodes that are already masters
@@ -1289,7 +1290,7 @@ func (rc *RedisCluster) convertNodesToMaster(ctx context.Context, nodes []*Redis
 }
 
 // promoteReplicaOfNode promotes the first replica of the specified node to master
-func (rc *RedisCluster) promoteReplicaOfNode(ctx context.Context, node *RedisNode) error {
+func (rc *RedisCluster) promoteReplicaOfNode(ctx context.Context, node *redis.RedisNode) error {
 	// Check if the node is a master
 	if !node.IsMaster() {
 		return fmt.Errorf("node %s is not a master", node.Name)
@@ -1393,9 +1394,9 @@ func (rc *RedisCluster) assignMissingSlots(ctx context.Context) error {
 }
 
 // getAndCheckRedisClient creates a Redis client and checks the connection
-func (rc *RedisCluster) getAndCheckRedisClient(close bool) (*RedisClient, error) {
+func (rc *RedisCluster) getAndCheckRedisClient(close bool) (*redis.RedisClient, error) {
 	// Create Redis client
-	redisClient := NewRedisClient(rc.ctx, rc.GetAddress(), os.Getenv("REDISAUTH"), 0)
+	redisClient := redis.NewRedisClient(rc.ctx, rc.GetAddress(), os.Getenv("REDISAUTH"), 0)
 	if close {
 		defer redisClient.Close()
 	}
@@ -1441,7 +1442,7 @@ func (rc *RedisCluster) hasOperation(name string, status string) bool {
 }
 
 // hasOperationInNode returns true if the cluster has an operation with the specified name and status in the specified node
-func (rc *RedisCluster) hasOperationInNode(name string, status string, node RedisNode) bool {
+func (rc *RedisCluster) hasOperationInNode(name string, status string, node redis.RedisNode) bool {
 	operations, ok := rc.operations[name]
 	if !ok {
 		return false
@@ -1460,7 +1461,7 @@ func (rc *RedisCluster) hasOperationInNode(name string, status string, node Redi
 }
 
 // hasOperationBetweenNodes returns true if the cluster has an operation with the specified name and status between the specified nodes
-func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, from RedisNode, to RedisNode) bool {
+func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, from redis.RedisNode, to redis.RedisNode) bool {
 	operations, ok := rc.operations[name]
 	if !ok {
 		return false

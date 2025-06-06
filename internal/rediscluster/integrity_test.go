@@ -2,13 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,19 +17,19 @@ import (
 func TestRedisOperationCheckIntegrityWait(t *testing.T) {
 	tests := []struct {
 		name           string
-		cmd            *RedisCLICommand
+		cmd            *redis.RedisCLICommand
 		expectedStatus string
 		err            error
 	}{
 		{
 			name:           "check integrity error",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 1"),
+			cmd:            redis.NewRedisCLICommand(t.Context(), "exit 1"),
 			expectedStatus: CheckingIntegrityError,
 			err:            fmt.Errorf("error checking cluster integrity: "),
 		},
 		{
 			name:           "good",
-			cmd:            NewRedisCLICommand(t.Context(), "exit 0"),
+			cmd:            redis.NewRedisCLICommand(t.Context(), "exit 0"),
 			expectedStatus: Ready,
 			err:            nil,
 		},
@@ -38,7 +39,7 @@ func TestRedisOperationCheckIntegrityWait(t *testing.T) {
 			operation := NewFakeRedisOperationCheckIntegrity(context.Background(), redisCluster, "Running")
 			operation.cmd = tt.cmd
 
-			tt.cmd.cmd.Start()
+			tt.cmd.Start()
 			err := operation.Wait()
 			if tt.err != nil {
 				assert.NotNil(t, err)

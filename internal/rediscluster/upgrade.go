@@ -2,49 +2,50 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package redis
+package rediscluster
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-type RedisOperationScaleUp struct {
+type RedisOperationUpgrade struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster) *RedisOperationScaleUp {
-	return &RedisOperationScaleUp{
+func NewRedisOperationUpgrade(ctx context.Context, redisCluster *RedisCluster) *RedisOperationUpgrade {
+	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
-			name:         "ScaleUp",
+			name:         "Upgrade",
 			status:       "Pending",
-			logger:       util.GetLogger("operation.scaleup"),
+			logger:       util.GetLogger("operation.ugrade"),
 			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationScaleUp {
-	return &RedisOperationScaleUp{
+func NewFakeRedisOperationUpgrade(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationUpgrade {
+	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
-			name:         "ScaleUp",
+			name:         "Upgrade",
 			status:       status,
-			logger:       util.GetLogger("operation.scaleup"),
+			logger:       util.GetLogger("operation.upgrade"),
 			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
 }
 
-func (ro *RedisOperationScaleUp) Launch() error {
-	ro.logger.Info("Scaling up cluster")
+func (ro *RedisOperationUpgrade) Launch() error {
+	ro.logger.Info("Scaling down cluster")
 
-	// Launch scale up operation
-	cmd := NewRedisLibraryCommand(ro.ctx, ro.doScaleUp)
+	// Launch upgrade operation
+	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doUpgrade)
 	cmd.Start()
 
 	// Update operation
@@ -55,27 +56,27 @@ func (ro *RedisOperationScaleUp) Launch() error {
 	return nil
 }
 
-func (ro *RedisOperationScaleUp) Wait() error {
-	ro.redisCluster.status = ScalingUp
+func (ro *RedisOperationUpgrade) Wait() error {
+	ro.redisCluster.status = Upgrading
 
-	// Wait for scale up to finish
+	// Wait for upgrade to finish
 	err := ro.Run()
 
-	// Scale up failed
+	// Upgrade failed
 	if err != nil {
-		ro.redisCluster.status = ScalingUpError
-		return fmt.Errorf("error scaling up cluster: %v", err)
+		ro.redisCluster.status = UpgradingError
+		return fmt.Errorf("error upgrading cluster: %v", err)
 	}
 
-	// Scale up finished successfully
+	// Upgrade finished successfully
 	ro.redisCluster.status = Ready
-	ro.logger.Info("Cluster scaled up successfully")
+	ro.logger.Info("Cluster upgraded successfully")
 
 	return nil
 }
 
-// doScaleUp scales up the Redis cluster
-func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
+// doUpgrade upgrades the Redis cluster
+func (ro *RedisOperationUpgrade) doUpgrade(ctx context.Context) error {
 	// Add new nodes if needed
 	if err := ro.redisCluster.addNewNodesIfNeeded(ctx); err != nil {
 		return err
@@ -88,7 +89,12 @@ func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 
 	// Forget outdated nodes
 	if err := ro.redisCluster.removeOutdatedNodes(ctx); err != nil {
-		ro.logger.Error("Error removing outdated nodes", "error", err)
+		return err
+	}
+
+	// Remove nodes if needed
+	if err := ro.redisCluster.removeNodesIfNeeded(ctx); err != nil {
+		return err
 	}
 
 	// Meet nodes if needed
@@ -98,21 +104,11 @@ func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 
 	// Ensure cluster ratio
 	if err := ro.redisCluster.ensureClusterRatio(ctx); err != nil {
-		return err
+		return nil
 	}
 
 	// Assign missing slots if needed
 	if err := ro.redisCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
-		return err
-	}
-
-	// Fix cluster if needed
-	if err := ro.redisCluster.fixClusterIfNeeded(ctx); err != nil {
-		return err
-	}
-
-	// Balance cluster if needed
-	if err := ro.redisCluster.balanceClusterIfNeeded(ctx, nil); err != nil {
 		return err
 	}
 
