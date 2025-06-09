@@ -25,6 +25,7 @@ type Server struct {
 	server       *http.Server
 }
 
+// NewServer creates a new Server with the provided ConfigProvider.
 func NewServer(redisCluster *rediscluster.RedisCluster) *Server {
 	return &Server{
 		logger:       util.GetLogger("http-server"),
@@ -94,6 +95,7 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
+// SendResponse sends a JSON response with the specified status code and object.
 func (s *Server) sendResponse(w http.ResponseWriter, code int, object ResponseInterface) {
 	response := Response{
 		Code:    code,
@@ -103,6 +105,7 @@ func (s *Server) sendResponse(w http.ResponseWriter, code int, object ResponseIn
 	response.WriteResponse(w)
 }
 
+// SendError sends a JSON error response with the specified status code and message.
 func (s *Server) sendError(w http.ResponseWriter, code int, message string) {
 	response := ErrorResponse{
 		Error: message,

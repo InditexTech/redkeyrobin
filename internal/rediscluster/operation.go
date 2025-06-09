@@ -12,6 +12,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/redis"
 )
 
+// RedisBaseOperationInterface represents the base interface for Redis operations
 type RedisBaseOperationInterface interface {
 	Run() error
 	Cancel()
@@ -24,13 +25,14 @@ type RedisBaseOperationInterface interface {
 	GetNodeTo() *redis.RedisNode
 }
 
+// RedisOperation represents an operation in the Redis cluster, such as rebalancing or resharding
 type RedisOperation interface {
 	RedisBaseOperationInterface
 	Launch() error
 	Wait() error
 }
 
-// RedisOperationBase represents an operation in the Redis cluster, such as rebalancing or resharding
+// RedisOperationBase represents the base implementation of a Redis operation
 type RedisOperationBase struct {
 	name          string
 	status        string

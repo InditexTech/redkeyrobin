@@ -12,6 +12,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationRebalance represents a rebalance operation for a Redis cluster.
 type RedisOperationRebalance struct {
 	RedisOperationBase
 	weights map[string]int
@@ -43,6 +44,7 @@ func NewFakeRedisOperationRebalance(ctx context.Context, redisCluster *RedisClus
 	}
 }
 
+// Launch launches the rebalance operation.
 func (ro *RedisOperationRebalance) Launch() error {
 	ro.logger.Info("Rebalancing cluster")
 
@@ -71,6 +73,7 @@ func (ro *RedisOperationRebalance) Launch() error {
 	return nil
 }
 
+// Wait waits for the rebalance operation to finish.
 func (ro *RedisOperationRebalance) Wait() error {
 	// Wait for rebalance to finish
 	err := ro.Run()

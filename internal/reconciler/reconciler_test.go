@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/inditextech/redisrobin/internal/config"
-	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/stretchr/testify/assert"
 )
 

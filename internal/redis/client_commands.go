@@ -17,9 +17,7 @@ type ClusterCheckResult struct {
 	Warnings          []string
 }
 
-// -----------------------------------------------------------------------------
 // ClusterCheck executes "redis-cli --cluster check <addr>" and parses its output.
-// -----------------------------------------------------------------------------
 func (rc *RedisClient) ClusterCheck(ctx context.Context) (*ClusterCheckResult, error) {
 	// Build the command: "redis-cli --cluster check <host:port>"
 	command := fmt.Sprintf("redis-cli --cluster check %s", rc.client.Options().Addr)
@@ -42,9 +40,7 @@ func (rc *RedisClient) ClusterCheck(ctx context.Context) (*ClusterCheckResult, e
 	return result, nil
 }
 
-// ----------------------------------------------------------------------------------------------------
 // ClusterFix executes "redis-cli --cluster fix <addr>" asynchrously and returns the command reference.
-// ----------------------------------------------------------------------------------------------------
 func (rc *RedisClient) ClusterFix(ctx context.Context) *RedisCLICommand {
 	// Build the command: "redis-cli --cluster fix <host:port>"
 	command := fmt.Sprintf("echo 'yes' | redis-cli --cluster fix %s", rc.client.Options().Addr)
@@ -53,9 +49,7 @@ func (rc *RedisClient) ClusterFix(ctx context.Context) *RedisCLICommand {
 	return runRedisCLICommandAsync(ctx, command)
 }
 
-// -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ReshardNode executes "redis-cli --cluster reshard <addr> --cluster-from <source> --cluster-to <target> --cluster-slots <slots> --cluster-yes" asynchronously and returns the command reference.
-// -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 func (rc *RedisClient) ReshardNode(ctx context.Context, source, target RedisNode, slots int) *RedisCLICommand {
 	if slots == 0 {
 		rc.logger.Info("No slots to reshard")
@@ -69,9 +63,7 @@ func (rc *RedisClient) ReshardNode(ctx context.Context, source, target RedisNode
 	return runRedisCLICommandAsync(ctx, command)
 }
 
-// -----------------------------------------------------------------------------------------------------------------------------------------
 // ReshardNode executes "redis-cli --cluster rebalance <addr> --cluster-use-empty-masters" asynchronously and returns the command reference.
-// -----------------------------------------------------------------------------------------------------------------------------------------
 func (rc *RedisClient) ClusterRebalance(ctx context.Context, weights map[string]int) *RedisCLICommand {
 	// Build the command: "redis-cli --cluster rebalance <host:port>"
 	command := fmt.Sprintf("redis-cli --cluster rebalance %s --cluster-use-empty-masters", rc.client.Options().Addr)

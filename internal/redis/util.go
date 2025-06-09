@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -160,10 +159,6 @@ func parseRedisInfo(info string) *RedisInfo {
 	}
 
 	return parsedInfo
-}
-
-func calculateMaxSlotsPerMaster(slots int, masters int) int {
-	return int(math.Ceil(float64(slots) / float64(masters)))
 }
 
 // runRedisCLICommand executes a Redis CLI command synchronously and returns the command reference.

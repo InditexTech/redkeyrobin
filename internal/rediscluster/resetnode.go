@@ -13,6 +13,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationResetNode represents a reset node operation for a Redis cluster.
 type RedisOperationResetNode struct {
 	RedisOperationBase
 }
@@ -43,6 +44,7 @@ func NewFakeRedisOperationResetNode(ctx context.Context, redisCluster *RedisClus
 	}
 }
 
+// Launch launches the reset node operation.
 func (ro *RedisOperationResetNode) Launch() error {
 	ro.logger.Info("Resetting node", "node", ro.nodeFrom.Name)
 
@@ -61,6 +63,7 @@ func (ro *RedisOperationResetNode) Launch() error {
 	return nil
 }
 
+// Wait waits for the reset node operation to finish.
 func (ro *RedisOperationResetNode) Wait() error {
 	// Wait for reset node to finish
 	err := ro.Run()

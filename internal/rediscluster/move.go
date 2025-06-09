@@ -13,6 +13,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationMove represents a move operation for a Redis cluster.
 type RedisOperationMove struct {
 	RedisOperationBase
 	slots int
@@ -50,6 +51,7 @@ func NewFakeRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, 
 	}
 }
 
+// Launch launches the move operation.
 func (ro *RedisOperationMove) Launch() error {
 	ro.logger.Info("Moving slots", "slots", ro.slots, "from", ro.nodeFrom.Name, "to", ro.nodeTo.Name)
 
@@ -79,6 +81,7 @@ func (ro *RedisOperationMove) Launch() error {
 	return nil
 }
 
+// Wait waits for the move operation to finish.
 func (ro *RedisOperationMove) Wait() error {
 	ro.redisCluster.status = Resharding
 

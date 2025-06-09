@@ -4,6 +4,7 @@
 
 package rediscluster
 
+// OperationInProgressError represents an error when an operation is already in progress.
 type OperationInProgressError struct {
 	Operation string
 }
@@ -12,6 +13,7 @@ func (e *OperationInProgressError) Error() string {
 	return "operation in progress: " + e.Operation
 }
 
+// OperationCompletedError represents an error when an operation is already completed.
 type OperationCompletedError struct {
 	Operation string
 	Reason    string

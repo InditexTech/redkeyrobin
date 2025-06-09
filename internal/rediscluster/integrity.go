@@ -13,6 +13,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationCheckIntegrity represents a check integrity operation for a Redis cluster.
 type RedisOperationCheckIntegrity struct {
 	RedisOperationBase
 }
@@ -41,6 +42,7 @@ func NewFakeRedisOperationCheckIntegrity(ctx context.Context, redisCluster *Redi
 	}
 }
 
+// Launch launches the check integrity operation.
 func (ro *RedisOperationCheckIntegrity) Launch() error {
 	ro.logger.Info("Checking cluster integrity")
 
@@ -56,6 +58,7 @@ func (ro *RedisOperationCheckIntegrity) Launch() error {
 	return nil
 }
 
+// Wait waits for the check integrity operation to finish.
 func (ro *RedisOperationCheckIntegrity) Wait() error {
 	ro.redisCluster.status = CheckingIntegrity
 

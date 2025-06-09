@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -375,7 +375,6 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 		})
 	}
 }
-
 
 func TestRedisClusterGetters(t *testing.T) {
 	assert.Equal(t, redisCluster.GetRedisClusterStatus(), "Ready")

@@ -13,6 +13,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationScaleDown represents a scale down operation for a Redis cluster.
 type RedisOperationScaleDown struct {
 	RedisOperationBase
 }
@@ -41,6 +42,7 @@ func NewFakeRedisOperationScaleDown(ctx context.Context, redisCluster *RedisClus
 	}
 }
 
+// Launch launches the scale down operation.
 func (ro *RedisOperationScaleDown) Launch() error {
 	ro.logger.Info("Scaling down cluster")
 
@@ -56,6 +58,7 @@ func (ro *RedisOperationScaleDown) Launch() error {
 	return nil
 }
 
+// Wait waits for the scale down operation to finish.
 func (ro *RedisOperationScaleDown) Wait() error {
 	ro.redisCluster.status = ScalingDown
 

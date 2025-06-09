@@ -14,6 +14,12 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisSlotRange represents a range of Redis slots.
+type RedisSlotRange struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
+}
+
 // RedisNode represents a Redis cluster node.
 type RedisNode struct {
 	Name       string           `json:"name"`
@@ -31,15 +37,16 @@ type RedisNode struct {
 	Backoff    time.Duration    `json:"-"`
 }
 
-type RedisSlotRange struct {
-	Start int `json:"start"`
-	End   int `json:"end"`
-}
-
+// String returns a formatted string of the Redis node.
 func (rn *RedisNode) String() string {
 	return fmt.Sprintf("Node(ID: %s, Name: %s, IP: %s)", rn.ID, rn.Name, rn.IP)
 }
 
+// ----------------------------------------------------------------------------------------------------
+// ---------------------------------------- GETTERS AND SETTERS ---------------------------------------
+// ----------------------------------------------------------------------------------------------------
+
+// GetNumberOfSlots returns the number of slots of the Redis node.
 func (rn *RedisNode) GetNumberOfSlots() int {
 	slots := 0
 
@@ -50,6 +57,57 @@ func (rn *RedisNode) GetNumberOfSlots() int {
 	return slots
 }
 
+// SetID sets the ID of the Redis node.
+func (rn *RedisNode) SetID(id string) {
+	rn.ID = id
+	rn.ResetSlots()
+}
+
+// SetIP sets the IP of the Redis node.
+func (rn *RedisNode) SetIP(ip string) {
+	rn.IP = ip
+	rn.ResetSlots()
+}
+
+// ----------------------------------------------------------------------------------------------------
+// ---------------------------------------------- ASKERS ----------------------------------------------
+// ----------------------------------------------------------------------------------------------------
+
+// IsMaster returns true if the Redis node is a master.
+func (rn *RedisNode) IsMaster() bool {
+	return strings.Contains(rn.Flags, "master")
+}
+
+// IsConnected returns true if the Redis node is connected.
+func (rn *RedisNode) IsConnected() bool {
+	return rn.LinkStatus == "connected"
+}
+
+// IsDisconnected returns true if the Redis node is disconnected.
+func (rn *RedisNode) IsDisconnected() bool {
+	return rn.LinkStatus == "disconnected"
+}
+
+// IsReplica returns true if the Redis node is a replica.
+func (rn *RedisNode) IsReplica() bool {
+	return rn.hasFlag("slave")
+}
+
+// HasSlots returns true if the Redis node has slots.
+func (rn *RedisNode) HasSlots() bool {
+	return rn.GetNumberOfSlots() > 0
+}
+
+// ShouldBeRemoved returns true if the Redis node should be removed.
+func (rn *RedisNode) ShouldBeRemoved() bool {
+	return rn.hasFlag("fail") || rn.hasFlag("noaddr")
+}
+
+// ----------------------------------------------------------------------------------------------------
+// --------------------------------------------- PUBLIC  ----------------------------------------------
+// ----------------------------------------------------------------------------------------------------
+
+// Init initializes the Redis node.
 func (rn *RedisNode) Init(ctx context.Context) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -73,14 +131,7 @@ func (rn *RedisNode) Init(ctx context.Context) error {
 	return nil
 }
 
-func (rn *RedisNode) getClient(ctx context.Context) (*RedisClient, error) {
-	redisClient := NewRedisClient(ctx, rn.Addr, os.Getenv("REDISAUTH"), 0)
-	if err := redisClient.CheckConnection(rn.MaxRetries, rn.Backoff); err != nil {
-		return nil, err
-	}
-	return redisClient, nil
-}
-
+// CheckConnection checks the connection to the Redis node.
 func (rn *RedisNode) CheckConnection(ctx context.Context) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -90,6 +141,7 @@ func (rn *RedisNode) CheckConnection(ctx context.Context) error {
 	return nil
 }
 
+// UpdateInfo updates the Redis node information.
 func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	if nodeInfo.IP != "" {
 		rn.IP = nodeInfo.IP
@@ -103,48 +155,12 @@ func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	rn.LinkStatus = nodeInfo.LinkStatus
 }
 
+// ResetSlots resets the Redis node slots.
 func (rn *RedisNode) ResetSlots() {
 	rn.Slots = []RedisSlotRange{}
 }
 
-func (rn *RedisNode) SetID(id string) {
-	rn.ID = id
-	rn.ResetSlots()
-}
-
-func (rn *RedisNode) SetIP(ip string) {
-	rn.IP = ip
-	rn.ResetSlots()
-}
-
-func (rn *RedisNode) IsMaster() bool {
-	return strings.Contains(rn.Flags, "master")
-}
-
-func (rn *RedisNode) IsConnected() bool {
-	return rn.LinkStatus == "connected"
-}
-
-func (rn *RedisNode) IsDisconnected() bool {
-	return rn.LinkStatus == "disconnected"
-}
-
-func (rn *RedisNode) IsReplica() bool {
-	return rn.hasFlag("slave")
-}
-
-func (rn *RedisNode) HasSlots() bool {
-	return rn.GetNumberOfSlots() > 0
-}
-
-func (rn *RedisNode) ShouldBeRemoved() bool {
-	return rn.hasFlag("fail") || rn.hasFlag("noaddr")
-}
-
-func (rn *RedisNode) hasFlag(flag string) bool {
-	return strings.Contains(rn.Flags, flag)
-}
-
+// GetClusterNodes gets the cluster nodes known by the Redis node.
 func (rn *RedisNode) GetClusterNodes(ctx context.Context) ([]RedisNode, error) {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -155,6 +171,7 @@ func (rn *RedisNode) GetClusterNodes(ctx context.Context) ([]RedisNode, error) {
 	return redisClient.GetNodesInfo()
 }
 
+// ReplicateNode replicates the Redis node.
 func (rn *RedisNode) ReplicateNode(ctx context.Context, master RedisNode) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -165,6 +182,7 @@ func (rn *RedisNode) ReplicateNode(ctx context.Context, master RedisNode) error 
 	return redisClient.ClusterReplicate(master.ID)
 }
 
+// Reset resets the Redis node.
 func (rn *RedisNode) Reset(ctx context.Context) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -175,6 +193,7 @@ func (rn *RedisNode) Reset(ctx context.Context) error {
 	return redisClient.ClusterReset(false)
 }
 
+// MeetNode meets the Redis node with the current node.
 func (rn *RedisNode) MeetNode(ctx context.Context, node RedisNode) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -185,6 +204,7 @@ func (rn *RedisNode) MeetNode(ctx context.Context, node RedisNode) error {
 	return redisClient.ClusterMeet(node.IP, RedisPort)
 }
 
+// ForgetNode forgets the Redis node in the current node.
 func (rn *RedisNode) ForgetNode(ctx context.Context, node RedisNode) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -195,6 +215,7 @@ func (rn *RedisNode) ForgetNode(ctx context.Context, node RedisNode) error {
 	return redisClient.ClusterForget(node.ID)
 }
 
+// AddSlots adds slots to the Redis node.
 func (rn *RedisNode) AddSlots(ctx context.Context, slots ...int) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -205,6 +226,7 @@ func (rn *RedisNode) AddSlots(ctx context.Context, slots ...int) error {
 	return redisClient.ClusterAddSlots(slots...)
 }
 
+// Failover triggers a failover in the Redis node.
 func (rn *RedisNode) Failover(ctx context.Context) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
@@ -213,4 +235,22 @@ func (rn *RedisNode) Failover(ctx context.Context) error {
 	defer redisClient.Close()
 
 	return redisClient.ClusterFailover()
+}
+
+// ----------------------------------------------------------------------------------------------------
+// --------------------------------------------- PRIVATE ----------------------------------------------
+// ----------------------------------------------------------------------------------------------------
+
+// GetClient returns a Redis client for the node.
+func (rn *RedisNode) getClient(ctx context.Context) (*RedisClient, error) {
+	redisClient := NewRedisClient(ctx, rn.Addr, os.Getenv("REDISAUTH"), 0)
+	if err := redisClient.CheckConnection(rn.MaxRetries, rn.Backoff); err != nil {
+		return nil, err
+	}
+	return redisClient, nil
+}
+
+// hasFlag checks if the Redis node has a specific flag.
+func (rn *RedisNode) hasFlag(flag string) bool {
+	return strings.Contains(rn.Flags, flag)
 }

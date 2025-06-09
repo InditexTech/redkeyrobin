@@ -13,6 +13,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationUpgrade represents an upgrade operation for a Redis cluster.
 type RedisOperationUpgrade struct {
 	RedisOperationBase
 }
@@ -41,6 +42,7 @@ func NewFakeRedisOperationUpgrade(ctx context.Context, redisCluster *RedisCluste
 	}
 }
 
+// Launch launches the upgrade operation.
 func (ro *RedisOperationUpgrade) Launch() error {
 	ro.logger.Info("Scaling down cluster")
 
@@ -56,6 +58,7 @@ func (ro *RedisOperationUpgrade) Launch() error {
 	return nil
 }
 
+// Wait waits for the upgrade operation to finish.
 func (ro *RedisOperationUpgrade) Wait() error {
 	ro.redisCluster.status = Upgrading
 

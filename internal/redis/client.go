@@ -354,6 +354,7 @@ func (rc *RedisClient) ClusterReset(hard bool) error {
 	return nil
 }
 
+// ClusterForget removes a node in the current node from the cluster.
 func (rc *RedisClient) ClusterForget(nodeID string) error {
 	_, err := rc.client.ClusterForget(rc.ctx, nodeID).Result()
 	if err != nil {
@@ -362,6 +363,7 @@ func (rc *RedisClient) ClusterForget(nodeID string) error {
 	return nil
 }
 
+// ClusterAddSlots adds the specified slots to the current node.
 func (rc *RedisClient) ClusterAddSlots(slots ...int) error {
 	_, err := rc.client.ClusterAddSlots(rc.ctx, slots...).Result()
 	if err != nil {
@@ -370,6 +372,7 @@ func (rc *RedisClient) ClusterAddSlots(slots ...int) error {
 	return nil
 }
 
+// ClusterFailover triggers a manual failover of the current node.
 func (rc *RedisClient) ClusterFailover() error {
 	_, err := rc.client.ClusterFailover(rc.ctx).Result()
 	if err != nil {

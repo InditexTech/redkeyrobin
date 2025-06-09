@@ -13,10 +13,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -55,6 +56,7 @@ type RedisCluster struct {
 	nodes      map[string]*redis.RedisNode
 	operations map[string][]RedisOperation
 	channel    chan struct{}
+	mux        sync.RWMutex
 }
 
 // NewRedisCluster creates a new Redis cluster
@@ -67,9 +69,11 @@ func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel ch
 		nodes:      make(map[string]*redis.RedisNode),
 		operations: make(map[string][]RedisOperation),
 		channel:    channel,
+		mux:        sync.RWMutex{},
 	}
 }
 
+// NewFakeRedisCluster creates a new fake Redis cluster
 func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*redis.RedisNode, operations map[string][]RedisOperation, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
 		ctx:        ctx,
@@ -79,6 +83,7 @@ func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status
 		nodes:      nodes,
 		operations: operations,
 		channel:    channel,
+		mux:        sync.RWMutex{},
 	}
 }
 
@@ -173,6 +178,9 @@ func (rc *RedisCluster) GetMetricsInterval() int {
 
 // GetNodes returns the Redis nodes in the cluster
 func (rc *RedisCluster) GetNodes() []*redis.RedisNode {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	nodes := []*redis.RedisNode{}
 	for _, node := range rc.nodes {
 		nodes = append(nodes, node)
@@ -188,6 +196,9 @@ func (rc *RedisCluster) GetMetadata() map[string]string {
 
 // GetNode returns the Redis node with the specified name or nil if it doesn't exist
 func (rc *RedisCluster) GetNode(name string) *redis.RedisNode {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	// If the name is a number, add the cluster name as a prefix
 	if _, err := strconv.Atoi(name); err == nil {
 		name = fmt.Sprintf("%s-%s", rc.GetName(), name)
@@ -197,6 +208,9 @@ func (rc *RedisCluster) GetNode(name string) *redis.RedisNode {
 
 // GetNodeFromID returns the Redis node with the specified ID or nil if it doesn't exist
 func (rc *RedisCluster) GetNodeFromID(nodeID string) *redis.RedisNode {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	for _, node := range rc.nodes {
 		if node.ID == nodeID {
 			return node
@@ -207,6 +221,9 @@ func (rc *RedisCluster) GetNodeFromID(nodeID string) *redis.RedisNode {
 
 // GetMasterNodes returns the masters in the Redis cluster
 func (rc *RedisCluster) GetMasterNodes() []*redis.RedisNode {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	masters := make([]*redis.RedisNode, 0)
 	for _, node := range rc.nodes {
 		if node.IsMaster() {
@@ -218,6 +235,9 @@ func (rc *RedisCluster) GetMasterNodes() []*redis.RedisNode {
 
 // GetReplicaNodes returns the replicas in the Redis cluster
 func (rc *RedisCluster) GetReplicaNodes() []*redis.RedisNode {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	replicas := make([]*redis.RedisNode, 0)
 	for _, node := range rc.nodes {
 		if node.IsReplica() {
@@ -229,6 +249,9 @@ func (rc *RedisCluster) GetReplicaNodes() []*redis.RedisNode {
 
 // GetReplicasOfNode returns the replicas of the specified node
 func (rc *RedisCluster) GetReplicasOfNode(node *redis.RedisNode) []*redis.RedisNode {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	if node.IsReplica() {
 		return []*redis.RedisNode{}
 	}
@@ -316,17 +339,17 @@ func (rc *RedisCluster) RemoveOutdatedOperations() {
 	}
 }
 
-
 // ----------------------------------------------------------------------------------------------------
 // ---------------------------------------- PUBLIC OPERATIONS -----------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// Rebalance rebalances the Redis cluster
-// It launches the cluster rebalance command and, depending on the async flag, waits for it to finish synchronously or asynchronously
-// It returns an OperationInProgressError if the cluster is already rebalancing
-// It returns an OperationAlreadyDoneError if the cluster is already rebalanced
+// Rebalance rebalances the Redis cluster.
+// It receives the weights of the nodes (map) and the async and force flags (bool).
+// It launches the cluster rebalance operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
+// It returns an OperationInProgressError if the cluster is already rebalancing, unless the force flag is set, in which case the ongoing rebalance operation is cancelled.
+// It returns an OperationCompletedError if the cluster is already rebalanced.
 func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool) error {
-	// Check if the cluster is already rebalancing or has been rebalanced
+	// Check if the cluster is already rebalancing or is already rebalanced
 	if rc.IsRebalancing() {
 		if force {
 			rc.logger.Info("Cancelling ongoing rebalance operation")
@@ -347,7 +370,11 @@ func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool
 	return rc.launchOperation(NewRedisOperationRebalance(rc.ctx, rc, weights), Rebalancing, async)
 }
 
-// MoveSlots moves slots from one Redis node to another
+// MoveSlots moves slots from one Redis node to another.
+// It receives the origin node (from), the destination node (to) and the number of slots to move (slots).
+// It launches the move operation and waits for it to finish asynchronously.
+// It returns an OperationInProgressError if there is already a reshard operation between the specified nodes.
+// It returns an OperationCompletedError if the origin node is a replica, has no slots or has replicas (and a replica of the origin node is promoted).
 func (rc *RedisCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	rc.logger.Info("Moving slots", "slots", slots, "from", from.Name, "to", to.Name)
 
@@ -378,7 +405,9 @@ func (rc *RedisCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	return rc.launchOperation(NewRedisOperationMove(rc.ctx, rc, from, to, slots), Resharding, true)
 }
 
-// Check checks the Redis cluster
+// Check checks the Redis cluster.
+// It launches the cluster check operation and waits for it to finish asynchronously.
+// It returns a ClusterCheckResult with the results of the check.
 func (rc *RedisCluster) Check() (*redis.ClusterCheckResult, error) {
 	rc.logger.Info("Checking cluster")
 
@@ -397,7 +426,10 @@ func (rc *RedisCluster) Check() (*redis.ClusterCheckResult, error) {
 	return result, nil
 }
 
-// Fix fixes the Redis cluster
+// Fix fixes the Redis cluster.
+// It receives the async and force flags (bool).
+// It launches the cluster fix operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
+// It returns an OperationInProgressError if the cluster is already fixing, unless the force flag is set, in which case the ongoing fixing operation is cancelled.
 func (rc *RedisCluster) Fix(async bool, force bool) error {
 	rc.logger.Info("Fixing cluster")
 
@@ -420,6 +452,9 @@ func (rc *RedisCluster) Fix(async bool, force bool) error {
 }
 
 // CheckIntegrity checks the integrity of the Redis cluster
+// It receives the async and force flags (bool).
+// It launches the cluster check integrity operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
+// It returns an OperationInProgressError if the cluster is already checking integrity, unless the force flag is set, in which case the ongoing checking integrity operation is cancelled.
 func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
 	rc.logger.Info("Checking cluster integrity")
 
@@ -441,6 +476,10 @@ func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
 	return rc.launchOperation(NewRedisOperationCheckIntegrity(rc.ctx, rc), CheckingIntegrity, async)
 }
 
+// ScaleUp scales up the Redis cluster
+// It receives the force flag (bool).
+// It launches the cluster scale up operation and waits for it to finish asynchronously.
+// It returns an OperationInProgressError if the cluster is already scaling up, unless the force flag is set, in which case a new scale up operation is launched.
 func (rc *RedisCluster) ScaleUp(force bool) error {
 	rc.logger.Info("Scaling up cluster")
 
@@ -454,6 +493,10 @@ func (rc *RedisCluster) ScaleUp(force bool) error {
 	return rc.launchOperation(NewRedisOperationScaleUp(rc.ctx, rc), ScalingUp, false)
 }
 
+// ScaleDown scales down the Redis cluster
+// It receives the force flag (bool).
+// It launches the cluster scale down operation and waits for it to finish asynchronously.
+// It returns an OperationInProgressError if the cluster is already scaling down, unless the force flag is set, in which case a new scale down operation is launched.
 func (rc *RedisCluster) ScaleDown(force bool) error {
 	rc.logger.Info("Scaling down cluster")
 
@@ -467,6 +510,10 @@ func (rc *RedisCluster) ScaleDown(force bool) error {
 	return rc.launchOperation(NewRedisOperationScaleDown(rc.ctx, rc), ScalingDown, false)
 }
 
+// Upgrade upgrades the Redis cluster
+// It receives the force flag (bool).
+// It launches the cluster upgrade operation and waits for it to finish asynchronously.
+// It returns an OperationInProgressError if the cluster is already upgrading, unless the force flag is set, in which case a new upgrade operation is launched.
 func (rc *RedisCluster) Upgrade(force bool) error {
 	rc.logger.Info("Upgrading cluster")
 
@@ -481,6 +528,9 @@ func (rc *RedisCluster) Upgrade(force bool) error {
 }
 
 // Check reset a Redis node in the cluster
+// It receives the node to reset.
+// It launches the cluster reset operation and waits for it to finish asynchronously.
+// It returns an OperationInProgressError if the cluster is already resetting the node.
 func (rc *RedisCluster) ResetNode(node *redis.RedisNode) error {
 	rc.logger.Info("Reseting node", "node", node.Name)
 
@@ -597,6 +647,9 @@ func (rc *RedisCluster) CanBeChecked() bool {
 
 // HasMissingSlots returns true if the cluster has missing slots
 func (rc *RedisCluster) HasMissingSlots() bool {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	slotCount := 0
 	for _, node := range rc.GetNodes() {
 		slotCount += node.GetNumberOfSlots()
@@ -621,12 +674,18 @@ func (rc *RedisCluster) HasBeenResharded(from, to redis.RedisNode) bool {
 
 // HasNode returns true if the Redis cluster has a node with the specified name
 func (rc *RedisCluster) HasNode(name string) bool {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	_, ok := rc.nodes[name]
 	return ok
 }
 
 // NodeHasReplicas returns true if the specified node has replicas
 func (rc *RedisCluster) NodeHasReplicas(node *redis.RedisNode) bool {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	if node.IsReplica() {
 		return false
 	}
@@ -646,6 +705,9 @@ func (rc *RedisCluster) NodeHasReplicas(node *redis.RedisNode) bool {
 // addNode creates and adds a new Redis node to the cluster
 // It just initializes the node, adds it internally and returns it. The node is not added to the cluster until the cluster is reconciled
 func (rc *RedisCluster) addNode(name, addr string) *redis.RedisNode {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	node := &redis.RedisNode{
 		Name:       name,
 		Addr:       addr,
@@ -666,6 +728,9 @@ func (rc *RedisCluster) addNode(name, addr string) *redis.RedisNode {
 
 // removeNode removes a Redis node from the cluster
 func (rc *RedisCluster) removeNode(name string) error {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	_, ok := rc.nodes[name]
 	if !ok {
 		return fmt.Errorf("node %s not found", name)
@@ -827,10 +892,12 @@ func (rc *RedisCluster) needsFix(ctx context.Context) (bool, error) {
 	return result.CommandCodeOutput != 0, nil
 }
 
+// needsUpscale checks if the Redis cluster needs to be scaled up
 func (rc *RedisCluster) needsUpscale() bool {
 	return len(rc.GetNodes()) < rc.GetDesiredReplicas()
 }
 
+// needsDownscale checks if the Redis cluster needs to be scaled down
 func (rc *RedisCluster) needsDownscale() bool {
 	return len(rc.GetNodes()) > rc.GetDesiredReplicas()
 }
@@ -1409,6 +1476,7 @@ func (rc *RedisCluster) getAndCheckRedisClient(close bool) (*redis.RedisClient, 
 	return redisClient, nil
 }
 
+// launchOperation launches a Redis operation, adds it to the cluster operations map and waits for it to finish synchronously or asynchronously depending on the async flag.
 func (rc *RedisCluster) launchOperation(operation RedisOperation, name string, async bool) error {
 	// Launch the operation
 	err := operation.Launch()
@@ -1428,6 +1496,9 @@ func (rc *RedisCluster) launchOperation(operation RedisOperation, name string, a
 
 // hasOperation returns true if the cluster has an operation with the specified name and status
 func (rc *RedisCluster) hasOperation(name string, status string) bool {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	operations, ok := rc.operations[name]
 	if !ok {
 		return false
@@ -1443,6 +1514,9 @@ func (rc *RedisCluster) hasOperation(name string, status string) bool {
 
 // hasOperationInNode returns true if the cluster has an operation with the specified name and status in the specified node
 func (rc *RedisCluster) hasOperationInNode(name string, status string, node redis.RedisNode) bool {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	operations, ok := rc.operations[name]
 	if !ok {
 		return false
@@ -1462,6 +1536,9 @@ func (rc *RedisCluster) hasOperationInNode(name string, status string, node redi
 
 // hasOperationBetweenNodes returns true if the cluster has an operation with the specified name and status between the specified nodes
 func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, from redis.RedisNode, to redis.RedisNode) bool {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	operations, ok := rc.operations[name]
 	if !ok {
 		return false
@@ -1485,6 +1562,9 @@ func (rc *RedisCluster) hasOperationBetweenNodes(name string, status string, fro
 
 // addOperation adds a new operation to the cluster operations map
 func (rc *RedisCluster) addOperation(operationName string, operation RedisOperation) {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	if rc.operations[operationName] == nil {
 		rc.operations[operationName] = make([]RedisOperation, 0)
 	}
@@ -1494,6 +1574,9 @@ func (rc *RedisCluster) addOperation(operationName string, operation RedisOperat
 
 // getOperation returns the operation if the cluster has an operation with the specified name and status or nil otherwise
 func (rc *RedisCluster) getOperation(name string, status string) RedisOperation {
+	rc.mux.RLock()
+	defer rc.mux.RUnlock()
+
 	operations, ok := rc.operations[name]
 	if !ok {
 		return nil

@@ -12,6 +12,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationFix represents a fix operation for a Redis cluster.
 type RedisOperationFix struct {
 	RedisOperationBase
 }
@@ -40,6 +41,7 @@ func NewFakeRedisOperationFix(ctx context.Context, redisCluster *RedisCluster, s
 	}
 }
 
+// Launch launches the fix operation.
 func (ro *RedisOperationFix) Launch() error {
 	ro.logger.Info("Fixing cluster")
 
@@ -68,6 +70,7 @@ func (ro *RedisOperationFix) Launch() error {
 	return nil
 }
 
+// Wait waits for the fix operation to finish.
 func (ro *RedisOperationFix) Wait() error {
 	// Wait for cluster fix to finish
 	err := ro.Run()

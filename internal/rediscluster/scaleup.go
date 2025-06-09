@@ -13,6 +13,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
+// RedisOperationScaleUp represents a scale up operation for a Redis cluster.
 type RedisOperationScaleUp struct {
 	RedisOperationBase
 }
@@ -41,6 +42,7 @@ func NewFakeRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluste
 	}
 }
 
+// Launch launches the scale up operation.
 func (ro *RedisOperationScaleUp) Launch() error {
 	ro.logger.Info("Scaling up cluster")
 
@@ -56,6 +58,7 @@ func (ro *RedisOperationScaleUp) Launch() error {
 	return nil
 }
 
+// Wait waits for the scale up operation to finish.
 func (ro *RedisOperationScaleUp) Wait() error {
 	ro.redisCluster.status = ScalingUp
 

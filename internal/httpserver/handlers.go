@@ -11,7 +11,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/rediscluster"
 )
 
-// GetRedisClusterStatus returns the status of the Redis cluster
+// GetRedisClusterStatus handles the GET /v1/rediscluster/status endpoint. It returns the current status of the Redis cluster from the Operator's perspective.
 func (s *Server) GetRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redis cluster status")
 
@@ -21,7 +21,7 @@ func (s *Server) GetRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// UpdateRedisClusterStatus updates the status of the Redis Cluster
+// UpdateRedisClusterStatus handles the PUT /v1/rediscluster/status endpoint. It updates the status of the Redis cluster from the Operator's perspective.
 func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Update redis cluster status")
 
@@ -43,6 +43,7 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 	s.sendResponse(w, http.StatusOK, response)
 }
 
+// GetClusterReplicas handles the GET /v1/rediscluster/replicas endpoint. It returns the current number of replicas in the Redis cluster.
 func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redis cluster replicas")
 
@@ -53,6 +54,7 @@ func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
+// UpdateClusterReplicas handles the PUT /v1/rediscluster/replicas endpoint. It updates the number of replicas in the Redis cluster.
 func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Update redis cluster replicas")
 
@@ -84,6 +86,7 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
+// GetClusterStatus handles the GET /v1/cluster/status endpoint. It returns the current status of the Redis cluster from the Robin's perspective.
 func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster status")
 
@@ -93,6 +96,7 @@ func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
+// GetClusterNodes handles the PUT /v1/cluster/move endpoint. It moves slots from one node to another.
 func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Move cluster node slots")
 
@@ -148,6 +152,7 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
+// CheckCluster handles the GET /v1/cluster/check endpoint. It checks the integrity of the Redis cluster and returns a list of errors and warnings.
 func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Check cluster")
 
@@ -166,6 +171,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
+// FixCluster handles the POST /v1/cluster/fix endpoint. It fixes the integrity of the Redis cluster.
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Fix cluster")
 
@@ -188,6 +194,7 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
+// ResetNode handles the POST /v1/cluster/reset/{nodeIndex} endpoint. It resets a Redis node.
 func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Reset node")
 
@@ -222,6 +229,7 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
+// GetNodes handles the GET /v1/cluster/nodes endpoint. It returns the list of nodes in the Redis cluster.
 func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster nodes")
 

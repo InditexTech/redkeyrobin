@@ -12,6 +12,7 @@ import (
 	"sync"
 )
 
+// RedisCommand represents a Redis command.
 type RedisCommand interface {
 	Run()
 	Start()
@@ -23,11 +24,13 @@ type RedisCommand interface {
 	Error() error
 }
 
+// RedisBaseCommand represents a base Redis command.
 type RedisBaseCommand struct {
 	ExitCode int
 	Err      error
 }
 
+// ExitCode returns the error of the Redis command.
 func (rbc *RedisBaseCommand) Error() error {
 	return rbc.Err
 }
@@ -111,6 +114,7 @@ func (rcc *RedisCLICommand) Error() error {
 	return fmt.Errorf("%s", rcc.GetCombinedOutput())
 }
 
+// RedisLibraryCommand represents a Redis library command.
 type RedisLibraryCommand struct {
 	RedisBaseCommand
 	ctx    context.Context
@@ -119,6 +123,7 @@ type RedisLibraryCommand struct {
 	cancel context.CancelFunc
 }
 
+// NewRedisLibraryCommand creates a new Redis library command.
 func NewRedisLibraryCommand(ctx context.Context, cmd func(context.Context) error) *RedisLibraryCommand {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -130,11 +135,13 @@ func NewRedisLibraryCommand(ctx context.Context, cmd func(context.Context) error
 	}
 }
 
+// Run executes the Redis library command synchronously and captures the exit code.
 func (rlc *RedisLibraryCommand) Run() {
 	rlc.Start()
 	rlc.Wait()
 }
 
+// Start executes the Redis library command asynchronously.
 func (rlc *RedisLibraryCommand) Start() {
 	rlc.wg.Add(1)
 	go func() {
@@ -143,27 +150,33 @@ func (rlc *RedisLibraryCommand) Start() {
 	}()
 }
 
+// Wait waits for the Redis library command to finish and captures any errors.
 func (rlc *RedisLibraryCommand) Wait() {
 	rlc.wg.Wait()
 	rlc.checkStatusCode()
 }
 
+// Cancel cancels the Redis library command.
 func (rlc *RedisLibraryCommand) Cancel() {
 	rlc.cancel()
 }
 
+// GetStdout returns the standard output of the Redis library command.
 func (rlc *RedisLibraryCommand) GetStdout() string {
 	return ""
 }
 
+// GetStderr returns the standard error of the Redis library command.
 func (rlc *RedisLibraryCommand) GetStderr() string {
 	return ""
 }
 
+// GetCombinedOutput returns the combined output (both stdout and stderr) of the Redis library command.
 func (rlc *RedisLibraryCommand) GetCombinedOutput() string {
 	return ""
 }
 
+// CheckStatusCode captures the exit code of the Redis library command.
 func (rlc *RedisLibraryCommand) checkStatusCode() {
 	rlc.ExitCode = 0
 

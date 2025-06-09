@@ -13,12 +13,14 @@ const (
 	defaultConfigmapFilePath = "/opt/conf/configmap/application-configmap.yml"
 )
 
+// Options represents the command-line options.
 type Options struct {
 	ConfigMapPath  string
 	Address        string
 	DisableMetrics bool
 }
 
+// ParseOptions parses the command-line options.
 func ParseOptions() *Options {
 	var httpServerAddress, configmapFilePath string
 	var disableMetrics bool
