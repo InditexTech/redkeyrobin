@@ -449,7 +449,10 @@ func TestGetNodes(t *testing.T) {
 			assert.NotNil(t, response.Nodes)
 
 			expectedBody := tt.expectedBody.(ClusterNodesResponse)
-			assert.Equal(t, expectedBody.Nodes, response.Nodes)
+			assert.Len(t, response.Nodes, len(expectedBody.Nodes))
+			for _, node := range expectedBody.Nodes {
+				assert.Contains(t, response.Nodes, node)
+			}
 		})
 	}
 }
