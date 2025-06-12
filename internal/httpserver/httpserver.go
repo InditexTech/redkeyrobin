@@ -37,6 +37,10 @@ func NewServer(redisCluster *rediscluster.RedisCluster) *Server {
 func (s *Server) Init(opts *util.Options) error {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		s.sendResponse(w, http.StatusOK, HealthResponse{Status: "OK"})
+	})
+
 	// Metrics endpoint
 	if !opts.DisableMetrics {
 		mux.Handle("GET /metrics", promhttp.Handler())

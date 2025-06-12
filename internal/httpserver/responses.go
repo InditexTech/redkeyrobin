@@ -67,6 +67,14 @@ func (e ErrorResponse) GetKeys() []string {
 	return []string{"error"}
 }
 
+type HealthResponse struct {
+	Status string `json:"status"`
+}
+
+func (r HealthResponse) GetKeys() []string {
+	return []string{"status"}
+}
+
 type RedisClusterStatusResponse struct {
 	Status string `json:"status"`
 }
