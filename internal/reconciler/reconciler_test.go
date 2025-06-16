@@ -113,7 +113,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 			)
 
 			reconciler, _ := NewRedisClusterReconciler(rdcl, make(chan struct{}))
-			reconciler.Reconcile()
+			reconciler.reconcile()
 			err := reconciler.doReconcile()
 
 			if tt.expectedError != nil {

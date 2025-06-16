@@ -6,8 +6,9 @@ package httpserver
 
 import (
 	"encoding/json"
-	"github.com/inditextech/redisrobin/internal/redis"
 	"net/http"
+
+	"github.com/inditextech/redisrobin/internal/redis"
 )
 
 type ResponseInterface interface {

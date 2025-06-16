@@ -12,6 +12,9 @@ import (
 	"github.com/inditextech/redisrobin/internal/redis"
 )
 
+// nodeInfoReplacer is used to clean up node info strings.
+var nodeInfoReplacer = strings.NewReplacer("{", "", "}", "", "\r", "", "[", "", "]", "")
+
 // ClusterManager encapsulates cluster-level logic such as maintaining an IP list and
 // resetting metrics if the node list changes.
 type ClusterManager struct {

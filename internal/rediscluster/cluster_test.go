@@ -295,7 +295,7 @@ func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
 	}
 }
 
-func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
+func TestRedisClusterDoRemoveOutdatedOperations(t *testing.T) {
 	tests := []struct {
 		name               string
 		operations         map[string][]RedisOperation
@@ -367,7 +367,7 @@ func TestRedisClusterRemoveOutdatedOperations(t *testing.T) {
 				make(chan struct{}, 5),
 			)
 
-			rdcl.RemoveOutdatedOperations()
+			rdcl.doRemoveOutdatedNodes()
 
 			for operation, ops := range rdcl.operations {
 				assert.Len(t, ops, tt.expectedOperations[operation], "operation %s", operation)

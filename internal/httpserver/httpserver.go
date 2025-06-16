@@ -21,12 +21,12 @@ import (
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
 	logger       *slog.Logger
-	redisCluster *rediscluster.RedisCluster
+	redisCluster rediscluster.Cluster
 	server       *http.Server
 }
 
 // NewServer creates a new Server with the provided ConfigProvider.
-func NewServer(redisCluster *rediscluster.RedisCluster) *Server {
+func NewServer(redisCluster rediscluster.Cluster) *Server {
 	return &Server{
 		logger:       util.GetLogger("http-server"),
 		redisCluster: redisCluster,
@@ -46,26 +46,27 @@ func (s *Server) Init(opts *util.Options) error {
 		mux.Handle("GET /metrics", promhttp.Handler())
 	}
 
-	// Rediscluster endpoints
-	mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
-	mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
-	mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
-	mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
+	if !s.redisCluster.IsStandalone() {
+		// Rediscluster endpoints
+		mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
+		mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
+		mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
+		mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
 
-	// Cluster endpoints
-	mux.HandleFunc("GET /v1/cluster/status", s.GetClusterStatus)
-	mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
-	mux.HandleFunc("GET /v1/cluster/check", s.CheckCluster)
-	mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
-	mux.HandleFunc("PUT /v1/cluster/reset/{nodeIndex}", s.ResetNode)
-	mux.HandleFunc("GET /v1/cluster/nodes", s.GetNodes)
+		// Cluster endpoints		
+		mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
+		mux.HandleFunc("GET /v1/cluster/check", s.CheckCluster)
+		mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
+		mux.HandleFunc("PUT /v1/cluster/reset/{nodeIndex}", s.ResetNode)
+		mux.HandleFunc("GET /v1/cluster/nodes", s.GetNodes)
+	}
 
 	// Create the server
 	s.server = &http.Server{
 		Addr:    opts.Address,
 		Handler: mux,
 	}
-
+	
 	return nil
 }
 
