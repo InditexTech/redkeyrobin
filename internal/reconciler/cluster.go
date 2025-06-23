@@ -5,22 +5,21 @@
 package reconciler
 
 import (
-	"github.com/inditextech/redisrobin/internal/rediscluster"
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
-
 
 // RedisClusterReconciler is responsible for reconciling a Redis cluster.
 type RedisClusterReconciler struct {
 	baseClusterReconciler
 }
 
-func NewRedisClusterReconciler(cluster rediscluster.Cluster, channel chan struct{}) (*RedisClusterReconciler, error) {
+func NewRedisClusterReconciler(cluster cluster.Cluster, channel chan struct{}) (*RedisClusterReconciler, error) {
 	reconciler := &RedisClusterReconciler{
 		baseClusterReconciler: baseClusterReconciler{
-			logger:       util.GetLogger("cluster-reconciler"),
-			cluster: 	  cluster,
-			channel:      channel,
+			logger:  util.GetLogger("cluster-reconciler"),
+			cluster: cluster,
+			channel: channel,
 		},
 	}
 	reconciler.delegate = reconciler
@@ -31,13 +30,13 @@ func NewRedisClusterReconciler(cluster rediscluster.Cluster, channel chan struct
 func (r *RedisClusterReconciler) doReconcile() error {
 	// Reconcile based on the current status
 	switch r.cluster.GetRedisClusterStatus() {
-	case rediscluster.Ready:
+	case cluster.Ready:
 		return r.reconcileReadyStatus()
-	case rediscluster.ScalingUp:
+	case cluster.ScalingUp:
 		return r.reconcileScalingUpStatus()
-	case rediscluster.ScalingDown:
+	case cluster.ScalingDown:
 		return r.reconcileScalingDownStatus()
-	case rediscluster.Upgrading:
+	case cluster.Upgrading:
 		return r.reconcileUpgradingStatus()
 	default:
 		return nil
@@ -73,7 +72,7 @@ func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
 func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 	// Check if the cluster needs to be scaled down
 	// If the status is Unknown, ScaleDown should be called to check if the cluster is scaled and update the status. This can happen if Robin is restarted while the cluster is being scaled down.
-	if r.cluster.IsScaled() && r.cluster.GetStatus() != rediscluster.Unknown {
+	if r.cluster.IsScaled() && r.cluster.GetStatus() != cluster.Unknown {
 		return nil
 	}
 

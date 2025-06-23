@@ -7,7 +7,7 @@ package reconciler
 import (
 	"context"
 
-	"github.com/inditextech/redisrobin/internal/rediscluster"
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -15,12 +15,12 @@ type RedisStandaloneReconciler struct {
 	baseClusterReconciler
 }
 
-func NewStandaloneReconciler(cluster rediscluster.Cluster, channel chan struct{}) (*RedisStandaloneReconciler, error) {
+func NewStandaloneReconciler(cluster cluster.Cluster, channel chan struct{}) (*RedisStandaloneReconciler, error) {
 	reconciler := &RedisStandaloneReconciler{
 		baseClusterReconciler: baseClusterReconciler{
-			logger:       util.GetLogger("standalone-reconciler"),
-			cluster: 	  cluster,
-			channel:      channel,
+			logger:  util.GetLogger("standalone-reconciler"),
+			cluster: cluster,
+			channel: channel,
 		},
 	}
 	reconciler.delegate = reconciler

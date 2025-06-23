@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
@@ -447,7 +447,7 @@ func TestRedisClusterGetNodeFromID(t *testing.T) {
 }
 
 func TestRedisClusterAskers(t *testing.T) {
-	assert.True(t, redisCluster.IsBalanced())
+	assert.False(t, redisCluster.IsBalanced())
 	assert.True(t, redisCluster.IsRebalancing())
 
 	assert.False(t, redisCluster.IsReshardingNodes(*node1, *node2))
@@ -1216,6 +1216,10 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 			name: "bad redis client",
 			prepareTest: func() {
 				redisCluster.operations[Resharding] = []RedisOperation{}
+				node2.MaxRetries = 1
+				node2.Backoff = time.Microsecond * 10
+				node3.MaxRetries = 1
+				node3.Backoff = time.Microsecond * 10
 			},
 			from:          node2,
 			to:            node3,

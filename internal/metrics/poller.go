@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/rediscluster"
 )
 
 // metricNameReplacer transforms metric names (e.g., replacing hyphens).
@@ -35,7 +35,7 @@ type MetricsPollerDelegate interface {
 }
 
 // NewMetricsPoller creates a new metrics poller. It returns a standalone or cluster metrics poller based on the cluster type.
-func NewMetricsPoller(cluster rediscluster.Cluster) (MetricsPoller, error) {
+func NewMetricsPoller(cluster cluster.Cluster) (MetricsPoller, error) {
 	if cluster.IsStandalone() {
 		return NewRedisStandaloneMetricsPoller(cluster)
 	} else {
@@ -47,7 +47,7 @@ func NewMetricsPoller(cluster rediscluster.Cluster) (MetricsPoller, error) {
 type basePoller struct {
 	logger         *slog.Logger
 	metricsManager *MetricsManager
-	cluster        rediscluster.Cluster
+	cluster        cluster.Cluster
 	delegate       MetricsPollerDelegate
 }
 
@@ -73,7 +73,7 @@ func (bp *basePoller) Start(ctx context.Context) {
 
 func (bp *basePoller) pollMetrics(ctx context.Context) {
 	// Do nothing if the cluster is not ready
-	if bp.cluster.GetStatus() != rediscluster.Ready {
+	if bp.cluster.GetStatus() != cluster.Ready {
 		return
 	}
 

@@ -42,7 +42,7 @@ type RedisMetricsConfig struct {
 
 // RedisConfig groups all Redis related configuration.
 type RedisConfig struct {
-	Standalone			   	 bool          `yaml:"standalone"`
+	Standalone bool                  `yaml:"standalone"`
 	Reconciler RedisReconcilerConfig `yaml:"reconciler"`
 	Cluster    RedisClusterConfig    `yaml:"cluster"`
 	Metrics    RedisMetricsConfig    `yaml:"metrics"`

@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/rediscluster"
+	"github.com/inditextech/redisrobin/internal/cluster"
 )
 
 // ClusterReconciler is an interface for reconciling a cluster.
@@ -25,7 +25,7 @@ type ClusterReconcilerDelegate interface {
 }
 
 // NewClusterReconciler creates a new cluster reconciler. It returns a standalone or cluster reconciler based on the cluster type.
-func NewClusterReconciler(cluster rediscluster.Cluster, channel chan struct{}) (ClusterReconciler, error) {
+func NewClusterReconciler(cluster cluster.Cluster, channel chan struct{}) (ClusterReconciler, error) {
 	if cluster.IsStandalone() {
 		return NewStandaloneReconciler(cluster, channel)
 	} else {
@@ -35,10 +35,10 @@ func NewClusterReconciler(cluster rediscluster.Cluster, channel chan struct{}) (
 
 // baseClusterReconciler is a base struct for all reconcilers.
 type baseClusterReconciler struct {
-	logger       *slog.Logger
-	cluster rediscluster.Cluster
-	channel      chan struct{}
-	delegate 	ClusterReconcilerDelegate
+	logger   *slog.Logger
+	cluster  cluster.Cluster
+	channel  chan struct{}
+	delegate ClusterReconcilerDelegate
 }
 
 // Start starts the reconciler loop.

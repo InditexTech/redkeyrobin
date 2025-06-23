@@ -36,8 +36,6 @@ const (
 	NodeFailures        = "nodeFailures"
 )
 
-
-
 // MetricsManager encapsulates Prometheus metrics for Redis.
 type MetricsManager struct {
 	logger *slog.Logger
@@ -50,7 +48,7 @@ type MetricsManager struct {
 // and returns the instance.
 func NewMetricsManager() *MetricsManager {
 	m := &MetricsManager{
-		logger: util.GetLogger("manager"),
+		logger:  util.GetLogger("manager"),
 		metrics: make(map[string]*prometheus.GaugeVec),
 	}
 
@@ -80,7 +78,7 @@ func (m *MetricsManager) RegisterDynamicMetric(name, help string, labels []strin
 	return nil
 }
 
-func (m *MetricsManager) UpdateDynamicMetricWithTime(name string, tags map[string]string, labelKeys []string, reset bool) error{
+func (m *MetricsManager) UpdateDynamicMetricWithTime(name string, tags map[string]string, labelKeys []string, reset bool) error {
 	// Check if the dynamic metric is already registered.
 	gaugeVec, exists := m.metrics[name]
 	if !exists {

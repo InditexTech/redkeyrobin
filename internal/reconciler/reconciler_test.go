@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewRedisClusterReconciler(t *testing.T) {
-	reconciler, err := NewRedisClusterReconciler(&rediscluster.RedisCluster{}, make(chan struct{}))
+	reconciler, err := NewRedisClusterReconciler(&cluster.RedisCluster{}, make(chan struct{}))
 
 	assert.NoError(t, err)
 	assert.NotNil(t, reconciler)
@@ -103,12 +103,12 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rdcl := rediscluster.NewFakeRedisCluster(
+			rdcl := cluster.NewFakeRedisCluster(
 				t.Context(),
 				tt.config,
 				"Unknown",
 				map[string]*redis.RedisNode{},
-				map[string][]rediscluster.RedisOperation{},
+				map[string][]cluster.RedisOperation{},
 				make(chan struct{}, 5),
 			)
 

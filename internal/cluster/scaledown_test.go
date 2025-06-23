@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 )
 
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
-func TestRedisOperationScaleUpWait(t *testing.T) {
+func TestRedisOperationScaleDownWait(t *testing.T) {
 	tests := []struct {
 		name           string
 		cmd            *redis.RedisCLICommand
@@ -24,8 +24,8 @@ func TestRedisOperationScaleUpWait(t *testing.T) {
 		{
 			name:           "scale up error",
 			cmd:            redis.NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: ScalingUpError,
-			err:            fmt.Errorf("error scaling up cluster: "),
+			expectedStatus: ScalingDownError,
+			err:            fmt.Errorf("error scaling down cluster: "),
 		},
 		{
 			name:           "good",
@@ -36,7 +36,7 @@ func TestRedisOperationScaleUpWait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationScaleUp(context.Background(), redisCluster, "Running")
+			operation := NewFakeRedisOperationScaleDown(context.Background(), redisCluster, "Running")
 			operation.cmd = tt.cmd
 
 			tt.cmd.Start()

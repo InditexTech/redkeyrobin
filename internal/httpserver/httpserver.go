@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/rediscluster"
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/util"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -20,16 +20,16 @@ import (
 
 // Server represents an HTTP server with a dependency on a ConfigProvider.
 type Server struct {
-	logger       *slog.Logger
-	redisCluster rediscluster.Cluster
-	server       *http.Server
+	logger  *slog.Logger
+	cluster cluster.Cluster
+	server  *http.Server
 }
 
 // NewServer creates a new Server with the provided ConfigProvider.
-func NewServer(redisCluster rediscluster.Cluster) *Server {
+func NewServer(redisCluster cluster.Cluster) *Server {
 	return &Server{
-		logger:       util.GetLogger("http-server"),
-		redisCluster: redisCluster,
+		logger:  util.GetLogger("http-server"),
+		cluster: redisCluster,
 	}
 }
 
@@ -46,14 +46,14 @@ func (s *Server) Init(opts *util.Options) error {
 		mux.Handle("GET /metrics", promhttp.Handler())
 	}
 
-	if !s.redisCluster.IsStandalone() {
+	if !s.cluster.IsStandalone() {
 		// Rediscluster endpoints
 		mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
 		mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
 		mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
 		mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
 
-		// Cluster endpoints		
+		// Cluster endpoints
 		mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
 		mux.HandleFunc("GET /v1/cluster/check", s.CheckCluster)
 		mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
@@ -66,7 +66,7 @@ func (s *Server) Init(opts *util.Options) error {
 		Addr:    opts.Address,
 		Handler: mux,
 	}
-	
+
 	return nil
 }
 

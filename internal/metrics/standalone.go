@@ -7,7 +7,7 @@ package metrics
 import (
 	"context"
 
-	"github.com/inditextech/redisrobin/internal/rediscluster"
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -17,7 +17,7 @@ type RedisStandaloneMetricsPoller struct {
 }
 
 // NewRedisStandaloneMetricsPoller creates a new standalone metrics poller.
-func NewRedisStandaloneMetricsPoller(cluster rediscluster.Cluster) (*RedisStandaloneMetricsPoller, error) {
+func NewRedisStandaloneMetricsPoller(cluster cluster.Cluster) (*RedisStandaloneMetricsPoller, error) {
 	poller := &RedisStandaloneMetricsPoller{
 		basePoller: basePoller{
 			logger:         util.GetLogger("standalone-metrics"),

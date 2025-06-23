@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -40,7 +40,7 @@ type RedisClusterMetricsPoller struct {
 
 // NewRedisClusterMetricsPoller constructs a RedisPollMetrics by delegating the K8s client retrieval,
 // storing the given config & metrics manager, etc.
-func NewRedisClusterMetricsPoller(redisCluster rediscluster.Cluster) (*RedisClusterMetricsPoller, error) {
+func NewRedisClusterMetricsPoller(redisCluster cluster.Cluster) (*RedisClusterMetricsPoller, error) {
 	// Create a metrics manager with the appropriate dynamic metrics
 	metricsManager := NewMetricsManager()
 

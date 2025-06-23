@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
@@ -431,20 +431,20 @@ func (rc *RedisCluster) IsStandalone() bool {
 func (rc *RedisCluster) IsBalanced() bool {
 	masters := rc.GetMasterNodes()
 	slotsPerMaster := int(math.Ceil(float64(RedisClusterTotalSlots) / float64(len(masters))))
+	maximumSlots := slotsPerMaster + (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
+	minimumSlots := slotsPerMaster - (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
 
 	for _, master := range masters {
 		masterSlots := master.GetNumberOfSlots()
-
 		// Cluster is not balanced if any of master node has no slots
 		if masterSlots == 0 {
 			rc.logger.Info("Cluster needs rebalance: node has no slots", "node", master.Name)
 			return false
 		}
 
-		// Cluster is not balanced if the number of slots is greater than the maximum
-		maximumSlots := slotsPerMaster + (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
-		if masterSlots > maximumSlots {
-			rc.logger.Info("Cluster needs rebalance: node has more slots than the maximum", "node", master.Name, "slots", masterSlots, "maximumSlots", maximumSlots)
+		// Cluster is not balanced if the number of slots is not in the expected range
+		if masterSlots < minimumSlots || masterSlots > maximumSlots {
+			rc.logger.Info("Cluster needs rebalance: node slots are not in the expected range", "node", master.Name, "slots", masterSlots, "minimumSlots", minimumSlots, "maximumSlots", maximumSlots)
 			return false
 		}
 	}
@@ -1485,7 +1485,7 @@ func (rc *RedisCluster) removeOutdatedOperations() {
 }
 
 // doRemoveOutdatedNodes removes outdated nodes from the Redis cluster
-func (rc *RedisCluster) doRemoveOutdatedNodes()  {
+func (rc *RedisCluster) doRemoveOutdatedNodes() {
 	cleanupThreshold := time.Duration(rc.GetReconcilerOperationCleanupInterval()) * time.Second
 
 	for name, operations := range rc.operations {

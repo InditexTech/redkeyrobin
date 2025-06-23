@@ -4,17 +4,15 @@
 
 package metrics
 
-
 import (
-	"sort"
-	"maps"
-	"strconv"
 	"fmt"
+	"maps"
+	"sort"
+	"strconv"
 
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/prometheus/client_golang/prometheus"
 )
-
 
 // mergeLabels merges two label maps and returns a combined map along with a
 // sorted slice of unique label keys. This ensures consistent ordering for metric registration.

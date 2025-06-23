@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 )
 
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
-func TestRedisOperationScaleDownWait(t *testing.T) {
+func TestRedisOperationUpgradeWait(t *testing.T) {
 	tests := []struct {
 		name           string
 		cmd            *redis.RedisCLICommand
@@ -24,8 +24,8 @@ func TestRedisOperationScaleDownWait(t *testing.T) {
 		{
 			name:           "scale up error",
 			cmd:            redis.NewRedisCLICommand(t.Context(), "exit 1"),
-			expectedStatus: ScalingDownError,
-			err:            fmt.Errorf("error scaling down cluster: "),
+			expectedStatus: UpgradingError,
+			err:            fmt.Errorf("error upgrading cluster: "),
 		},
 		{
 			name:           "good",
@@ -36,14 +36,14 @@ func TestRedisOperationScaleDownWait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationScaleDown(context.Background(), redisCluster, "Running")
+			operation := NewFakeRedisOperationUpgrade(context.Background(), redisCluster, "Running")
 			operation.cmd = tt.cmd
 
 			tt.cmd.Start()
 			err := operation.Wait()
 			if tt.err != nil {
 				assert.NotNil(t, err)
-				assert.Equal(t, tt.err.Error(), err.Error())
+				assert.Equal(t, tt.err, err)
 			}
 
 			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)

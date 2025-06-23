@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
@@ -13,41 +13,41 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-// RedisOperationScaleUp represents a scale up operation for a Redis cluster.
-type RedisOperationScaleUp struct {
+// RedisOperationScaleDown represents a scale down operation for a Redis cluster.
+type RedisOperationScaleDown struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster) *RedisOperationScaleUp {
-	return &RedisOperationScaleUp{
+func NewRedisOperationScaleDown(ctx context.Context, redisCluster *RedisCluster) *RedisOperationScaleDown {
+	return &RedisOperationScaleDown{
 		RedisOperationBase: RedisOperationBase{
-			name:         "ScaleUp",
+			name:         "ScaleDown",
 			status:       "Pending",
-			logger:       util.GetLogger("operation.scaleup"),
+			logger:       util.GetLogger("operation.scaledown"),
 			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationScaleUp {
-	return &RedisOperationScaleUp{
+func NewFakeRedisOperationScaleDown(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationScaleDown {
+	return &RedisOperationScaleDown{
 		RedisOperationBase: RedisOperationBase{
-			name:         "ScaleUp",
+			name:         "ScaleDown",
 			status:       status,
-			logger:       util.GetLogger("operation.scaleup"),
+			logger:       util.GetLogger("operation.scaledown"),
 			ctx:          ctx,
 			redisCluster: redisCluster,
 		},
 	}
 }
 
-// Launch launches the scale up operation.
-func (ro *RedisOperationScaleUp) Launch() error {
-	ro.logger.Info("Scaling up cluster")
+// Launch launches the scale down operation.
+func (ro *RedisOperationScaleDown) Launch() error {
+	ro.logger.Info("Scaling down cluster")
 
-	// Launch scale up operation
-	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doScaleUp)
+	// Launch scale down operation
+	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doScaleDown)
 	cmd.Start()
 
 	// Update operation
@@ -58,30 +58,35 @@ func (ro *RedisOperationScaleUp) Launch() error {
 	return nil
 }
 
-// Wait waits for the scale up operation to finish.
-func (ro *RedisOperationScaleUp) Wait() error {
-	ro.redisCluster.status = ScalingUp
+// Wait waits for the scale down operation to finish.
+func (ro *RedisOperationScaleDown) Wait() error {
+	ro.redisCluster.status = ScalingDown
 
-	// Wait for scale up to finish
+	// Wait for scale down to finish
 	err := ro.Run()
 
-	// Scale up failed
+	// Scale down failed
 	if err != nil {
-		ro.redisCluster.status = ScalingUpError
-		return fmt.Errorf("error scaling up cluster: %v", err)
+		ro.redisCluster.status = ScalingDownError
+		return fmt.Errorf("error scaling down cluster: %v", err)
 	}
 
-	// Scale up finished successfully
+	// Scale down finished successfully
 	ro.redisCluster.status = Ready
-	ro.logger.Info("Cluster scaled up successfully")
+	ro.logger.Info("Cluster scaled down successfully")
 
 	return nil
 }
 
-// doScaleUp scales up the Redis cluster
-func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
-	// Add new nodes if needed
-	if err := ro.redisCluster.addNewNodesIfNeeded(ctx); err != nil {
+// doScaleDown scales down the Redis cluster
+func (ro *RedisOperationScaleDown) doScaleDown(ctx context.Context) error {
+	// Check nodes info
+	if err := ro.redisCluster.checkNodes(); err != nil {
+		return err
+	}
+
+	// Remove nodes if needed
+	if err := ro.redisCluster.removeNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 

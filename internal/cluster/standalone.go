@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/redis"
@@ -157,7 +157,7 @@ func (rc *RedisStandalone) CheckIntegrity(async, force bool) error {
 		rc.logger.Info("Node IP has changed", "node", nodeName, "oldIP", node.IP, "newIP", freshNode.IP)
 		node.SetIP(freshNode.IP)
 	}
-	
+
 	return nil
 }
 
