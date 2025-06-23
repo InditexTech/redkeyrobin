@@ -552,6 +552,8 @@ func (rc *RedisCluster) ResetNode(node *redis.RedisNode) error {
 func (rc *RedisCluster) IsBalanced() bool {
 	masters := rc.GetMasterNodes()
 	slotsPerMaster := int(math.Ceil(float64(RedisClusterTotalSlots) / float64(len(masters))))
+	maximumSlots := slotsPerMaster + (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
+	minimumSlots := slotsPerMaster - (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
 
 	for _, master := range masters {
 		masterSlots := master.GetNumberOfSlots()
@@ -562,10 +564,9 @@ func (rc *RedisCluster) IsBalanced() bool {
 			return false
 		}
 
-		// Cluster is not balanced if the number of slots is greater than the maximum
-		maximumSlots := slotsPerMaster + (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
-		if masterSlots > maximumSlots {
-			rc.logger.Info("Cluster needs rebalance: node has more slots than the maximum", "node", master.Name, "slots", masterSlots, "maximumSlots", maximumSlots)
+		// Cluster is not balanced if the number of slots is not in the expected range
+		if masterSlots < minimumSlots || masterSlots > maximumSlots {
+			rc.logger.Info("Cluster needs rebalance: node slots are not in the expected range", "node", master.Name, "slots", masterSlots, "minimumSlots", minimumSlots, "maximumSlots", maximumSlots)
 			return false
 		}
 	}
