@@ -42,7 +42,7 @@ func main() {
 	}
 
 	// Create and launch the cluster reconciler
-	reconciler, err := reconciler.NewClusterReconciler(cluster, channel)
+	reconciler, err := reconciler.NewReconciler(cluster, channel)
 	if err != nil {
 		logger.Error("Unable to create Redis reconciler", "error", err)
 		os.Exit(1)

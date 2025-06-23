@@ -121,15 +121,15 @@ type Cluster interface {
 
 // NewCluster creates a new cluster. It returns a standalone or Redis cluster based on the cluster type.
 func NewCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) Cluster {
-	if !conf.Redis.Standalone {
+	if conf.Redis.Standalone {
 		return NewRedisStandalone(ctx, conf)
 	} else {
 		return NewRedisCluster(ctx, conf, channel)
 	}
 }
 
-// redisClusterBase represents the base of a Redis cluster.
-type redisClusterBase struct {
+// clusterBase represents the base of a cluster.
+type clusterBase struct {
 	ctx    context.Context
 	logger *slog.Logger
 	conf   *config.Configuration
@@ -141,87 +141,87 @@ type redisClusterBase struct {
 // ----------------------------------------------------------------------------------------------------
 
 // GetRedisClusterStatus returns the status of the Redis cluster from Operator perspective
-func (rc *redisClusterBase) GetRedisClusterStatus() string {
+func (rc *clusterBase) GetRedisClusterStatus() string {
 	return rc.conf.Redis.Cluster.Status
 }
 
 // GetStatus returns the status of the Redis cluster from Robin perspective
-func (rc *redisClusterBase) GetStatus() string {
+func (rc *clusterBase) GetStatus() string {
 	return rc.status
 }
 
 // GetReplicas returns the number of replicas in the Redis cluster
-func (rc *redisClusterBase) GetReplicas() int {
+func (rc *clusterBase) GetReplicas() int {
 	return rc.conf.Redis.Cluster.Replicas
 }
 
 // GetReplicasPerMaster returns the number of replicas per master in the Redis cluster
-func (rc *redisClusterBase) GetReplicasPerMaster() int {
+func (rc *clusterBase) GetReplicasPerMaster() int {
 	return rc.conf.Redis.Cluster.ReplicasPerMaster
 }
 
 // GetDesiredReplicas returns the number of nodes needed to reach the desired number of replicas
-func (rc *redisClusterBase) GetDesiredReplicas() int {
+func (rc *clusterBase) GetDesiredReplicas() int {
 	return rc.GetReplicas() + (rc.GetReplicas() * rc.GetReplicasPerMaster())
 }
 
 // GetName returns the name of the Redis cluster
-func (rc *redisClusterBase) GetName() string {
+func (rc *clusterBase) GetName() string {
 	return rc.conf.Redis.Cluster.Name
 }
 
 // GetNamespace returns the namespace of the Redis cluster
-func (rc *redisClusterBase) GetNamespace() string {
+func (rc *clusterBase) GetNamespace() string {
 	return rc.conf.Redis.Cluster.Namespace
 }
 
 // GetAddress returns the address of the Redis cluster
-func (rc *redisClusterBase) GetAddress() string {
+func (rc *clusterBase) GetAddress() string {
 	return rc.conf.Redis.Cluster.Name
 }
 
 // GetReconcilerInterval returns the interval of the Redis cluster reconciler
-func (rc *redisClusterBase) GetReconcilerInterval() int {
+func (rc *clusterBase) GetReconcilerInterval() int {
 	return rc.conf.Redis.Reconciler.IntervalSeconds
 }
 
 // GetReconcilerOperationCleanupInterval returns the interval for cleaning up old operations
-func (rc *redisClusterBase) GetReconcilerOperationCleanupInterval() int {
+func (rc *clusterBase) GetReconcilerOperationCleanupInterval() int {
 	return rc.conf.Redis.Reconciler.OperationCleanupIntervalSeconds
 }
 
 // GetClusterMaxRetries returns the maximum number of retries for a Redis cluster check connection operation
-func (rc *redisClusterBase) GetClusterMaxRetries() int {
+func (rc *clusterBase) GetClusterMaxRetries() int {
 	return rc.conf.Redis.Cluster.MaxRetries
 }
 
 // GetClusterBackOff returns the backoff duration for a Redis cluster check connection operation
-func (rc *redisClusterBase) GetClusterBackOff() time.Duration {
+func (rc *clusterBase) GetClusterBackOff() time.Duration {
 	return rc.conf.Redis.Cluster.BackOff
 }
 
 // GetClusterHealingTime returns the healing time for a Redis cluster
-func (rc *redisClusterBase) GetClusterHealingTime() int {
+func (rc *clusterBase) GetClusterHealingTime() int {
 	return rc.conf.Redis.Cluster.HealingTimeSeconds
 }
 
 // GetClusterHealthProbePeriod returns the health probe period for a Redis cluster
-func (rc *redisClusterBase) GetClusterHealthProbePeriod() int {
+func (rc *clusterBase) GetClusterHealthProbePeriod() int {
 	return rc.conf.Redis.Cluster.HealthProbePeriodSeconds
 }
 
 // GetMetricsRedisInfoKeys returns the Redis info keys to be collected
-func (rc *redisClusterBase) GetMetricsRedisInfoKeys() []string {
+func (rc *clusterBase) GetMetricsRedisInfoKeys() []string {
 	return rc.conf.Redis.Metrics.RedisInfoKeys
 }
 
 // GetMetricsInterval returns the interval for collecting Redis metrics
-func (rc *redisClusterBase) GetMetricsInterval() int {
+func (rc *clusterBase) GetMetricsInterval() int {
 	return rc.conf.Redis.Metrics.IntervalSeconds
 }
 
 // GetMetadata returns the metadata of the Redis cluster
-func (rc *redisClusterBase) GetMetadata() map[string]string {
+func (rc *clusterBase) GetMetadata() map[string]string {
 	return rc.conf.Metadata
 }
 
@@ -230,6 +230,6 @@ func (rc *redisClusterBase) GetMetadata() map[string]string {
 // ----------------------------------------------------------------------------------------------------
 
 // IsEphemeral returns true if the Redis cluster is ephemeral
-func (rc *redisClusterBase) IsEphemeral() bool {
+func (rc *clusterBase) IsEphemeral() bool {
 	return rc.conf.Redis.Cluster.Ephemeral
 }

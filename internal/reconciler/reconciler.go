@@ -12,20 +12,20 @@ import (
 	"github.com/inditextech/redisrobin/internal/cluster"
 )
 
-// ClusterReconciler is an interface for reconciling a cluster.
-type ClusterReconciler interface {
+// Reconciler is an interface for reconciling a cluster.
+type Reconciler interface {
 	// Start starts the reconciler loop.
 	Start(ctx context.Context)
 }
 
-// ClusterReconcilerDelegate is an interface for reconciling a cluster.
-type ClusterReconcilerDelegate interface {
+// ReconcilerDelegate is an interface for reconciling a cluster.
+type ReconcilerDelegate interface {
 	// doReconcile reconciles the cluster.
 	doReconcile() error
 }
 
-// NewClusterReconciler creates a new cluster reconciler. It returns a standalone or cluster reconciler based on the cluster type.
-func NewClusterReconciler(cluster cluster.Cluster, channel chan struct{}) (ClusterReconciler, error) {
+// NewReconciler creates a new reconciler. It returns a standalone or cluster reconciler based on the cluster type.
+func NewReconciler(cluster cluster.Cluster, channel chan struct{}) (Reconciler, error) {
 	if cluster.IsStandalone() {
 		return NewStandaloneReconciler(cluster, channel)
 	} else {
@@ -38,7 +38,7 @@ type baseClusterReconciler struct {
 	logger   *slog.Logger
 	cluster  cluster.Cluster
 	channel  chan struct{}
-	delegate ClusterReconcilerDelegate
+	delegate ReconcilerDelegate
 }
 
 // Start starts the reconciler loop.
@@ -47,6 +47,8 @@ func (br *baseClusterReconciler) Start(ctx context.Context) {
 		br.logger.Error("Metrics poller delegate must be set")
 		return
 	}
+
+	br.reconcile()
 
 	timeout := time.Duration(br.cluster.GetReconcilerInterval()) * time.Second
 

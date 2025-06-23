@@ -15,13 +15,13 @@ import (
 
 // RedisStandalone represents a standalone Redis
 type RedisStandalone struct {
-	redisClusterBase
+	clusterBase
 	node *redis.RedisNode
 }
 
 func NewRedisStandalone(ctx context.Context, conf *config.Configuration) *RedisStandalone {
 	return &RedisStandalone{
-		redisClusterBase: redisClusterBase{
+		clusterBase: clusterBase{
 			ctx:    ctx,
 			logger: util.GetLogger("redis-standalone"),
 			conf:   conf,

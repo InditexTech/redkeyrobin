@@ -22,7 +22,7 @@ import (
 
 // RedisCluster represents a Redis cluster
 type RedisCluster struct {
-	redisClusterBase
+	clusterBase
 	nodes      map[string]*redis.RedisNode
 	operations map[string][]RedisOperation
 	channel    chan struct{}
@@ -32,7 +32,7 @@ type RedisCluster struct {
 // NewRedisCluster creates a new Redis cluster
 func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
-		redisClusterBase: redisClusterBase{
+		clusterBase: clusterBase{
 			ctx:    ctx,
 			logger: util.GetLogger("redis-cluster"),
 			conf:   conf,
@@ -48,7 +48,7 @@ func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel ch
 // NewFakeRedisCluster creates a new fake Redis cluster
 func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*redis.RedisNode, operations map[string][]RedisOperation, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
-		redisClusterBase: redisClusterBase{
+		clusterBase: clusterBase{
 			ctx:    ctx,
 			logger: util.GetLogger("redis-cluster"),
 			conf:   conf,
@@ -250,8 +250,6 @@ func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool
 // It returns an OperationInProgressError if there is already a reshard operation between the specified nodes.
 // It returns an OperationCompletedError if the origin node is a replica, has no slots or has replicas (and a replica of the origin node is promoted).
 func (rc *RedisCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
-	rc.logger.Info("Moving slots", "slots", slots, "from", from.Name, "to", to.Name)
-
 	// Check if a move operation should be launched
 	if rc.IsReshardingNodes(*from, *to) { // There is an ongoing move between the specified nodes
 		rc.logger.Info("There is already a reshard operation between nodes", "from", from.Name, "to", to.Name)
@@ -283,8 +281,6 @@ func (rc *RedisCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 // It launches the cluster check operation and waits for it to finish asynchronously.
 // It returns a ClusterCheckResult with the results of the check.
 func (rc *RedisCluster) Check() (*redis.ClusterCheckResult, error) {
-	rc.logger.Info("Checking cluster")
-
 	// Get Redis client and check connection
 	redisClient, err := rc.getAndCheckRedisClient(true)
 	if err != nil {
@@ -305,8 +301,6 @@ func (rc *RedisCluster) Check() (*redis.ClusterCheckResult, error) {
 // It launches the cluster fix operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
 // It returns an OperationInProgressError if the cluster is already fixing, unless the force flag is set, in which case the ongoing fixing operation is cancelled.
 func (rc *RedisCluster) Fix(async bool, force bool) error {
-	rc.logger.Info("Fixing cluster")
-
 	// Check if the cluster is already fixing
 	if rc.IsFixing() {
 		if force {
@@ -330,8 +324,6 @@ func (rc *RedisCluster) Fix(async bool, force bool) error {
 // It launches the cluster check integrity operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
 // It returns an OperationInProgressError if the cluster is already checking integrity, unless the force flag is set, in which case the ongoing checking integrity operation is cancelled.
 func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
-	rc.logger.Info("Checking cluster integrity")
-
 	// Check if the cluster check integrity is being executed
 	if rc.IsCheckingIntegrity() {
 		if force {
@@ -355,8 +347,6 @@ func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
 // It launches the cluster scale up operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already scaling up, unless the force flag is set, in which case a new scale up operation is launched.
 func (rc *RedisCluster) ScaleUp(force bool) error {
-	rc.logger.Info("Scaling up cluster")
-
 	// Check if the cluster is already scaling up
 	if rc.IsScalingUp() && !force {
 		rc.logger.Info("Cluster is already scaling up")
@@ -372,8 +362,6 @@ func (rc *RedisCluster) ScaleUp(force bool) error {
 // It launches the cluster scale down operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already scaling down, unless the force flag is set, in which case a new scale down operation is launched.
 func (rc *RedisCluster) ScaleDown(force bool) error {
-	rc.logger.Info("Scaling down cluster")
-
 	// Check if the cluster is already scaling down
 	if rc.IsScalingDown() && !force {
 		rc.logger.Info("Cluster is already scaling down")
@@ -389,8 +377,6 @@ func (rc *RedisCluster) ScaleDown(force bool) error {
 // It launches the cluster upgrade operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already upgrading, unless the force flag is set, in which case a new upgrade operation is launched.
 func (rc *RedisCluster) Upgrade(force bool) error {
-	rc.logger.Info("Upgrading cluster")
-
 	// Check if the cluster is already upgrading
 	if rc.IsUpgrading() && !force {
 		rc.logger.Info("Cluster is already upgrading")
@@ -406,8 +392,6 @@ func (rc *RedisCluster) Upgrade(force bool) error {
 // It launches the cluster reset operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already resetting the node.
 func (rc *RedisCluster) ResetNode(node *redis.RedisNode) error {
-	rc.logger.Info("Reseting node", "node", node.Name)
-
 	// Check if the cluster node is already being resetted
 	if rc.IsResettingNode(*node) {
 		rc.logger.Info("Cluster node is already being resetted", "node", node.Name)
