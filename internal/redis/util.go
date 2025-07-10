@@ -154,7 +154,7 @@ func parseRedisInfo(info string) *RedisInfo {
 		case SectionLatency:
 			parsedInfo.LatencyStats[key] = value
 		default:
-			fmt.Printf("Ignoring unknown redis info. Section:%s, key: %s", section, key)
+			fmt.Printf("Ignoring unknown redis info. Section: %s, key: %s\n", section, key)
 		}
 	}
 
