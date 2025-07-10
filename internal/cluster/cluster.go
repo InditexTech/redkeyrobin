@@ -15,6 +15,7 @@ import (
 
 const (
 	Initializing                  = "Initializing"
+	Configuring					  = "Configuring"
 	Ready                         = "Ready"
 	Error                         = "Error"
 	Upgrading                     = "Upgrading"

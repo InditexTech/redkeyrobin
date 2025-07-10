@@ -30,6 +30,8 @@ func NewRedisClusterReconciler(cluster cluster.Cluster, channel chan struct{}) (
 func (r *RedisClusterReconciler) doReconcile() error {
 	// Reconcile based on the current status
 	switch r.cluster.GetRedisClusterStatus() {
+	case cluster.Configuring:
+		return r.reconcileConfiguringStatus()
 	case cluster.Ready:
 		return r.reconcileReadyStatus()
 	case cluster.ScalingUp:
@@ -41,6 +43,14 @@ func (r *RedisClusterReconciler) doReconcile() error {
 	default:
 		return nil
 	}
+}
+
+// reconciles the Redis cluster when it is in the Configuring status, building the cluster.
+func (r *RedisClusterReconciler) reconcileConfiguringStatus() error {
+	if err := r.cluster.CheckIntegrity(false, true); err != nil {
+		return err
+	}
+	return nil
 }
 
 // reconcileReadyStatus reconciles the Redis cluster when it is in the Ready status.

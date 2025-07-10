@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ValidRedisClusterStatus = []string{cluster.Initializing, cluster.Ready, cluster.Error, cluster.Upgrading, cluster.ScalingDown, cluster.ScalingUp, cluster.Maintenance, cluster.Unknown}
+	ValidRedisClusterStatus = []string{cluster.Initializing, cluster.Configuring, cluster.Ready, cluster.Error, cluster.Upgrading, cluster.ScalingDown, cluster.ScalingUp, cluster.Maintenance, cluster.Unknown}
 )
 
 type RequestInterface interface {
