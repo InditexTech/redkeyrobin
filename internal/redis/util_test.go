@@ -5,39 +5,80 @@
 package redis
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/go-redis/redismock/v9"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNewRedisClient verifies the creation of a new RedisClient.
-func TestNewRedisClient(t *testing.T) {
-	ctx := context.Background()
-	rc := NewRedisClient(ctx, "localhost", "", 0)
-
-	assert.NotNil(t, rc)
-	assert.Equal(t, "localhost:6379", rc.client.Options().Addr)
-	assert.Equal(t, "", rc.client.Options().Password)
-	assert.Equal(t, 0, rc.client.Options().DB)
+func TestParseClusterCheckOutput(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          string
+		expectedOutput *ClusterCheckResult
+	}{
+		{
+			name:  "empty input",
+			input: "",
+			expectedOutput: &ClusterCheckResult{
+				Errors:   []string{},
+				Warnings: []string{},
+			},
+		},
+		{
+			name: "errors and warnings",
+			input: `
+Another line with no error or warning			
+[ERR] Node 1: Node is not empty. Keys found: 1
+[ERR] Node 1: Node is not empty. Keys found: 1
+[WARNING] Node 1: Mismatching hash slots and slots configuration. Node has 1 slots but 0 slots are assigned to it.
+[WARNING] Node 1: Mismatching hash slots and slots configuration. Node has 1 slots but 0 slots are assigned to it.
+			`,
+			expectedOutput: &ClusterCheckResult{
+				Errors: []string{
+					"Node 1: Node is not empty. Keys found: 1",
+				},
+				Warnings: []string{
+					"Node 1: Mismatching hash slots and slots configuration. Node has 1 slots but 0 slots are assigned to it.",
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := parseClusterCheckOutput(tt.input)
+			assert.Equal(t, tt.expectedOutput, actual)
+		})
+	}
 }
 
-// TestCheckConnection_Success ensures CheckConnection succeeds when the ping is valid.
-func TestCheckConnection_Success(t *testing.T) {
-	db, mock := redismock.NewClientMock()
-	mock.ExpectPing().SetVal("PONG")
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
+func TestParseRedisSlotRange(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          []string
+		expectedOutput []RedisSlotRange
+	}{
+		{
+			name:           "empty input",
+			input:          []string{},
+			expectedOutput: []RedisSlotRange{},
+		},
+		{
+			name:  "good input",
+			input: []string{"0-1", "2-3", "novalid-novalid", "6-novalid", "novalid-6", "6", "novalid"},
+			expectedOutput: []RedisSlotRange{
+				{Start: 0, End: 1},
+				{Start: 2, End: 3},
+				{Start: 6, End: 6},
+			},
+		},
 	}
-
-	err := rc.CheckConnection(3, 10)
-	assert.NoError(t, err)
-	assert.NoError(t, mock.ExpectationsWereMet())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := parseRedisSlotRange(tt.input...)
+			assert.Equal(t, tt.expectedOutput, actual)
+		})
+	}
 }
 
 // TestParseRedisInfo ensures parseRedisInfo parses known sections correctly.
@@ -69,6 +110,8 @@ executable:/redis-server
 config_file:/conf/redis.conf
 io_threads_active:0
 listener0:name=tcp,bind=*,bind=-::*,port=6379
+novalid
+unknown:12
 
 # Clients
 connected_clients:1
@@ -312,8 +355,8 @@ db0:keys=30,expires=0,avg_ttl=0
 	}{
 		{"server", "redis_version", "7.2.4"},
 		{"clients", "connected_clients", int64(1)},
-		{"memory", "used_memory", 2092160},
-		{"stats", "total_connections_received", int64(14633)},
+		{"memory", "used_memory", "2092160"},
+		{"stats", "total_connections_received", "14633"},
 		{"replication", "role", "master"},
 		{"cpu", "used_cpu_sys", 27.747819},
 		{"cluster", "cluster_enabled", "1"},
@@ -355,192 +398,72 @@ db0:keys=30,expires=0,avg_ttl=0
 	}
 }
 
-// TestGetInfo_Success ensures GetInfo returns parsed info when Redis server responds properly.
-func TestGetInfo_Success(t *testing.T) {
-	db, mock := redismock.NewClientMock()
-	infoOutput := "# Server\nredis_version:6.2.5\n"
-	mock.ExpectInfo("all").SetVal(infoOutput)
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
+func TestRunRedisCLICommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		expected *RedisCLICommand
+	}{
+		{
+			name:    "error",
+			command: "exit 1",
+			expected: &RedisCLICommand{
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 1,
+				},
+			},
+		},
+		{
+			name:    "good",
+			command: "exit 0",
+			expected: &RedisCLICommand{
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 0,
+				},
+			},
+		},
 	}
-
-	info, err := rc.GetInfo()
-	assert.NoError(t, err)
-	assert.NotNil(t, info)
-	assert.Equal(t, "6.2.5", info.Server["redis_version"])
-	assert.NoError(t, mock.ExpectationsWereMet())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := runRedisCLICommand(t.Context(), tt.command)
+			assert.Equal(t, actual.ExitCode, tt.expected.ExitCode)
+		})
+	}
 }
 
-// TestGetInfo_Fail ensures GetInfo returns an error when Info command fails.
-func TestGetInfo_Fail(t *testing.T) {
-	db, mock := redismock.NewClientMock()
-	mock.ExpectInfo("all").SetErr(errors.New("failed info"))
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
+func TestRunRedisCLICommandAsync(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		expected *RedisCLICommand
+	}{
+		{
+			name:    "error",
+			command: "exit 1",
+			expected: &RedisCLICommand{
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 1,
+				},
+			},
+		},
+		{
+			name:    "good",
+			command: "exit 0",
+			expected: &RedisCLICommand{
+				RedisBaseCommand: RedisBaseCommand{
+					ExitCode: 0,
+				},
+			},
+		},
 	}
-
-	info, err := rc.GetInfo()
-	assert.Error(t, err)
-	assert.Nil(t, info)
-	assert.Contains(t, err.Error(), "failed to get info")
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-// TestGetClusterInfo_Success ensures GetClusterInfo returns properly parsed cluster info.
-func TestGetClusterInfo_Success(t *testing.T) {
-	db, mock := redismock.NewClientMock()
-	mock.ExpectClusterInfo().SetVal(`
-cluster_state:ok
-cluster_slots_assigned:16384
-cluster_slots_ok:16384
-cluster_slots_pfail:0
-cluster_slots_fail:0
-cluster_known_nodes:5
-cluster_size:5
-cluster_current_epoch:13877
-cluster_my_epoch:13877
-cluster_stats_messages_ping_sent:19544
-cluster_stats_messages_pong_sent:52643
-cluster_stats_messages_meet_sent:187
-cluster_stats_messages_update_sent:6
-cluster_stats_messages_sent:72380
-cluster_stats_messages_ping_received:19675
-cluster_stats_messages_pong_received:72169
-cluster_stats_messages_meet_received:188
-cluster_stats_messages_fail_received:1
-cluster_stats_messages_update_received:4
-cluster_stats_messages_received:92037
-total_cluster_links_buffer_limit_exceeded:0
-`)
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := runRedisCLICommandAsync(t.Context(), tt.command)
+			assert.Equal(t, actual.ExitCode, 0)
+			actual.checkStatusCode()
+			assert.Equal(t, actual.ExitCode, -1)
+			actual.Wait()
+			assert.Equal(t, actual.ExitCode, tt.expected.ExitCode)
+		})
 	}
-
-	cInfo, err := rc.GetClusterInfo()
-	assert.NoError(t, err)
-	assert.NotNil(t, cInfo)
-	assert.Equal(t, "ok", cInfo.State)
-	assert.Equal(t, 16384, cInfo.SlotsAssigned)
-	assert.Equal(t, 5, cInfo.KnownNodes)
-	assert.Equal(t, 5, cInfo.ClusterSize)
-	assert.Equal(t, 13877, cInfo.CurrentEpoch)
-	assert.Equal(t, 13877, cInfo.MyEpoch)
-	assert.Equal(t, 19544, cInfo.MessagesPingSent)
-	assert.Equal(t, 52643, cInfo.MessagesPongSent)
-	assert.Equal(t, 187, cInfo.MessagesMeetSent)
-	assert.Equal(t, 6, cInfo.MessagesUpdateSent)
-	assert.Equal(t, 72380, cInfo.MessagesSent)
-	assert.Equal(t, 19675, cInfo.MessagesPingReceived)
-	assert.Equal(t, 72169, cInfo.MessagesPongReceived)
-	assert.Equal(t, 188, cInfo.MessagesMeetReceived)
-	assert.Equal(t, 4, cInfo.MessagesUpdateReceived)
-	assert.Equal(t, 92037, cInfo.MessagesReceived)
-	assert.Equal(t, 1, cInfo.MessagesFailReceived)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-// TestGetClusterInfo_Success ensures GetClusterInfo returns properly parsed cluster info.
-func TestGetClusterNodes_Success(t *testing.T) {
-	db, mock := redismock.NewClientMock()
-	mock.ExpectClusterNodes().SetVal(`
-222d03eb91487e6542cff1e105d911deb37a5ddd 10.253.43.143:6379@16379 master - 0 1740670560026 13876 connected 9828-10923 12560-13103 14744-16383
-77e5805a3550270e5cf23ed42bc2d0577426d876 10.252.6.201:6379@16379 myself,master - 0 1740670560000 13877 connected 2456-3275 4912-6277 7914-7917 8738-9553 9558-9827
-bb1704c223955cf9a533142e4569f7aba510b1ea 10.252.26.193:6379@16379 master - 0 1740670561031 13846 connected 0-815 9554-9557 10924-11739 13104-14743
-e420256dda2dbfb8db95658397ca8af3c3889b31 10.253.21.209:6379@16379 master - 0 1740670562035 13852 connected 816-1635 3276-4091 6278-7097 11740-12559
-0d691cdfe68b44134f8cdbca0d81563754a5aa6f 10.252.8.20:6379@16379 master - 0 1740670559023 13874 connected 1636-2455 4092-4911 7098-7913 7918-8737
-`)
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
-	}
-
-	cNodes, err := rc.GetNodesInfo()
-	assert.NoError(t, err)
-	assert.NotNil(t, cNodes)
-	assert.Len(t, cNodes, 5)
-	assert.Equal(t, "222d03eb91487e6542cff1e105d911deb37a5ddd", cNodes[0].ID)
-	assert.Equal(t, "77e5805a3550270e5cf23ed42bc2d0577426d876", cNodes[1].ID)
-	assert.Equal(t, "bb1704c223955cf9a533142e4569f7aba510b1ea", cNodes[2].ID)
-	assert.Equal(t, "e420256dda2dbfb8db95658397ca8af3c3889b31", cNodes[3].ID)
-	assert.Equal(t, "0d691cdfe68b44134f8cdbca0d81563754a5aa6f", cNodes[4].ID)
-	assert.Equal(t, "10.253.43.143", cNodes[0].IP)
-	assert.Equal(t, "master", cNodes[0].Role)
-	assert.Equal(t, []string([]string{"9828-10923", "12560-13103", "14744-16383"}), cNodes[0].Slots)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-// TestGetClusterInfo_Fail ensures GetClusterInfo returns an error when ClusterInfo command fails.
-func TestGetClusterInfo_Fail(t *testing.T) {
-	db, mock := redismock.NewClientMock()
-	mock.ExpectClusterInfo().SetErr(errors.New("some error"))
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
-	}
-
-	cInfo, err := rc.GetClusterInfo()
-	assert.Error(t, err)
-	assert.Nil(t, cInfo)
-	assert.Contains(t, err.Error(), "some error")
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-// TestGetNodesInfo_Success ensures GetNodesInfo properly parses cluster node info.
-func TestGetNodesInfo_Success(t *testing.T) {
-	// Example from "redis-cli cluster nodes" output
-	clusterNodes := `
-abc123 127.0.0.1:6379 master - 0 1625161000000 1 connected 0-5460
-abc456 127.0.0.1:6380 myself,slave abc123 0 1625161005000 2 connected
-`
-
-	db, mock := redismock.NewClientMock()
-	mock.ExpectClusterNodes().SetVal(clusterNodes)
-
-	// We'll ignore the ClusterCountFailureReports calls for this example test
-	// or optionally set an expectation to return 0 for each node's failure count
-	mock.ExpectClusterCountFailureReports("abc123").SetVal(0)
-	mock.ExpectClusterCountFailureReports("abc456").SetVal(0)
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
-	}
-
-	nodes, err := rc.GetNodesInfo()
-	assert.NoError(t, err)
-	assert.Len(t, nodes, 2)
-
-	assert.Equal(t, "abc123", nodes[0].ID)
-	assert.Equal(t, "127.0.0.1", nodes[0].IP)
-	assert.Equal(t, "master", nodes[0].Role)
-
-	assert.Equal(t, "abc456", nodes[1].ID)
-	assert.Equal(t, "127.0.0.1", nodes[1].IP)
-	assert.Contains(t, nodes[1].Role, "slave") // "myself,slave"
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-// TestGetNodesInfo_Fail ensures GetNodesInfo returns an error when ClusterNodes command fails.
-func TestGetNodesInfo_Fail(t *testing.T) {
-	db, mock := redismock.NewClientMock()
-	mock.ExpectClusterNodes().SetErr(errors.New("failed cluster nodes"))
-
-	rc := &RedisClient{
-		client: db,
-		ctx:    context.Background(),
-	}
-
-	nodes, err := rc.GetNodesInfo()
-	assert.Error(t, err)
-	assert.Nil(t, nodes)
-	assert.Contains(t, err.Error(), "failed cluster nodes")
-	assert.NoError(t, mock.ExpectationsWereMet())
 }

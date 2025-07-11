@@ -5,73 +5,70 @@
 package main
 
 import (
-	"context"
-	"flag"
-	"log"
+	"os"
 
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
-	"github.com/inditextech/redisrobin/httpserver"
-	"github.com/inditextech/redisrobin/metrics"
-	"github.com/inditextech/redisrobin/redis"
-	"github.com/inditextech/redisrobin/redisopconf"
+	"github.com/inditextech/redisrobin/internal/cluster"
+	"github.com/inditextech/redisrobin/internal/config"
+	"github.com/inditextech/redisrobin/internal/httpserver"
+	"github.com/inditextech/redisrobin/internal/metrics"
+	"github.com/inditextech/redisrobin/internal/reconciler"
+	"github.com/inditextech/redisrobin/internal/util"
 )
 
-const configmapFilePath = "/opt/conf/configmap/application-configmap.yml"
-
 func main() {
-	var metricsAddr string
+	// Parse CLI options
+	opts := util.ParseOptions()
 
-	// Load Redis configuration (e.g., from environment or file) and build a metrics manager.
-	conf := redisopconf.GetConfiguration()
-	metricsManager := metrics.NewMetricsManager()
-	ctx := context.Background()
+	// Initialize logger
+	logger := util.InitLogger()
 
-	// Create a new RedisPollMetrics instance to gather metrics in the background.
-	redisPollMetrics, err := redis.NewRedisPollMetrics(conf, metricsManager)
+	// Load configuration
+	conf, err := config.GetConfiguration(opts.ConfigMapPath)
 	if err != nil {
-		log.Fatalf("failed to create Redis metrics poller: %v", err)
+		logger.Error("Unable to read configuration", "error", err)
+		os.Exit(1)
 	}
-	go redisPollMetrics.Start(ctx)
+	ctx := util.SetupSignalHandler()
 
-	// Parse CLI flags (e.g., --metrics-bind-address :8080).
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.Parse()
+	// Communication channel for the reconciler
+	channel := make(chan struct{})
+	defer close(channel)
 
-	// Set up controller-runtime Manager options.
-	ctrlOptions := ctrl.Options{
-		Logger: ctrl.Log.WithName("metrics-server"),
-		Metrics: server.Options{
-			BindAddress: metricsAddr,
-		},
+	// Initialize the cluster
+	cluster := cluster.NewCluster(ctx, conf, channel)
+	if err := cluster.Init(); err != nil {
+		logger.Error("Unable to initialize Redis Cluster", "error", err)
+		os.Exit(1)
 	}
 
-	// Create the manager for metrics and additional HTTP endpoints.
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrlOptions)
+	// Create and launch the cluster reconciler
+	reconciler, err := reconciler.NewReconciler(cluster, channel)
 	if err != nil {
-		log.Fatalf("unable to start manager: %v", err)
+		logger.Error("Unable to create Redis reconciler", "error", err)
+		os.Exit(1)
+	}
+	go reconciler.Start(ctx)
+
+	// Create and launch a metrics poller if needed
+	if !opts.DisableMetrics {
+		metricsPoller, err := metrics.NewMetricsPoller(cluster)
+		if err != nil {
+			logger.Error("Unable to create Redis metrics poller", "error", err)
+			os.Exit(1)
+		}
+		go metricsPoller.Start(ctx)
 	}
 
-	// Build a FileConfigProvider and Server to serve /configmap and /amiga/health.
-	configProvider := &httpserver.FileConfigProvider{
-		Path: configmapFilePath,
-	}
-	serverHandler := &httpserver.Server{
-		ConfigProvider: configProvider,
-	}
-
-	// Attach the Server’s handlers to the manager’s metrics server.
-	// The server’s ServeHTTP method will route /configmap and /amiga/health internally.
-	if err := mgr.AddMetricsServerExtraHandler("/configmap", serverHandler); err != nil {
-		log.Fatalf("unable to attach /configmap handler: %v", err)
-	}
-	if err := mgr.AddMetricsServerExtraHandler("/amiga/health", serverHandler); err != nil {
-		log.Fatalf("unable to attach /amiga/health handler: %v", err)
+	// Initialize the HTTP server
+	server := httpserver.NewServer(cluster)
+	if err := server.Init(opts); err != nil {
+		logger.Error("Unable to initialize HTTP server", "error", err)
+		os.Exit(1)
 	}
 
-	// Start the manager (blocking call until shutdown).
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		log.Fatalf("problem running manager: %v", err)
+	// Start the server (blocking call until shutdown)
+	if err := server.Start(ctx); err != nil {
+		logger.Error("Unable to run HTTP server", "error", err)
+		os.Exit(1)
 	}
 }

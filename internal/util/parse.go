@@ -5,7 +5,6 @@
 package util
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -15,7 +14,6 @@ func ParseInt(value string) int {
 	trimmed := strings.TrimSpace(value)
 	num, err := strconv.Atoi(trimmed)
 	if err != nil {
-		fmt.Printf("could not parse int from %q: %v\n", trimmed, err)
 		return 0
 	}
 	return num
@@ -26,7 +24,6 @@ func ParseInt64(value string) int64 {
 	trimmed := strings.TrimSpace(value)
 	num, err := strconv.ParseInt(trimmed, 10, 64)
 	if err != nil {
-		fmt.Printf("could not parse int64 from %q: %v\n", trimmed, err)
 		return 0
 	}
 	return num
@@ -37,22 +34,7 @@ func ParseFloat(value string) float64 {
 	trimmed := strings.TrimSpace(value)
 	num, err := strconv.ParseFloat(trimmed, 64)
 	if err != nil {
-		fmt.Printf("could not parse float64 from %q: %v\n", trimmed, err)
 		return 0.0
 	}
 	return num
-}
-
-// MapToString converts a map[string]string to a string.
-func MapToString(m map[string]string) string {
-	var b strings.Builder
-	b.WriteString("{")
-	for k, v := range m {
-		b.WriteString(k)
-		b.WriteString(": ")
-		b.WriteString(v)
-		b.WriteString(", ")
-	}
-	b.WriteString("}")
-	return b.String()
 }

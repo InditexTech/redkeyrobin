@@ -1,0 +1,424 @@
+openapi: 3.0.4
+info:
+  title: Swagger Redis Robin
+  description: |-
+    Api developed for Redis Robin, a faithful partner who assists the operator in the dangerous Gotham.
+  contact:
+    email: lddpaas@inditex.com
+  version: 1.0.0
+externalDocs:
+  description: Find out more about Redis Operator
+  url: https://redis-sentinel.docs.inditex.dev/redis-at-inditex/latest/redis-ops-guide/deployment.html
+servers:
+  - url: https://api.inditex.com/redisrobin
+    description: Production server
+tags:
+  - name: status
+    description: Redis cluster status
+  - name: replicas
+    description: Redis cluster replicas
+  - name: move
+    description: Redis cluster reshard
+  - name: metrics
+    description: Redis cluster metrics
+  - name: check
+    description: Redis cluster check
+  - name: fix
+    description: Redis cluster fix
+  - name: reset
+    description: Redis cluster node reset
+  - name: nodes
+    description: Redis cluster nodes
+  
+paths:
+  /v1/rediscluster/status:
+    get:
+      tags:
+        - status
+      summary: Get current Redis Cluster status
+      description: Get current Redis Cluster status from Redis Operator perspective
+      operationId: GetRedisClusterStatus
+      responses:
+        '200':
+          description: Return current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedisClusterStatusResponse'
+    put:
+      tags:
+        - status
+      summary: Update Redis Cluster status
+      description: Update Redis Cluster status
+      operationId: UpdateRedisClusterStatus
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedisClusterStatusRequest'
+      responses:
+        '200':
+          description: Return updated status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedisClusterStatusResponse'
+
+  /v1/cluster/replicas:
+    get:
+      tags:
+        - replicas
+      summary: Get current Cluster replicas
+      description: Get current Cluster replicas
+      operationId: GetClusterReplicas
+      responses:
+        '200':
+          description: Return current replicas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterReplicasResponse'
+    put:
+      tags:
+        - replicas
+      summary: Update Cluster replicas
+      description: Update Cluster replicas
+      operationId: UpdateClusterReplicas
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterReplicasRequest'
+      responses:
+        '200':
+          description: Cluster has already the requested replicas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterReplicasResponse'
+        '201':
+          description: Cluster replicas has been updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterReplicasResponse'
+
+  /v1/cluster/status:
+    get:
+      tags:
+        - status
+      summary: Get current Cluster status 
+      description: Get current Cluster status from Redis Robin perspective
+      operationId: GetClusterStatus
+      responses:
+        '200':
+          description: Return current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterStatusResponse'
+
+  /v1/cluster/move:
+    put:
+      tags:
+        - move
+      summary: Move slots between Redis Nodes
+      description: Move slots between Redis Nodes
+      operationId: MoveNodeSlots
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterMoveSlotsRequest'
+      responses:
+        '200':
+          description: From node is already empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterMoveSlotsResponse'
+        '201':
+          description: Move operation has been launched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterMoveSlotsResponse'
+        '202':
+          description: Move operation is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterMoveSlotsResponse'
+
+  
+  /v1/cluster/check:
+    get:
+      tags:
+        - check
+      summary: Check Cluster
+      description: Launches a cluster check and returns the result
+      operationId: CheckCluster
+      responses:
+        '200':
+          description: Cluster check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterCheckResponse'
+
+  /v1/cluster/fix:
+    put:
+      tags:
+        - fix
+      summary: Fix Cluster
+      description: Launches a cluster fix
+      operationId: FixCluster
+      responses:
+        '201':
+          description: Cluster fix has been launched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterFixResponse'
+
+  /v1/cluster/reset/{nodeIndex}:
+    put:
+      tags:
+        - reset
+      summary: Reset Cluster node
+      description: Launches a cluster node reset
+      operationId: ResetNode
+      parameters:
+        - in: path
+          name: nodeIndex
+          schema:
+            type: integer
+          description: Node ID
+          required: true
+          example: 0
+      responses:
+        '200':
+          description: Cluster node has been reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterFixResponse'
+
+  /v1/cluster/nodes:
+    get:
+      tags:
+        - nodes
+      summary: Get nodes
+      description: Get the nodes of the cluster
+      operationId: GetNodes
+      responses:
+        '200':
+          description: Nodes result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterNodesResponse'
+
+components:
+  schemas:
+    RedisClusterStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Redis Cluster Status
+          example: Ready
+          enum:
+            - Initializing
+            - Ready
+            - Error
+            - Upgrading
+            - ScalingDown
+            - ScalingUp
+            - Maintenance
+            - Unknown
+    RedisClusterStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Redis Cluster Status
+          example: Ready
+          enum:
+            - Initializing
+            - Ready
+            - Error
+            - Upgrading
+            - ScalingDown
+            - ScalingUp
+            - Maintenance
+            - Unknown
+    ClusterReplicasResponse:
+      type: object
+      properties:
+        replicas:
+          type: integer
+          description: Cluster replicas
+          example: 1
+        replicas_per_master:
+          type: integer
+          description: Replicas per master
+          example: 0
+      required:
+        - replicas
+    ClusterReplicasRequest:
+      type: object
+      properties:
+        replicas:
+          type: integer
+          description: Cluster replicas
+          example: 1
+        replicas_per_master:
+          type: integer
+          description: Replicas per master
+          example: 0
+    ClusterStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Redis Cluster Status
+          example: Ready
+          enum:
+            - Ready
+            - Error
+            - Meeting
+            - MeetingError
+            - Resharding
+            - ReshardingError
+            - Forgetting
+            - ForgettingError
+            - Rebalancing
+            - RebalancingError
+            - Fixing
+            - FixingError
+            - EnsuringRatio
+            - EnsuringRatioError          
+            - Unknown
+    ClusterMoveSlotsRequest:
+      type: object
+      required:
+        - from
+        - to
+      properties:
+        from:
+          type: string
+          description: Redis Cluster node to move slots from. Can be the name name or the node index
+          example: "0"
+        to:
+          type: string
+          description: Redis Cluster node to move slots to. Can be the name name or the node index
+          example: rediscluster-sample-1
+        slots:
+          type: integer
+          description: Slots to move. If not provided, all slots will be moved
+          example: 0
+          default: 0
+    ClusterMoveSlotsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Move operation status
+          example: In progress
+          enum:
+            - In progress
+            - Completed
+            - Error
+    ClusterCheckResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Redis Cluster check status
+          example: Completed
+          enum:
+            - Completed
+            - Error
+        result:
+          type: string
+          description: Redis Cluster check result
+          example: OK
+          enum:
+            - OK
+            - Error
+        error:
+          type: string
+          description: Redis Cluster check error
+          example: Error message
+    ClusterFixResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Redis Cluster fix status
+          example: InProgress
+          enum:
+            - InProgress
+            - Error
+    ClusterNodesResponse:
+      type: object
+      properties:
+        nodes:
+          type: array
+          description: Redis Cluster nodes
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Redis Cluster node ID
+                example: c3f4bad062e19339e0e07bb836db5e23f09f0dff
+              name:
+                type: string
+                description: Redis Cluster node name
+                example: rediscluster-sample-0
+              flags:
+                type: string
+                description: Redis Cluster node flags
+                example: master
+              slots:
+                type: array
+                description: Redis Cluster node slots
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      start:
+                        type: integer
+                        description: Slot start
+                        example: 0
+                      end:
+                        type: integer
+                        description: Slot end
+                        example: 16383
+              ip:
+                type: string
+                description: Redis Cluster node IP
+                example: "10.0.0.1"     
+              masterId:
+                type: string
+                description: Redis Cluster node master ID
+                example: c3f4bad062e19339e0e07bb836db5e23f09f0dff
+              failures:
+                type: integer
+                description: Redis Cluster node failures
+                example: 0     
+              sent:
+                type: integer
+                description: Redis Cluster node sent
+                example: 0
+              recv:
+                type: integer
+                description: Redis Cluster node recv
+                example: 0
+              linkStatus:
+                type: string
+                description: Redis Cluster node link status
+                example: connected
