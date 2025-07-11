@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
@@ -14,16 +14,16 @@ import (
 )
 
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
-func TestRedisOperatioResetNodeWait(t *testing.T) {
+func TestRedisOperationFixWait(t *testing.T) {
 	tests := []struct {
 		name string
 		cmd  *redis.RedisCLICommand
 		err  error
 	}{
 		{
-			name: "scale up error",
+			name: "fix error",
 			cmd:  redis.NewRedisCLICommand(t.Context(), "exit 1"),
-			err:  fmt.Errorf("error resetting cluster node 'test-0': "),
+			err:  fmt.Errorf("error fixing cluster: "),
 		},
 		{
 			name: "good",
@@ -33,7 +33,7 @@ func TestRedisOperatioResetNodeWait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationResetNode(context.Background(), redisCluster, "Running", node1)
+			operation := NewFakeRedisOperationFix(context.Background(), redisCluster, "Running")
 			operation.cmd = tt.cmd
 
 			tt.cmd.Start()

@@ -4,7 +4,7 @@
 
 module github.com/inditextech/redisrobin
 
-go 1.24.3
+go 1.24.4
 
 require (
 	github.com/go-redis/redismock/v9 v9.2.0

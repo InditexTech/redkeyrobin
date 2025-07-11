@@ -2,29 +2,28 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/inditextech/redisrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
 // TODO: Test launch. Implement a redisCluster mock and redisClient mock
-func TestRedisOperationRebalanceWait(t *testing.T) {
+func TestRedisOperatioResetNodeWait(t *testing.T) {
 	tests := []struct {
 		name string
 		cmd  *redis.RedisCLICommand
 		err  error
 	}{
 		{
-			name: "rebalance error",
+			name: "scale up error",
 			cmd:  redis.NewRedisCLICommand(t.Context(), "exit 1"),
-			err:  fmt.Errorf("error rebalancing cluster: "),
+			err:  fmt.Errorf("error resetting cluster node 'test-0': "),
 		},
 		{
 			name: "good",
@@ -34,7 +33,7 @@ func TestRedisOperationRebalanceWait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationRebalance(context.Background(), redisCluster, "Running", time.Time{})
+			operation := NewFakeRedisOperationResetNode(context.Background(), redisCluster, "Running", node1)
 			operation.cmd = tt.cmd
 
 			tt.cmd.Start()

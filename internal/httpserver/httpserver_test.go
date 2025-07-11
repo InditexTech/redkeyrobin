@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/util"
 	"github.com/stretchr/testify/assert"
 )
@@ -61,7 +61,7 @@ var node3 = &redis.RedisNode{
 
 var server = Server{
 	logger: util.GetLogger("http-server"),
-	redisCluster: rediscluster.NewFakeRedisCluster(
+	cluster: cluster.NewFakeRedisCluster(
 		context.TODO(),
 		&config.Configuration{
 			Redis: config.RedisConfig{
@@ -77,10 +77,10 @@ var server = Server{
 			"test-1": node2,
 			"test-2": node3,
 		},
-		map[string][]rediscluster.RedisOperation{
+		map[string][]cluster.RedisOperation{
 			"Resharding": {
-				rediscluster.NewFakeRedisOperationMove(context.TODO(), &rediscluster.RedisCluster{}, "Running", node1, node3, 10, time.Time{}),
-				rediscluster.NewFakeRedisOperationMove(context.TODO(), &rediscluster.RedisCluster{}, "Finished", node1, node2, 10, time.Time{}),
+				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedisCluster{}, "Running", node1, node3, 10, time.Time{}),
+				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedisCluster{}, "Finished", node1, node2, 10, time.Time{}),
 			},
 		},
 		make(chan struct{}, 5),
@@ -100,7 +100,7 @@ func TestInit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := NewServer(rediscluster.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})))
+			server := NewServer(cluster.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})))
 			err := server.Init(&util.Options{})
 			assert.Equal(t, tt.err, err)
 		})

@@ -9,123 +9,65 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/rediscluster"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redisrobin/internal/cluster"
 )
 
-// RedisClusterReconciler is responsible for reconciling the Redis cluster.
-type RedisClusterReconciler struct {
-	logger       *slog.Logger
-	redisCluster *rediscluster.RedisCluster
-	channel      chan struct{}
+// Reconciler is an interface for reconciling a cluster.
+type Reconciler interface {
+	// Start starts the reconciler loop.
+	Start(ctx context.Context)
 }
 
-func NewRedisClusterReconciler(redisCluster *rediscluster.RedisCluster, channel chan struct{}) (*RedisClusterReconciler, error) {
-	return &RedisClusterReconciler{
-		logger:       util.GetLogger("reconciler"),
-		redisCluster: redisCluster,
-		channel:      channel,
-	}, nil
+// ReconcilerDelegate is an interface for reconciling a cluster.
+type ReconcilerDelegate interface {
+	// doReconcile reconciles the cluster.
+	doReconcile() error
+}
+
+// NewReconciler creates a new reconciler. It returns a standalone or cluster reconciler based on the cluster type.
+func NewReconciler(cluster cluster.Cluster, channel chan struct{}) (Reconciler, error) {
+	if cluster.IsStandalone() {
+		return NewStandaloneReconciler(cluster, channel)
+	} else {
+		return NewRedisClusterReconciler(cluster, channel)
+	}
+}
+
+// baseClusterReconciler is a base struct for all reconcilers.
+type baseClusterReconciler struct {
+	logger   *slog.Logger
+	cluster  cluster.Cluster
+	channel  chan struct{}
+	delegate ReconcilerDelegate
 }
 
 // Start starts the reconciler loop.
-func (r *RedisClusterReconciler) Start(ctx context.Context) {
-	timeout := time.Duration(r.redisCluster.GetReconcilerInterval()) * time.Second
+func (br *baseClusterReconciler) Start(ctx context.Context) {
+	if br.delegate == nil {
+		br.logger.Error("Metrics poller delegate must be set")
+		return
+	}
 
-	r.Reconcile()
+	br.reconcile()
+
+	timeout := time.Duration(br.cluster.GetReconcilerInterval()) * time.Second
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Info("Context cancelled, stopping reconciler")
+			br.logger.Info("Context cancelled, stopping reconciler")
 			return
-		case <-r.channel:
-			r.Reconcile()
+		case <-br.channel:
+			br.reconcile()
 		case <-time.After(timeout):
-			r.Reconcile()
+			br.reconcile()
 		}
 	}
 }
 
-// Reconcile reconciles the Redis cluster based on its current status.
-func (r *RedisClusterReconciler) Reconcile() {
-	if err := r.doReconcile(); err != nil {
-		r.logger.Error("Error reconciling cluster", "error", err)
+// reconcile reconciles the Redis cluster based on its current status.
+func (br *baseClusterReconciler) reconcile() {
+	if err := br.delegate.doReconcile(); err != nil {
+		br.logger.Error("Error reconciling cluster", "error", err)
 	}
-}
-
-// doReconcile reconciles the Redis cluster based on its current status.
-func (r *RedisClusterReconciler) doReconcile() error {
-	// Remove outdated operations
-	r.redisCluster.RemoveOutdatedOperations()
-
-	// Reconcile based on the current status
-	switch r.redisCluster.GetRedisClusterStatus() {
-	case rediscluster.Ready:
-		return r.reconcileReadyStatus()
-	case rediscluster.ScalingUp:
-		return r.reconcileScalingUpStatus()
-	case rediscluster.ScalingDown:
-		return r.reconcileScalingDownStatus()
-	case rediscluster.Upgrading:
-		return r.reconcileUpgradingStatus()
-	default:
-		return nil
-	}
-}
-
-// reconcileReadyStatus reconciles the Redis cluster when it is in the Ready status.
-func (r *RedisClusterReconciler) reconcileReadyStatus() error {
-	// Check cluster integrity
-	if err := r.redisCluster.CheckIntegrity(false, true); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// reconcileScalingUpStatus reconciles the Redis cluster when it is in the ScalingUp status.
-func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
-	// Check if the cluster needs to be scaled up
-	if r.redisCluster.IsScaled() {
-		return r.reconcileReadyStatus()
-	}
-
-	// Scale up the cluster
-	if err := r.redisCluster.ScaleUp(true); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// reconcileScalingDownStatus reconciles the Redis cluster when it is in the ScalingDown status.
-func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
-	// Check if the cluster needs to be scaled down
-	// If the status is Unknown, ScaleDown should be called to check if the cluster is scaled and update the status. This can happen if Robin is restarted while the cluster is being scaled down.
-	if r.redisCluster.IsScaled() && r.redisCluster.GetStatus() != rediscluster.Unknown {
-		return nil
-	}
-
-	// Scale down the cluster
-	if err := r.redisCluster.ScaleDown(true); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// reconcileUpgradingStatus reconciles the Redis cluster when it is in the Upgrading status.
-func (r *RedisClusterReconciler) reconcileUpgradingStatus() error {
-	// Check if the cluster needs to be upgraded
-	if !r.redisCluster.IsUpgraded() && !r.redisCluster.CanBeUpgraded() {
-		return nil
-	}
-
-	// Upgrade the cluster
-	if err := r.redisCluster.Upgrade(true); err != nil {
-		return err
-	}
-
-	return nil
 }

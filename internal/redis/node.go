@@ -131,6 +131,16 @@ func (rn *RedisNode) Init(ctx context.Context) error {
 	return nil
 }
 
+func (rn *RedisNode) InitStandalone(ctx context.Context) error {
+	nodeIP, err := util.GetIPFromAddress(rn.Addr)
+	if err != nil {
+		return err
+	}
+
+	rn.IP = nodeIP
+	return nil
+}
+
 // CheckConnection checks the connection to the Redis node.
 func (rn *RedisNode) CheckConnection(ctx context.Context) error {
 	redisClient, err := rn.getClient(ctx)

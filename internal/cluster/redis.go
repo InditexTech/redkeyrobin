@@ -2,12 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"os"
 	"sort"
@@ -21,38 +20,9 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-const (
-	Initializing                  = "Initializing"
-	Ready                         = "Ready"
-	Error                         = "Error"
-	Upgrading                     = "Upgrading"
-	UpgradingError                = "UpgradingError"
-	ScalingDown                   = "ScalingDown"
-	ScalingDownError              = "ScalingDownError"
-	ScalingUp                     = "ScalingUp"
-	ScalingUpError                = "ScalingUpError"
-	Maintenance                   = "Maintenance"
-	Unknown                       = "Unknown"
-	Resharding                    = "Resharding"
-	ReshardingError               = "ReshardingError"
-	Rebalancing                   = "Rebalancing"
-	RebalancingError              = "RebalancingError"
-	Fixing                        = "Fixing"
-	FixingError                   = "FixingError"
-	CheckingIntegrity             = "CheckingIntegrity"
-	CheckingIntegrityError        = "CheckingIntegrityError"
-	Resetting                     = "Resetting"
-	ResettingError                = "ResettingError"
-	RedisClusterTotalSlots        = 16384
-	RedisNodesUnbalancedThreshold = 2
-)
-
 // RedisCluster represents a Redis cluster
 type RedisCluster struct {
-	ctx        context.Context
-	logger     *slog.Logger
-	conf       *config.Configuration
-	status     string
+	clusterBase
 	nodes      map[string]*redis.RedisNode
 	operations map[string][]RedisOperation
 	channel    chan struct{}
@@ -62,10 +32,12 @@ type RedisCluster struct {
 // NewRedisCluster creates a new Redis cluster
 func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
-		ctx:        ctx,
-		logger:     util.GetLogger("redis-cluster"),
-		conf:       conf,
-		status:     Unknown,
+		clusterBase: clusterBase{
+			ctx:    ctx,
+			logger: util.GetLogger("redis-cluster"),
+			conf:   conf,
+			status: Unknown,
+		},
 		nodes:      make(map[string]*redis.RedisNode),
 		operations: make(map[string][]RedisOperation),
 		channel:    channel,
@@ -76,10 +48,12 @@ func NewRedisCluster(ctx context.Context, conf *config.Configuration, channel ch
 // NewFakeRedisCluster creates a new fake Redis cluster
 func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status string, nodes map[string]*redis.RedisNode, operations map[string][]RedisOperation, channel chan struct{}) *RedisCluster {
 	return &RedisCluster{
-		ctx:        ctx,
-		logger:     util.GetLogger("redis-cluster"),
-		conf:       conf,
-		status:     status,
+		clusterBase: clusterBase{
+			ctx:    ctx,
+			logger: util.GetLogger("redis-cluster"),
+			conf:   conf,
+			status: status,
+		},
 		nodes:      nodes,
 		operations: operations,
 		channel:    channel,
@@ -90,91 +64,6 @@ func NewFakeRedisCluster(ctx context.Context, conf *config.Configuration, status
 // ----------------------------------------------------------------------------------------------------
 // ---------------------------------------------- GETTERS ---------------------------------------------
 // ----------------------------------------------------------------------------------------------------
-
-// GetRedisClusterStatus returns the status of the Redis cluster from Operator perspective
-func (rc *RedisCluster) GetRedisClusterStatus() string {
-	return rc.conf.Redis.Cluster.Status
-}
-
-// GetStatus returns the status of the Redis cluster from Robin perspective
-func (rc *RedisCluster) GetStatus() string {
-	return rc.status
-}
-
-// GetReplicas returns the number of replicas in the Redis cluster
-func (rc *RedisCluster) GetReplicas() int {
-	return rc.conf.Redis.Cluster.Replicas
-}
-
-// GetReplicasPerMaster returns the number of replicas per master in the Redis cluster
-func (rc *RedisCluster) GetReplicasPerMaster() int {
-	return rc.conf.Redis.Cluster.ReplicasPerMaster
-}
-
-// GetDesiredReplicas returns the number of nodes needed to reach the desired number of replicas
-func (rc *RedisCluster) GetDesiredReplicas() int {
-	return rc.GetReplicas() + (rc.GetReplicas() * rc.GetReplicasPerMaster())
-}
-
-// GetName returns the name of the Redis cluster
-func (rc *RedisCluster) GetName() string {
-	return rc.conf.Redis.Cluster.Name
-}
-
-// GetNamespace returns the namespace of the Redis cluster
-func (rc *RedisCluster) GetNamespace() string {
-	return rc.conf.Redis.Cluster.Namespace
-}
-
-// GetAddress returns the address of the Redis cluster
-func (rc *RedisCluster) GetAddress() string {
-	return rc.conf.Redis.Cluster.Name
-}
-
-// IsEphemeral returns true if the Redis cluster is ephemeral
-func (rc *RedisCluster) IsEphemeral() bool {
-	return rc.conf.Redis.Cluster.Ephemeral
-}
-
-// GetReconcilerInterval returns the interval of the Redis cluster reconciler
-func (rc *RedisCluster) GetReconcilerInterval() int {
-	return rc.conf.Redis.Reconciler.IntervalSeconds
-}
-
-// GetReconcilerOperationCleanupInterval returns the interval for cleaning up old operations
-func (rc *RedisCluster) GetReconcilerOperationCleanupInterval() int {
-	return rc.conf.Redis.Reconciler.OperationCleanupIntervalSeconds
-}
-
-// GetClusterMaxRetries returns the maximum number of retries for a Redis cluster check connection operation
-func (rc *RedisCluster) GetClusterMaxRetries() int {
-	return rc.conf.Redis.Cluster.MaxRetries
-}
-
-// GetClusterBackOff returns the backoff duration for a Redis cluster check connection operation
-func (rc *RedisCluster) GetClusterBackOff() time.Duration {
-	return rc.conf.Redis.Cluster.BackOff
-}
-
-// GetClusterHealingTime returns the healing time for a Redis cluster
-func (rc *RedisCluster) GetClusterHealingTime() int {
-	return rc.conf.Redis.Cluster.HealingTimeSeconds
-}
-
-// GetClusterHealthProbePeriod returns the health probe period for a Redis cluster
-func (rc *RedisCluster) GetClusterHealthProbePeriod() int {
-	return rc.conf.Redis.Cluster.HealthProbePeriodSeconds
-}
-
-// GetMetricsRedisInfoKeys returns the Redis info keys to be collected
-func (rc *RedisCluster) GetMetricsRedisInfoKeys() []string {
-	return rc.conf.Redis.Metrics.RedisInfoKeys
-}
-
-// GetMetricsInterval returns the interval for collecting Redis metrics
-func (rc *RedisCluster) GetMetricsInterval() int {
-	return rc.conf.Redis.Metrics.IntervalSeconds
-}
 
 // GetNodes returns the Redis nodes in the cluster
 func (rc *RedisCluster) GetNodes() []*redis.RedisNode {
@@ -187,11 +76,6 @@ func (rc *RedisCluster) GetNodes() []*redis.RedisNode {
 	}
 
 	return nodes
-}
-
-// GetMetadata returns the metadata of the Redis cluster
-func (rc *RedisCluster) GetMetadata() map[string]string {
-	return rc.conf.Metadata
 }
 
 // GetNode returns the Redis node with the specified name or nil if it doesn't exist
@@ -323,20 +207,10 @@ func (rc *RedisCluster) Init() error {
 		return fmt.Errorf("Error refreshing nodes info: %v", err)
 	}
 
+	// Launch go routine to remove outdated operations
+	go rc.removeOutdatedOperations()
+
 	return nil
-}
-
-// RemoveOutdatedOperations removes outdated operations from the cluster
-func (rc *RedisCluster) RemoveOutdatedOperations() {
-	cleanupThreshold := time.Duration(rc.GetReconcilerOperationCleanupInterval()) * time.Second
-
-	for name, operations := range rc.operations {
-		for i := len(operations) - 1; i >= 0; i-- {
-			if operations[i].GetElapsedTimeFromEnd() > cleanupThreshold {
-				rc.operations[name] = append(rc.operations[name][:i], rc.operations[name][i+1:]...)
-			}
-		}
-	}
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -376,8 +250,6 @@ func (rc *RedisCluster) Rebalance(async bool, weights map[string]int, force bool
 // It returns an OperationInProgressError if there is already a reshard operation between the specified nodes.
 // It returns an OperationCompletedError if the origin node is a replica, has no slots or has replicas (and a replica of the origin node is promoted).
 func (rc *RedisCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
-	rc.logger.Info("Moving slots", "slots", slots, "from", from.Name, "to", to.Name)
-
 	// Check if a move operation should be launched
 	if rc.IsReshardingNodes(*from, *to) { // There is an ongoing move between the specified nodes
 		rc.logger.Info("There is already a reshard operation between nodes", "from", from.Name, "to", to.Name)
@@ -409,8 +281,6 @@ func (rc *RedisCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 // It launches the cluster check operation and waits for it to finish asynchronously.
 // It returns a ClusterCheckResult with the results of the check.
 func (rc *RedisCluster) Check() (*redis.ClusterCheckResult, error) {
-	rc.logger.Info("Checking cluster")
-
 	// Get Redis client and check connection
 	redisClient, err := rc.getAndCheckRedisClient(true)
 	if err != nil {
@@ -431,8 +301,6 @@ func (rc *RedisCluster) Check() (*redis.ClusterCheckResult, error) {
 // It launches the cluster fix operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
 // It returns an OperationInProgressError if the cluster is already fixing, unless the force flag is set, in which case the ongoing fixing operation is cancelled.
 func (rc *RedisCluster) Fix(async bool, force bool) error {
-	rc.logger.Info("Fixing cluster")
-
 	// Check if the cluster is already fixing
 	if rc.IsFixing() {
 		if force {
@@ -456,8 +324,6 @@ func (rc *RedisCluster) Fix(async bool, force bool) error {
 // It launches the cluster check integrity operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
 // It returns an OperationInProgressError if the cluster is already checking integrity, unless the force flag is set, in which case the ongoing checking integrity operation is cancelled.
 func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
-	rc.logger.Info("Checking cluster integrity")
-
 	// Check if the cluster check integrity is being executed
 	if rc.IsCheckingIntegrity() {
 		if force {
@@ -481,8 +347,6 @@ func (rc *RedisCluster) CheckIntegrity(async, force bool) error {
 // It launches the cluster scale up operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already scaling up, unless the force flag is set, in which case a new scale up operation is launched.
 func (rc *RedisCluster) ScaleUp(force bool) error {
-	rc.logger.Info("Scaling up cluster")
-
 	// Check if the cluster is already scaling up
 	if rc.IsScalingUp() && !force {
 		rc.logger.Info("Cluster is already scaling up")
@@ -498,8 +362,6 @@ func (rc *RedisCluster) ScaleUp(force bool) error {
 // It launches the cluster scale down operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already scaling down, unless the force flag is set, in which case a new scale down operation is launched.
 func (rc *RedisCluster) ScaleDown(force bool) error {
-	rc.logger.Info("Scaling down cluster")
-
 	// Check if the cluster is already scaling down
 	if rc.IsScalingDown() && !force {
 		rc.logger.Info("Cluster is already scaling down")
@@ -515,8 +377,6 @@ func (rc *RedisCluster) ScaleDown(force bool) error {
 // It launches the cluster upgrade operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already upgrading, unless the force flag is set, in which case a new upgrade operation is launched.
 func (rc *RedisCluster) Upgrade(force bool) error {
-	rc.logger.Info("Upgrading cluster")
-
 	// Check if the cluster is already upgrading
 	if rc.IsUpgrading() && !force {
 		rc.logger.Info("Cluster is already upgrading")
@@ -532,8 +392,6 @@ func (rc *RedisCluster) Upgrade(force bool) error {
 // It launches the cluster reset operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already resetting the node.
 func (rc *RedisCluster) ResetNode(node *redis.RedisNode) error {
-	rc.logger.Info("Reseting node", "node", node.Name)
-
 	// Check if the cluster node is already being resetted
 	if rc.IsResettingNode(*node) {
 		rc.logger.Info("Cluster node is already being resetted", "node", node.Name)
@@ -548,6 +406,11 @@ func (rc *RedisCluster) ResetNode(node *redis.RedisNode) error {
 // ---------------------------------------------- ASKERS ----------------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
+// IsStandalone returns true if the Redis cluster is standalone
+func (rc *RedisCluster) IsStandalone() bool {
+	return false
+}
+
 // IsBalanced returns true if the Redis cluster is balanced
 func (rc *RedisCluster) IsBalanced() bool {
 	masters := rc.GetMasterNodes()
@@ -557,7 +420,6 @@ func (rc *RedisCluster) IsBalanced() bool {
 
 	for _, master := range masters {
 		masterSlots := master.GetNumberOfSlots()
-
 		// Cluster is not balanced if any of master node has no slots
 		if masterSlots == 0 {
 			rc.logger.Info("Cluster needs rebalance: node has no slots", "node", master.Name)
@@ -1589,4 +1451,32 @@ func (rc *RedisCluster) getOperation(name string, status string) RedisOperation 
 		}
 	}
 	return nil
+}
+
+// removeOutdatedOperations removes outdated operations from the cluster
+func (rc *RedisCluster) removeOutdatedOperations() {
+	timeout := time.Duration(rc.GetReconcilerInterval()) * time.Second
+
+	for {
+		select {
+		case <-rc.ctx.Done():
+			rc.logger.Info("Context cancelled, stopping remove outdated operations")
+			return
+		case <-time.After(timeout):
+			rc.doRemoveOutdatedNodes()
+		}
+	}
+}
+
+// doRemoveOutdatedNodes removes outdated nodes from the Redis cluster
+func (rc *RedisCluster) doRemoveOutdatedNodes() {
+	cleanupThreshold := time.Duration(rc.GetReconcilerOperationCleanupInterval()) * time.Second
+
+	for name, operations := range rc.operations {
+		for i := len(operations) - 1; i >= 0; i-- {
+			if operations[i].GetElapsedTimeFromEnd() > cleanupThreshold {
+				rc.operations[name] = append(rc.operations[name][:i], rc.operations[name][i+1:]...)
+			}
+		}
+	}
 }

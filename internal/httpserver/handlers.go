@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/inditextech/redisrobin/internal/rediscluster"
+	"github.com/inditextech/redisrobin/internal/cluster"
 )
 
 // GetRedisClusterStatus handles the GET /v1/rediscluster/status endpoint. It returns the current status of the Redis cluster from the Operator's perspective.
@@ -16,7 +16,7 @@ func (s *Server) GetRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redis cluster status")
 
 	response := RedisClusterStatusResponse{
-		Status: s.redisCluster.GetRedisClusterStatus(),
+		Status: s.cluster.GetRedisClusterStatus(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -34,11 +34,11 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update the status
-	s.redisCluster.SetRedisClusterStatus(request.Status)
+	s.cluster.SetRedisClusterStatus(request.Status)
 
 	// Send the response
 	response := RedisClusterStatusResponse{
-		Status: s.redisCluster.GetRedisClusterStatus(),
+		Status: s.cluster.GetRedisClusterStatus(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -48,8 +48,8 @@ func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redis cluster replicas")
 
 	response := ClusterReplicasResponse{
-		Replicas:          s.redisCluster.GetReplicas(),
-		ReplicasPerMaster: s.redisCluster.GetReplicasPerMaster(),
+		Replicas:          s.cluster.GetReplicas(),
+		ReplicasPerMaster: s.cluster.GetReplicasPerMaster(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -67,15 +67,15 @@ func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the replicas
-	err := s.redisCluster.SetReplicas(request.Replicas, request.ReplicasPerMaster)
+	err := s.cluster.SetReplicas(request.Replicas, request.ReplicasPerMaster)
 
 	// Send the response
 	response := ClusterReplicasResponse{
-		Replicas:          s.redisCluster.GetReplicas(),
-		ReplicasPerMaster: s.redisCluster.GetReplicasPerMaster(),
+		Replicas:          s.cluster.GetReplicas(),
+		ReplicasPerMaster: s.cluster.GetReplicasPerMaster(),
 	}
 	if err != nil {
-		if _, ok := err.(*rediscluster.OperationCompletedError); ok {
+		if _, ok := err.(*cluster.OperationCompletedError); ok {
 			s.sendResponse(w, http.StatusOK, response)
 			return
 		}
@@ -91,7 +91,7 @@ func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster status")
 
 	response := ClusterStatusResponse{
-		Status: s.redisCluster.GetStatus(),
+		Status: s.cluster.GetStatus(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -114,12 +114,12 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	from := s.redisCluster.GetNode(request.From)
+	from := s.cluster.GetNode(request.From)
 	if from == nil {
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node '%s' not found", request.From))
 		return
 	}
-	to := s.redisCluster.GetNode(request.To)
+	to := s.cluster.GetNode(request.To)
 	if to == nil {
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node '%s' not found", request.To))
 		return
@@ -132,14 +132,14 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Launch the move
-	err := s.redisCluster.MoveSlots(from, to, slots)
+	err := s.cluster.MoveSlots(from, to, slots)
 	response := ClusterMoveSlotsResponse{}
 	if err != nil {
-		if _, ok := err.(*rediscluster.OperationInProgressError); ok {
+		if _, ok := err.(*cluster.OperationInProgressError); ok {
 			response.Status = "In progress"
 			s.sendResponse(w, http.StatusAccepted, response)
 			return
-		} else if _, ok := err.(*rediscluster.OperationCompletedError); ok {
+		} else if _, ok := err.(*cluster.OperationCompletedError); ok {
 			response.Status = "Completed"
 			s.sendResponse(w, http.StatusOK, response)
 			return
@@ -157,7 +157,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Check cluster")
 
 	// Launch the check
-	result, err := s.redisCluster.Check()
+	result, err := s.cluster.Check()
 
 	// Send the response
 	if err != nil {
@@ -176,14 +176,14 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Fix cluster")
 
 	// Launch the fix
-	err := s.redisCluster.CheckIntegrity(true, false)
+	err := s.cluster.CheckIntegrity(true, false)
 
 	// Send the response
 	response := ClusterFixResponse{
 		Status: "In progress",
 	}
 	if err != nil {
-		if _, ok := err.(*rediscluster.OperationInProgressError); ok {
+		if _, ok := err.(*cluster.OperationInProgressError); ok {
 			s.sendResponse(w, http.StatusAccepted, response)
 			return
 		}
@@ -202,21 +202,21 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 	nodeIndex := r.PathValue("nodeIndex")
 
 	// Get the node
-	node := s.redisCluster.GetNode(nodeIndex)
+	node := s.cluster.GetNode(nodeIndex)
 	if node == nil {
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Node '%s' not found", nodeIndex))
 		return
 	}
 
 	// Launch the reset
-	err := s.redisCluster.ResetNode(node)
+	err := s.cluster.ResetNode(node)
 
 	// Send the response
 	response := ClusterResetNodeResponse{
 		Status: "Completed",
 	}
 	if err != nil {
-		if _, ok := err.(*rediscluster.OperationInProgressError); ok {
+		if _, ok := err.(*cluster.OperationInProgressError); ok {
 			response.Status = "In progress"
 			s.sendResponse(w, http.StatusAccepted, response)
 			return
@@ -234,7 +234,7 @@ func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster nodes")
 
 	response := ClusterNodesResponse{
-		Nodes: s.redisCluster.GetNodes(),
+		Nodes: s.cluster.GetNodes(),
 	}
 
 	s.sendResponse(w, http.StatusOK, response)

@@ -7,11 +7,11 @@ package main
 import (
 	"os"
 
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/config"
 	"github.com/inditextech/redisrobin/internal/httpserver"
 	"github.com/inditextech/redisrobin/internal/metrics"
 	"github.com/inditextech/redisrobin/internal/reconciler"
-	"github.com/inditextech/redisrobin/internal/rediscluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
@@ -30,44 +30,43 @@ func main() {
 	}
 	ctx := util.SetupSignalHandler()
 
-	// Communication channe for the reconciler
+	// Communication channel for the reconciler
 	channel := make(chan struct{})
 	defer close(channel)
 
-	// Initialize the Redis cluster.
-	redisCluster := rediscluster.NewRedisCluster(ctx, conf, channel)
-	if err := redisCluster.Init(); err != nil {
+	// Initialize the cluster
+	cluster := cluster.NewCluster(ctx, conf, channel)
+	if err := cluster.Init(); err != nil {
 		logger.Error("Unable to initialize Redis Cluster", "error", err)
 		os.Exit(1)
 	}
 
-	// Build the HTTP server with the provided APIConfig.
-	server := httpserver.NewServer(redisCluster)
+	// Create and launch the cluster reconciler
+	reconciler, err := reconciler.NewReconciler(cluster, channel)
+	if err != nil {
+		logger.Error("Unable to create Redis reconciler", "error", err)
+		os.Exit(1)
+	}
+	go reconciler.Start(ctx)
+
+	// Create and launch a metrics poller if needed
+	if !opts.DisableMetrics {
+		metricsPoller, err := metrics.NewMetricsPoller(cluster)
+		if err != nil {
+			logger.Error("Unable to create Redis metrics poller", "error", err)
+			os.Exit(1)
+		}
+		go metricsPoller.Start(ctx)
+	}
+
+	// Initialize the HTTP server
+	server := httpserver.NewServer(cluster)
 	if err := server.Init(opts); err != nil {
 		logger.Error("Unable to initialize HTTP server", "error", err)
 		os.Exit(1)
 	}
 
-	if !opts.DisableMetrics {
-		// Create and launch the RedisPollMetrics instance to gather metrics in the background.
-		metricsManager := metrics.NewMetricsManager(conf.Metadata)
-		redisPollMetrics, err := metrics.NewRedisPollMetrics(redisCluster, metricsManager)
-		if err != nil {
-			logger.Error("Unable to create Redis metrics poller", "error", err)
-			os.Exit(1)
-		}
-		go redisPollMetrics.Start(ctx)
-	}
-
-	// Create and launch the redis cluster reconciler
-	redisClusterReconciler, err := reconciler.NewRedisClusterReconciler(redisCluster, channel)
-	if err != nil {
-		logger.Error("Unable to create Redis reconciler", "error", err)
-		os.Exit(1)
-	}
-	go redisClusterReconciler.Start(ctx)
-
-	// Start the server (blocking call until shutdown).
+	// Start the server (blocking call until shutdown)
 	if err := server.Start(ctx); err != nil {
 		logger.Error("Unable to run HTTP server", "error", err)
 		os.Exit(1)

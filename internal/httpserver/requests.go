@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/inditextech/redisrobin/internal/rediscluster"
+	"github.com/inditextech/redisrobin/internal/cluster"
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
 var (
-	ValidRedisClusterStatus = []string{rediscluster.Initializing, rediscluster.Ready, rediscluster.Error, rediscluster.Upgrading, rediscluster.ScalingDown, rediscluster.ScalingUp, rediscluster.Maintenance, rediscluster.Unknown}
+	ValidRedisClusterStatus = []string{cluster.Initializing, cluster.Configuring, cluster.Ready, cluster.Error, cluster.Upgrading, cluster.ScalingDown, cluster.ScalingUp, cluster.Maintenance, cluster.Unknown}
 )
 
 type RequestInterface interface {

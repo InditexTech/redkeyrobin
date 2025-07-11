@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rediscluster
+package cluster
 
 // OperationInProgressError represents an error when an operation is already in progress.
 type OperationInProgressError struct {
