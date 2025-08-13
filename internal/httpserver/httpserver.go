@@ -48,10 +48,10 @@ func (s *Server) Init(opts *util.Options) error {
 
 	if !s.cluster.IsStandalone() {
 		// Rediscluster endpoints
-		mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
-		mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
-		mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
-		mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
+		mux.HandleFunc("GET /v1/redkeycluster/status", s.GetRedisClusterStatus)
+		mux.HandleFunc("PUT /v1/redkeycluster/status", s.UpdateRedisClusterStatus)
+		mux.HandleFunc("GET /v1/redkeycluster/replicas", s.GetClusterReplicas)
+		mux.HandleFunc("PUT /v1/redkeycluster/replicas", s.UpdateClusterReplicas)
 
 		// Cluster endpoints
 		mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
