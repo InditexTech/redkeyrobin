@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Use an official Golang image with a specific version
-FROM golang:1.24.4 AS builder
+FROM golang:1.24.6 AS builder
 
 # Set environment variables
 ENV GOPROXY=https://proxy.golang.org,direct
