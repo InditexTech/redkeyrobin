@@ -11,8 +11,8 @@ import (
 	"github.com/inditextech/redisrobin/internal/cluster"
 )
 
-// GetRedisClusterStatus handles the GET /v1/rediscluster/status endpoint. It returns the current status of the Redis cluster from the Operator's perspective.
-func (s *Server) GetRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
+// GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the Redis cluster from the Operator's perspective.
+func (s *Server) GetRedKeyClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redis cluster status")
 
 	response := RedisClusterStatusResponse{
@@ -21,8 +21,8 @@ func (s *Server) GetRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// UpdateRedisClusterStatus handles the PUT /v1/rediscluster/status endpoint. It updates the status of the Redis cluster from the Operator's perspective.
-func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request) {
+// UpdateRedKeyClusterStatus handles the PUT /v1/redkeycluster/status endpoint. It updates the status of the Redis cluster from the Operator's perspective.
+func (s *Server) UpdateRedKeyClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Update redis cluster status")
 
 	// Parse the request body
@@ -43,8 +43,8 @@ func (s *Server) UpdateRedisClusterStatus(w http.ResponseWriter, r *http.Request
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// GetClusterReplicas handles the GET /v1/rediscluster/replicas endpoint. It returns the current number of replicas in the Redis cluster.
-func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
+// GetRedKeyClusterReplicas handles the GET /v1/redkeycluster/replicas endpoint. It returns the current number of replicas in the Redis cluster.
+func (s *Server) GetRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redis cluster replicas")
 
 	response := ClusterReplicasResponse{
@@ -54,8 +54,8 @@ func (s *Server) GetClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// UpdateClusterReplicas handles the PUT /v1/rediscluster/replicas endpoint. It updates the number of replicas in the Redis cluster.
-func (s *Server) UpdateClusterReplicas(w http.ResponseWriter, r *http.Request) {
+// UpdateRedKeyClusterReplicas handles the PUT /v1/redkeycluster/replicas endpoint. It updates the number of replicas in the Redis cluster.
+func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Update redis cluster replicas")
 
 	// Parse the request body

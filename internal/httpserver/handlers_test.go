@@ -29,7 +29,7 @@ func TestGetRedisClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/rediscluster/status", "", "", nil, server.GetRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/rediscluster/status", "", "", nil, server.GetRedKeyClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -68,7 +68,7 @@ func TestUpdateRedisClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "POST", "/rediscluster/status", tt.request, "", nil, server.UpdateRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "POST", "/rediscluster/status", tt.request, "", nil, server.UpdateRedKeyClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -91,7 +91,7 @@ func TestGetClusterReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/cluster/replicas", tt.request, "", nil, server.GetClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/cluster/replicas", tt.request, "", nil, server.GetRedKeyClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -158,7 +158,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "PUT", "/cluster/replicas", tt.request, "", nil, server.UpdateClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "PUT", "/cluster/replicas", tt.request, "", nil, server.UpdateRedKeyClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
