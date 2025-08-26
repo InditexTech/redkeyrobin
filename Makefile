@@ -222,16 +222,16 @@ debug-docker-push: ##	Push docker image for debugging from debug.Dockerfile (use
 
 
 ##@ Deployment
-REDIS_ROBIN=$(shell kubectl -n ${NAMESPACE} get po -l='redis.rediscluster.operator/component=robin' -o=jsonpath='{.items[0].metadata.name}')
+REDIS_ROBIN=$(shell kubectl -n ${NAMESPACE} get po -l='redis.redkeycluster.operator/component=robin' -o=jsonpath='{.items[0].metadata.name}')
 dev-deploy: ## 		Build a new robin binary, copy the file to the webhook pod and run it.
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -gcflags="all=-N -l" -C robin -o ../bin/robin  main.go
-	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.rediscluster.operator/component=robin
+	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.redkeycluster.operator/component=robin
 	kubectl cp ./bin/robin $(REDIS_ROBIN):/robin -n ${NAMESPACE}
 	kubectl exec -it po/$(REDIS_ROBIN) -n ${NAMESPACE} exec /robin
 
 debug: ##		Build a new robin binary, copy the file to the pod and run it in debug mode (listening on port 40000 for Delve connections).
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -gcflags="all=-N -l" -o bin/robin  ./cmd/main.go
-	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.rediscluster.operator/component=robin
+	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.redkeycluster.operator/component=robin
 	kubectl cp ./bin/robin $(REDIS_ROBIN):/robin -n ${NAMESPACE}
 	kubectl exec -it po/$(REDIS_ROBIN) -n ${NAMESPACE} -- dlv --listen=:40000 --headless=true --api-version=2 --accept-multiclient exec /robin --continue
 

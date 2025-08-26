@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	redisClusterMetrics = "redis_cluster_metrics"
-	redisNodesMetrics   = "redis_nodes_metrics"
+	redkeyClusterMetrics = "redis_cluster_metrics"
+	redisNodesMetrics    = "redis_nodes_metrics"
 )
 
 // Predefined label sets for reuse.
@@ -32,34 +32,34 @@ var (
 	}
 )
 
-// RedisClusterMetricsPoller is responsible for orchestrating the continuous polling of Redis
-type RedisClusterMetricsPoller struct {
+// RedKeyClusterMetricsPoller is responsible for orchestrating the continuous polling of Redis
+type RedKeyClusterMetricsPoller struct {
 	basePoller
 	clusterMgr *ClusterManager
 }
 
-// NewRedisClusterMetricsPoller constructs a RedisPollMetrics by delegating the K8s client retrieval,
+// NewRedKeyClusterMetricsPoller constructs a RedisPollMetrics by delegating the K8s client retrieval,
 // storing the given config & metrics manager, etc.
-func NewRedisClusterMetricsPoller(redisCluster cluster.Cluster) (*RedisClusterMetricsPoller, error) {
+func NewRedKeyClusterMetricsPoller(redkeyCluster cluster.Cluster) (*RedKeyClusterMetricsPoller, error) {
 	// Create a metrics manager with the appropriate dynamic metrics
 	metricsManager := NewMetricsManager()
 
-	for k := range redisCluster.GetMetadata() {
+	for k := range redkeyCluster.GetMetadata() {
 		clusterInfoLabelKeys = append(clusterInfoLabelKeys, k)
 		nodeInfoLabelKeys = append(nodeInfoLabelKeys, k)
 	}
 
-	metricsManager.RegisterDynamicMetric(redisClusterMetrics, "Redis cluster metrics", clusterInfoLabelKeys)
+	metricsManager.RegisterDynamicMetric(redkeyClusterMetrics, "RedKey cluster  metrics", clusterInfoLabelKeys)
 	metricsManager.RegisterDynamicMetric(redisNodesMetrics, "Redis nodes metrics", nodeInfoLabelKeys)
 
 	// Create a cluster manager for IP tracking & reset logic.
 	clusterMgr := NewClusterManager(metricsManager)
 
 	// Create the poller
-	poller := &RedisClusterMetricsPoller{
+	poller := &RedKeyClusterMetricsPoller{
 		basePoller: basePoller{
 			logger:         util.GetLogger("cluster-metrics"),
-			cluster:        redisCluster,
+			cluster:        redkeyCluster,
 			metricsManager: metricsManager,
 		},
 		clusterMgr: clusterMgr,
@@ -71,9 +71,9 @@ func NewRedisClusterMetricsPoller(redisCluster cluster.Cluster) (*RedisClusterMe
 
 // doPollMetrics retrieves all nodes in the configured namespace and labelSelector, then
 // polls both cluster-level metrics and Redis INFO per node.
-func (p *RedisClusterMetricsPoller) doPollMetrics(ctx context.Context) error {
+func (p *RedKeyClusterMetricsPoller) doPollMetrics(ctx context.Context) error {
 	// cluster-level info (GetNodesInfo, GetClusterInfo)
-	if err := p.pollRedisClusterMetrics(ctx); err != nil {
+	if err := p.pollRedKeyClusterMetrics(ctx); err != nil {
 		return err
 	}
 
@@ -90,16 +90,16 @@ func (p *RedisClusterMetricsPoller) doPollMetrics(ctx context.Context) error {
 	return nil
 }
 
-// pollRedisClusterMetrics orchestrates cluster-level metric polling by:
+// pollRedKeyClusterMetrics orchestrates cluster-level metric polling by:
 //  1. Polling cluster node data
 //  2. Polling overall cluster info
-func (p *RedisClusterMetricsPoller) pollRedisClusterMetrics(ctx context.Context) error {
+func (p *RedKeyClusterMetricsPoller) pollRedKeyClusterMetrics(ctx context.Context) error {
 	// Create a Redis client scoped to the cluster service
-	redisClient := p.createRedisClusterClient(ctx)
+	redisClient := p.createRedKeyClusterClient(ctx)
 	defer p.closeRedisClient(redisClient)
 
 	// Poll cluster nodes
-	if err := p.pollClusterNodes(redisClient); err != nil {
+	if err := p.pollClusterNodes(); err != nil {
 		return err
 	}
 
@@ -113,7 +113,7 @@ func (p *RedisClusterMetricsPoller) pollRedisClusterMetrics(ctx context.Context)
 
 // pollClusterNodes obtains node information from Redis, updates membership if changed,
 // and then stores each node's data in the metrics manager.
-func (p *RedisClusterMetricsPoller) pollClusterNodes(redisClient *redis.RedisClient) error {
+func (p *RedKeyClusterMetricsPoller) pollClusterNodes() error {
 	nodesInfo := p.cluster.GetNodes()
 
 	// Check if cluster membership changed; reset metrics if needed
@@ -138,7 +138,7 @@ func (p *RedisClusterMetricsPoller) pollClusterNodes(redisClient *redis.RedisCli
 }
 
 // pollClusterInfo obtains overall cluster details from Redis and updates them in the metrics manager.
-func (p *RedisClusterMetricsPoller) pollClusterInfo(redisClient *redis.RedisClient) error {
+func (p *RedKeyClusterMetricsPoller) pollClusterInfo(redisClient *redis.RedisClient) error {
 	err := redisClient.CheckConnection(p.cluster.GetClusterMaxRetries(), p.cluster.GetClusterBackOff())
 	if err != nil {
 		return fmt.Errorf("error checking connection: %w", err)
@@ -162,14 +162,14 @@ func (p *RedisClusterMetricsPoller) pollClusterInfo(redisClient *redis.RedisClie
 	tags[redis.ClusterMyEpoch] = strconv.Itoa(clusterInfo.MyEpoch)
 
 	// Update cluster info in the metrics manager
-	p.metricsManager.UpdateDynamicMetricWithTime(redisClusterMetrics, tags, clusterInfoLabelKeys, true)
+	p.metricsManager.UpdateDynamicMetricWithTime(redkeyClusterMetrics, tags, clusterInfoLabelKeys, true)
 
 	return nil
 }
 
 // pollClusterCheckMetrics fetches the "redis-cli --cluster check" info and updates
-func (p *RedisClusterMetricsPoller) pollClusterCheckMetrics(ctx context.Context) error {
-	redisClient := p.createRedisClusterClient(ctx)
+func (p *RedKeyClusterMetricsPoller) pollClusterCheckMetrics(ctx context.Context) error {
+	redisClient := p.createRedKeyClusterClient(ctx)
 	defer p.closeRedisClient(redisClient)
 	err := redisClient.CheckConnection(p.cluster.GetClusterMaxRetries(), p.cluster.GetClusterBackOff())
 	if err != nil {

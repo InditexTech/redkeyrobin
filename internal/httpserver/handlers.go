@@ -11,22 +11,22 @@ import (
 	"github.com/inditextech/redisrobin/internal/cluster"
 )
 
-// GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the Redis cluster from the Operator's perspective.
+// GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the RedKey cluster  from the Operator's perspective.
 func (s *Server) GetRedKeyClusterStatus(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Get redis cluster status")
+	s.logger.Info("Get redkey cluster status")
 
-	response := RedisClusterStatusResponse{
-		Status: s.cluster.GetRedisClusterStatus(),
+	response := RedKeyClusterStatusResponse{
+		Status: s.cluster.GetRedKeyClusterStatus(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// UpdateRedKeyClusterStatus handles the PUT /v1/redkeycluster/status endpoint. It updates the status of the Redis cluster from the Operator's perspective.
+// UpdateRedKeyClusterStatus handles the PUT /v1/redkeycluster/status endpoint. It updates the status of the RedKey cluster  from the Operator's perspective.
 func (s *Server) UpdateRedKeyClusterStatus(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Update redis cluster status")
+	s.logger.Info("Update redkey cluster status")
 
 	// Parse the request body
-	request := RedisClusterStatusRequest{}
+	request := RedKeyClusterStatusRequest{}
 	if err := ParseRequest(r, &request); err != nil {
 		s.logger.Error("Invalid request", "error", err)
 		s.sendError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
@@ -34,18 +34,18 @@ func (s *Server) UpdateRedKeyClusterStatus(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Update the status
-	s.cluster.SetRedisClusterStatus(request.Status)
+	s.cluster.SetRedKeyClusterStatus(request.Status)
 
 	// Send the response
-	response := RedisClusterStatusResponse{
-		Status: s.cluster.GetRedisClusterStatus(),
+	response := RedKeyClusterStatusResponse{
+		Status: s.cluster.GetRedKeyClusterStatus(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// GetRedKeyClusterReplicas handles the GET /v1/redkeycluster/replicas endpoint. It returns the current number of replicas in the Redis cluster.
+// GetRedKeyClusterReplicas handles the GET /v1/redkeycluster/replicas endpoint. It returns the current number of replicas in the RedKey cluster .
 func (s *Server) GetRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Get redis cluster replicas")
+	s.logger.Info("Get redkey cluster replicas")
 
 	response := ClusterReplicasResponse{
 		Replicas:          s.cluster.GetReplicas(),
@@ -54,9 +54,9 @@ func (s *Server) GetRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// UpdateRedKeyClusterReplicas handles the PUT /v1/redkeycluster/replicas endpoint. It updates the number of replicas in the Redis cluster.
+// UpdateRedKeyClusterReplicas handles the PUT /v1/redkeycluster/replicas endpoint. It updates the number of replicas in the RedKey cluster .
 func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info("Update redis cluster replicas")
+	s.logger.Info("Update redkey cluster replicas")
 
 	// Parse the request body
 	request := ClusterReplicasRequest{}
@@ -86,7 +86,7 @@ func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Requ
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
-// GetClusterStatus handles the GET /v1/cluster/status endpoint. It returns the current status of the Redis cluster from the Robin's perspective.
+// GetClusterStatus handles the GET /v1/cluster/status endpoint. It returns the current status of the RedKey cluster  from the Robin's perspective.
 func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster status")
 
@@ -152,7 +152,7 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
-// CheckCluster handles the GET /v1/cluster/check endpoint. It checks the integrity of the Redis cluster and returns a list of errors and warnings.
+// CheckCluster handles the GET /v1/cluster/check endpoint. It checks the integrity of the RedKey cluster  and returns a list of errors and warnings.
 func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Check cluster")
 
@@ -171,7 +171,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// FixCluster handles the POST /v1/cluster/fix endpoint. It fixes the integrity of the Redis cluster.
+// FixCluster handles the POST /v1/cluster/fix endpoint. It fixes the integrity of the RedKey cluster .
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Fix cluster")
 
@@ -229,7 +229,7 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// GetNodes handles the GET /v1/cluster/nodes endpoint. It returns the list of nodes in the Redis cluster.
+// GetNodes handles the GET /v1/cluster/nodes endpoint. It returns the list of nodes in the RedKey cluster .
 func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster nodes")
 

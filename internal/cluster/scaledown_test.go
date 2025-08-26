@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TODO: Test launch. Implement a redisCluster mock and redisClient mock
+// TODO: Test launch. Implement a redkeyCluster mock and redisClient mock
 func TestRedisOperationScaleDownWait(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -36,7 +36,7 @@ func TestRedisOperationScaleDownWait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationScaleDown(context.Background(), redisCluster, "Running")
+			operation := NewFakeRedisOperationScaleDown(context.Background(), redkeyCluster, "Running")
 			operation.cmd = tt.cmd
 
 			tt.cmd.Start()
@@ -46,7 +46,7 @@ func TestRedisOperationScaleDownWait(t *testing.T) {
 				assert.Equal(t, tt.err.Error(), err.Error())
 			}
 
-			assert.Equal(t, redisCluster.GetStatus(), tt.expectedStatus)
+			assert.Equal(t, redkeyCluster.GetStatus(), tt.expectedStatus)
 		})
 	}
 }

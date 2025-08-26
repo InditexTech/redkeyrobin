@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ValidRedisClusterStatus = []string{cluster.Initializing, cluster.Configuring, cluster.Ready, cluster.Error, cluster.Upgrading, cluster.ScalingDown, cluster.ScalingUp, cluster.Maintenance, cluster.Unknown}
+	ValidRedKeyClusterStatus = []string{cluster.Initializing, cluster.Configuring, cluster.Ready, cluster.Error, cluster.Upgrading, cluster.ScalingDown, cluster.ScalingUp, cluster.Maintenance, cluster.Unknown}
 )
 
 type RequestInterface interface {
@@ -34,12 +34,12 @@ func ParseRequest(input *http.Request, output RequestInterface) error {
 	return nil
 }
 
-type RedisClusterStatusRequest struct {
+type RedKeyClusterStatusRequest struct {
 	Status string `json:"status"`
 }
 
-func (r *RedisClusterStatusRequest) Validate() error {
-	if !util.StringInSlice(r.Status, ValidRedisClusterStatus) {
+func (r *RedKeyClusterStatusRequest) Validate() error {
+	if !util.StringInSlice(r.Status, ValidRedKeyClusterStatus) {
 		return fmt.Errorf("invalid status '%s'", r.Status)
 	}
 	return nil

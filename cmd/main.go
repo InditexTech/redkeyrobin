@@ -37,7 +37,7 @@ func main() {
 	// Initialize the cluster
 	cluster := cluster.NewCluster(ctx, conf, channel)
 	if err := cluster.Init(); err != nil {
-		logger.Error("Unable to initialize Redis Cluster", "error", err)
+		logger.Error("Unable to initialize RedKey Cluster", "error", err)
 		os.Exit(1)
 	}
 

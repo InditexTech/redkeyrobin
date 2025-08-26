@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TODO: Test launch. Implement a redisCluster mock and redisClient mock
+// TODO: Test launch. Implement a redkeyCluster mock and redisClient mock
 func TestRedisOperatioResetNodeWait(t *testing.T) {
 	tests := []struct {
 		name string
@@ -33,7 +33,7 @@ func TestRedisOperatioResetNodeWait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationResetNode(context.Background(), redisCluster, "Running", node1)
+			operation := NewFakeRedisOperationResetNode(context.Background(), redkeyCluster, "Running", node1)
 			operation.cmd = tt.cmd
 
 			tt.cmd.Start()

@@ -20,7 +20,7 @@ type RedisSlotRange struct {
 	End   int `json:"end"`
 }
 
-// RedisNode represents a Redis cluster node.
+// RedisNode represents a RedKey cluster  node.
 type RedisNode struct {
 	Name       string           `json:"name"`
 	ID         string           `json:"id"`

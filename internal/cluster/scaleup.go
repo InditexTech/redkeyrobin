@@ -13,31 +13,31 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-// RedisOperationScaleUp represents a scale up operation for a Redis cluster.
+// RedisOperationScaleUp represents a scale up operation for a RedKey cluster .
 type RedisOperationScaleUp struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster) *RedisOperationScaleUp {
+func NewRedisOperationScaleUp(ctx context.Context, redkeyCluster *RedKeyCluster) *RedisOperationScaleUp {
 	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:         "ScaleUp",
-			status:       "Pending",
-			logger:       util.GetLogger("operation.scaleup"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
+			name:          "ScaleUp",
+			status:        "Pending",
+			logger:        util.GetLogger("operation.scaleup"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationScaleUp(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationScaleUp {
+func NewFakeRedisOperationScaleUp(ctx context.Context, redkeyCluster *RedKeyCluster, status string) *RedisOperationScaleUp {
 	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:         "ScaleUp",
-			status:       status,
-			logger:       util.GetLogger("operation.scaleup"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
+			name:          "ScaleUp",
+			status:        status,
+			logger:        util.GetLogger("operation.scaleup"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
 		},
 	}
 }
@@ -60,68 +60,68 @@ func (ro *RedisOperationScaleUp) Launch() error {
 
 // Wait waits for the scale up operation to finish.
 func (ro *RedisOperationScaleUp) Wait() error {
-	ro.redisCluster.status = ScalingUp
+	ro.redkeyCluster.status = ScalingUp
 
 	// Wait for scale up to finish
 	err := ro.Run()
 
 	// Scale up failed
 	if err != nil {
-		ro.redisCluster.status = ScalingUpError
+		ro.redkeyCluster.status = ScalingUpError
 		return fmt.Errorf("error scaling up cluster: %v", err)
 	}
 
 	// Scale up finished successfully
-	ro.redisCluster.status = Ready
+	ro.redkeyCluster.status = Ready
 	ro.logger.Info("Cluster scaled up successfully")
 
 	return nil
 }
 
-// doScaleUp scales up the Redis cluster
+// doScaleUp scales up the RedKey cluster
 func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 	// Add new nodes if needed
-	if err := ro.redisCluster.addNewNodesIfNeeded(ctx); err != nil {
+	if err := ro.redkeyCluster.addNewNodesIfNeeded(); err != nil {
 		return err
 	}
 
 	// Check nodes info
-	if err := ro.redisCluster.checkNodes(); err != nil {
+	if err := ro.redkeyCluster.checkNodes(); err != nil {
 		return err
 	}
 
 	// Forget outdated nodes
-	if err := ro.redisCluster.removeOutdatedNodes(ctx); err != nil {
+	if err := ro.redkeyCluster.removeOutdatedNodes(ctx); err != nil {
 		ro.logger.Error("Error removing outdated nodes", "error", err)
 	}
 
 	// Meet nodes if needed
-	if err := ro.redisCluster.meetNodesIfNeeded(ctx); err != nil {
+	if err := ro.redkeyCluster.meetNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Ensure cluster ratio
-	if err := ro.redisCluster.ensureClusterRatio(ctx); err != nil {
+	if err := ro.redkeyCluster.ensureClusterRatio(ctx); err != nil {
 		return err
 	}
 
 	// Assign missing slots if needed
-	if err := ro.redisCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
+	if err := ro.redkeyCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Fix cluster if needed
-	if err := ro.redisCluster.fixClusterIfNeeded(ctx); err != nil {
+	if err := ro.redkeyCluster.fixClusterIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Balance cluster if needed
-	if err := ro.redisCluster.balanceClusterIfNeeded(ctx, nil); err != nil {
+	if err := ro.redkeyCluster.balanceClusterIfNeeded(nil); err != nil {
 		return err
 	}
 
 	// Update nodes info
-	if err := ro.redisCluster.refreshNodes(); err != nil {
+	if err := ro.redkeyCluster.refreshNodes(); err != nil {
 		return err
 	}
 

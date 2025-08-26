@@ -25,7 +25,7 @@ type RedisBaseOperationInterface interface {
 	GetNodeTo() *redis.RedisNode
 }
 
-// RedisOperation represents an operation in the Redis cluster, such as rebalancing or resharding
+// RedisOperation represents an operation in the RedKey cluster , such as rebalancing or resharding
 type RedisOperation interface {
 	RedisBaseOperationInterface
 	Launch() error
@@ -36,7 +36,7 @@ type RedisOperation interface {
 type RedisOperationBase struct {
 	name          string
 	status        string
-	redisCluster  *RedisCluster
+	redkeyCluster *RedKeyCluster
 	nodeFrom      *redis.RedisNode
 	nodeTo        *redis.RedisNode
 	initTimestamp time.Time

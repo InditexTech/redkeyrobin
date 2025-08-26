@@ -20,8 +20,8 @@ type RedisReconcilerConfig struct {
 	OperationCleanupIntervalSeconds int `yaml:"operation_cleanup_interval_seconds"`
 }
 
-// RedisClusterConfig holds cluster-level Redis configuration.
-type RedisClusterConfig struct {
+// RedKeyClusterConfig holds cluster-level Redis configuration.
+type RedKeyClusterConfig struct {
 	Namespace                string        `yaml:"namespace"`
 	Name                     string        `yaml:"name"`
 	Replicas                 int           `yaml:"replicas"`
@@ -44,7 +44,7 @@ type RedisMetricsConfig struct {
 type RedisConfig struct {
 	Standalone bool                  `yaml:"standalone"`
 	Reconciler RedisReconcilerConfig `yaml:"reconciler"`
-	Cluster    RedisClusterConfig    `yaml:"cluster"`
+	Cluster    RedKeyClusterConfig   `yaml:"cluster"`
 	Metrics    RedisMetricsConfig    `yaml:"metrics"`
 }
 

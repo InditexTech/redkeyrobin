@@ -9,13 +9,13 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-// RedisClusterReconciler is responsible for reconciling a Redis cluster.
-type RedisClusterReconciler struct {
+// RedKeyClusterReconciler is responsible for reconciling a RedKey cluster .
+type RedKeyClusterReconciler struct {
 	baseClusterReconciler
 }
 
-func NewRedisClusterReconciler(cluster cluster.Cluster, channel chan struct{}) (*RedisClusterReconciler, error) {
-	reconciler := &RedisClusterReconciler{
+func NewRedKeyClusterReconciler(cluster cluster.Cluster, channel chan struct{}) (*RedKeyClusterReconciler, error) {
+	reconciler := &RedKeyClusterReconciler{
 		baseClusterReconciler: baseClusterReconciler{
 			logger:  util.GetLogger("cluster-reconciler"),
 			cluster: cluster,
@@ -26,10 +26,10 @@ func NewRedisClusterReconciler(cluster cluster.Cluster, channel chan struct{}) (
 	return reconciler, nil
 }
 
-// doReconcile reconciles the Redis cluster based on its current status.
-func (r *RedisClusterReconciler) doReconcile() error {
+// doReconcile reconciles the RedKey cluster  based on its current status.
+func (r *RedKeyClusterReconciler) doReconcile() error {
 	// Reconcile based on the current status
-	switch r.cluster.GetRedisClusterStatus() {
+	switch r.cluster.GetRedKeyClusterStatus() {
 	case cluster.Configuring:
 		return r.reconcileConfiguringStatus()
 	case cluster.Ready:
@@ -45,16 +45,16 @@ func (r *RedisClusterReconciler) doReconcile() error {
 	}
 }
 
-// reconciles the Redis cluster when it is in the Configuring status, building the cluster.
-func (r *RedisClusterReconciler) reconcileConfiguringStatus() error {
+// reconciles the RedKey cluster  when it is in the Configuring status, building the cluster.
+func (r *RedKeyClusterReconciler) reconcileConfiguringStatus() error {
 	if err := r.cluster.CheckIntegrity(false, true); err != nil {
 		return err
 	}
 	return nil
 }
 
-// reconcileReadyStatus reconciles the Redis cluster when it is in the Ready status.
-func (r *RedisClusterReconciler) reconcileReadyStatus() error {
+// reconcileReadyStatus reconciles the RedKey cluster  when it is in the Ready status.
+func (r *RedKeyClusterReconciler) reconcileReadyStatus() error {
 	// Check cluster integrity
 	if err := r.cluster.CheckIntegrity(false, true); err != nil {
 		return err
@@ -63,8 +63,8 @@ func (r *RedisClusterReconciler) reconcileReadyStatus() error {
 	return nil
 }
 
-// reconcileScalingUpStatus reconciles the Redis cluster when it is in the ScalingUp status.
-func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
+// reconcileScalingUpStatus reconciles the RedKey cluster  when it is in the ScalingUp status.
+func (r *RedKeyClusterReconciler) reconcileScalingUpStatus() error {
 	// Check if the cluster needs to be scaled up
 	if r.cluster.IsScaled() {
 		return r.reconcileReadyStatus()
@@ -78,8 +78,8 @@ func (r *RedisClusterReconciler) reconcileScalingUpStatus() error {
 	return nil
 }
 
-// reconcileScalingDownStatus reconciles the Redis cluster when it is in the ScalingDown status.
-func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
+// reconcileScalingDownStatus reconciles the RedKey cluster  when it is in the ScalingDown status.
+func (r *RedKeyClusterReconciler) reconcileScalingDownStatus() error {
 	// Check if the cluster needs to be scaled down
 	// If the status is Unknown, ScaleDown should be called to check if the cluster is scaled and update the status. This can happen if Robin is restarted while the cluster is being scaled down.
 	if r.cluster.IsScaled() && r.cluster.GetStatus() != cluster.Unknown {
@@ -94,8 +94,8 @@ func (r *RedisClusterReconciler) reconcileScalingDownStatus() error {
 	return nil
 }
 
-// reconcileUpgradingStatus reconciles the Redis cluster when it is in the Upgrading status.
-func (r *RedisClusterReconciler) reconcileUpgradingStatus() error {
+// reconcileUpgradingStatus reconciles the RedKey cluster  when it is in the Upgrading status.
+func (r *RedKeyClusterReconciler) reconcileUpgradingStatus() error {
 	// Check if the cluster needs to be upgraded
 	if !r.cluster.IsUpgraded() && !r.cluster.CanBeUpgraded() {
 		return nil

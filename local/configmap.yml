@@ -15,7 +15,7 @@ redis:
   cluster:
     replicas: 1
     namespace: redis-operator
-    name: rediscluster-sample
+    name: redkeycluster-sample
     status: Ready
     replicas_per_master: 0
     health_probe_interval_seconds: 60

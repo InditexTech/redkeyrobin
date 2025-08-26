@@ -39,7 +39,7 @@ func NewMetricsPoller(cluster cluster.Cluster) (MetricsPoller, error) {
 	if cluster.IsStandalone() {
 		return NewRedisStandaloneMetricsPoller(cluster)
 	} else {
-		return NewRedisClusterMetricsPoller(cluster)
+		return NewRedKeyClusterMetricsPoller(cluster)
 	}
 }
 
@@ -101,8 +101,8 @@ func (bp *basePoller) buildCommonMetadataTags() map[string]string {
 	return tags
 }
 
-// createRedisClusterClient abstracts out creating a Redis client for the cluster service address.
-func (p *basePoller) createRedisClusterClient(ctx context.Context) *redis.RedisClient {
+// createRedKeyClusterClient abstracts out creating a Redis client for the cluster service address.
+func (p *basePoller) createRedKeyClusterClient(ctx context.Context) *redis.RedisClient {
 	return redis.NewRedisClient(ctx, p.cluster.GetAddress(), os.Getenv("REDISAUTH"), 0)
 }
 
@@ -130,7 +130,7 @@ func (p *basePoller) closeRedisClient(redisClient *redis.RedisClient) error {
 }
 
 // pollRedisNodeLevelMetrics orchestrates node-level metric polling by fetching "info all"
-// from each node in the configured Redis Cluster.
+// from each node in the configured RedKey Cluster.
 func (p *basePoller) pollRedisNodeLevelMetrics(ctx context.Context) error {
 	for _, node := range p.cluster.GetNodes() {
 		if err := p.pollRedisInfoAllMetrics(ctx, node.Addr, node.Name); err != nil {

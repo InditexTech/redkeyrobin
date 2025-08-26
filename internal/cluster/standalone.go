@@ -13,14 +13,14 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-// RedisStandalone represents a standalone Redis
-type RedisStandalone struct {
+// RedKeyStandalone represents a standalone Redis
+type RedKeyStandalone struct {
 	clusterBase
 	node *redis.RedisNode
 }
 
-func NewRedisStandalone(ctx context.Context, conf *config.Configuration) *RedisStandalone {
-	return &RedisStandalone{
+func NewRedKeyStandalone(ctx context.Context, conf *config.Configuration) *RedKeyStandalone {
+	return &RedKeyStandalone{
 		clusterBase: clusterBase{
 			ctx:    ctx,
 			logger: util.GetLogger("redis-standalone"),
@@ -35,12 +35,12 @@ func NewRedisStandalone(ctx context.Context, conf *config.Configuration) *RedisS
 // ----------------------------------------------------------------------------------------------------
 
 // GetNodes returns the nodes of the cluster.
-func (rc *RedisStandalone) GetNodes() []*redis.RedisNode {
+func (rc *RedKeyStandalone) GetNodes() []*redis.RedisNode {
 	return []*redis.RedisNode{rc.node}
 }
 
 // GetNode returns the node with the provided name.
-func (rc *RedisStandalone) GetNode(name string) *redis.RedisNode {
+func (rc *RedKeyStandalone) GetNode(name string) *redis.RedisNode {
 	if rc.node.Name == name {
 		return rc.node
 	}
@@ -52,13 +52,13 @@ func (rc *RedisStandalone) GetNode(name string) *redis.RedisNode {
 // ----------------------------------------------------------------------------------------------------
 
 // SetReplicas sets the number of replicas of the cluster.
-func (rc *RedisStandalone) SetReplicas(replicas int, replicasPerMaster *int) error {
+func (rc *RedKeyStandalone) SetReplicas(replicas int, replicasPerMaster *int) error {
 	return nil
 }
 
-// SetRedisClusterStatus sets the status of the Redis cluster
-func (rc *RedisStandalone) SetRedisClusterStatus(status string) error {
-	rc.logger.Info("Changing Redis Standalone status", "current", rc.GetRedisClusterStatus(), "desired", status)
+// SetRedKeyClusterStatus sets the status of the RedKey cluster
+func (rc *RedKeyStandalone) SetRedKeyClusterStatus(status string) error {
+	rc.logger.Info("Changing Redis Standalone status", "current", rc.GetRedKeyClusterStatus(), "desired", status)
 	rc.conf.Redis.Cluster.Status = status
 	return nil
 }
@@ -68,27 +68,27 @@ func (rc *RedisStandalone) SetRedisClusterStatus(status string) error {
 // ----------------------------------------------------------------------------------------------------
 
 // IsStandalone returns true if the cluster is standalone.
-func (rc *RedisStandalone) IsStandalone() bool {
+func (rc *RedKeyStandalone) IsStandalone() bool {
 	return true
 }
 
 // IsBalanced returns true if the cluster is balanced.
-func (rc *RedisStandalone) IsBalanced() bool {
+func (rc *RedKeyStandalone) IsBalanced() bool {
 	return true
 }
 
 // IsScaled returns true if the cluster is scaled.
-func (rc *RedisStandalone) IsScaled() bool {
+func (rc *RedKeyStandalone) IsScaled() bool {
 	return true
 }
 
 // IsUpgraded returns true if the cluster is upgraded.
-func (rc *RedisStandalone) IsUpgraded() bool {
+func (rc *RedKeyStandalone) IsUpgraded() bool {
 	return true
 }
 
 // CanBeUpgraded returns true if the cluster can be upgraded.
-func (rc *RedisStandalone) CanBeUpgraded() bool {
+func (rc *RedKeyStandalone) CanBeUpgraded() bool {
 	return true
 }
 
@@ -97,7 +97,7 @@ func (rc *RedisStandalone) CanBeUpgraded() bool {
 // ----------------------------------------------------------------------------------------------------
 
 // Init initializes the cluster.
-func (rc *RedisStandalone) Init() error {
+func (rc *RedKeyStandalone) Init() error {
 	nodeName := fmt.Sprintf("%s-0", rc.GetName())
 	nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
 	rc.createNode(nodeName, nodeAddr)
@@ -110,27 +110,27 @@ func (rc *RedisStandalone) Init() error {
 // ----------------------------------------------------------------------------------------------------
 
 // Check checks the cluster.
-func (rc *RedisStandalone) Check() (*redis.ClusterCheckResult, error) {
+func (rc *RedKeyStandalone) Check() (*redis.ClusterCheckResult, error) {
 	return nil, nil
 }
 
 // Fix fixes the cluster.
-func (rc *RedisStandalone) Fix(async bool, force bool) error {
+func (rc *RedKeyStandalone) Fix(async bool, force bool) error {
 	return nil
 }
 
 // Rebalance rebalances the cluster.
-func (rc *RedisStandalone) Rebalance(async bool, weights map[string]int, force bool) error {
+func (rc *RedKeyStandalone) Rebalance(async bool, weights map[string]int, force bool) error {
 	return nil
 }
 
 // MoveSlots returns the slots of the cluster.
-func (rc *RedisStandalone) MoveSlots(from, to *redis.RedisNode, slots int) error {
+func (rc *RedKeyStandalone) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	return nil
 }
 
 // CheckIntegrity checks the integrity of the cluster.
-func (rc *RedisStandalone) CheckIntegrity(async, force bool) error {
+func (rc *RedKeyStandalone) CheckIntegrity(async, force bool) error {
 	nodeName := fmt.Sprintf("%s-0", rc.GetName())
 	nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
 
@@ -162,22 +162,22 @@ func (rc *RedisStandalone) CheckIntegrity(async, force bool) error {
 }
 
 // ScaleUp scales up the cluster.
-func (rc *RedisStandalone) ScaleUp(force bool) error {
+func (rc *RedKeyStandalone) ScaleUp(force bool) error {
 	return nil
 }
 
 // ScaleDown scales down the cluster.
-func (rc *RedisStandalone) ScaleDown(force bool) error {
+func (rc *RedKeyStandalone) ScaleDown(force bool) error {
 	return nil
 }
 
 // Upgrade upgrades the cluster.
-func (rc *RedisStandalone) Upgrade(force bool) error {
+func (rc *RedKeyStandalone) Upgrade(force bool) error {
 	return nil
 }
 
 // ResetNode resets a node of the cluster.
-func (rc *RedisStandalone) ResetNode(node *redis.RedisNode) error {
+func (rc *RedKeyStandalone) ResetNode(node *redis.RedisNode) error {
 	return nil
 }
 
@@ -186,7 +186,7 @@ func (rc *RedisStandalone) ResetNode(node *redis.RedisNode) error {
 // ----------------------------------------------------------------------------------------------------
 
 // createNode creates a node and set it as the node to handle by RedisStandalone
-func (rc *RedisStandalone) createNode(name, addr string) *redis.RedisNode {
+func (rc *RedKeyStandalone) createNode(name, addr string) *redis.RedisNode {
 	node := &redis.RedisNode{
 		Name:       name,
 		Addr:       addr,

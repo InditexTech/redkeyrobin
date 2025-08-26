@@ -15,7 +15,7 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-// parseClusterCheckOutput processes Redis cluster check output into a structured format.
+// parseClusterCheckOutput processes RedKey cluster  check output into a structured format.
 func parseClusterCheckOutput(output string) *ClusterCheckResult {
 	scanner := bufio.NewScanner(strings.NewReader(output))
 

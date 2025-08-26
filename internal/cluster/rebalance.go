@@ -12,34 +12,34 @@ import (
 	"github.com/inditextech/redisrobin/internal/util"
 )
 
-// RedisOperationRebalance represents a rebalance operation for a Redis cluster.
+// RedisOperationRebalance represents a rebalance operation for a RedKey cluster .
 type RedisOperationRebalance struct {
 	RedisOperationBase
 	weights map[string]int
 }
 
-func NewRedisOperationRebalance(ctx context.Context, redisCluster *RedisCluster, weights map[string]int) *RedisOperationRebalance {
+func NewRedisOperationRebalance(ctx context.Context, redkeyCluster *RedKeyCluster, weights map[string]int) *RedisOperationRebalance {
 	return &RedisOperationRebalance{
 		RedisOperationBase: RedisOperationBase{
-			name:         "Rebalance",
-			status:       "Pending",
-			logger:       util.GetLogger("operation.rebalance"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
+			name:          "Rebalance",
+			status:        "Pending",
+			logger:        util.GetLogger("operation.rebalance"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
 		},
 		weights: weights,
 	}
 }
 
-func NewFakeRedisOperationRebalance(ctx context.Context, redisCluster *RedisCluster, status string, endTimestamp time.Time) *RedisOperationRebalance {
+func NewFakeRedisOperationRebalance(ctx context.Context, redkeyCluster *RedKeyCluster, status string, endTimestamp time.Time) *RedisOperationRebalance {
 	return &RedisOperationRebalance{
 		RedisOperationBase: RedisOperationBase{
-			name:         "Rebalance",
-			status:       status,
-			logger:       util.GetLogger("operation.rebalance"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
-			endTimestamp: endTimestamp,
+			name:          "Rebalance",
+			status:        status,
+			logger:        util.GetLogger("operation.rebalance"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
+			endTimestamp:  endTimestamp,
 		},
 	}
 }
@@ -49,12 +49,12 @@ func (ro *RedisOperationRebalance) Launch() error {
 	ro.logger.Info("Rebalancing cluster")
 
 	// Assure all nodes are up (redis-cli needs all nodes to be up)
-	if err := ro.redisCluster.ensureNodesAreUp(ro.ctx); err != nil {
+	if err := ro.redkeyCluster.ensureNodesAreUp(ro.ctx); err != nil {
 		return fmt.Errorf("error ensuring nodes are up: %v", err)
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.redisCluster.getAndCheckRedisClient(true)
+	redisClient, err := ro.redkeyCluster.getAndCheckRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -87,7 +87,7 @@ func (ro *RedisOperationRebalance) Wait() error {
 	ro.logger.Info("Cluster rebalanced successfully")
 
 	// Update nodes info
-	if err := ro.redisCluster.refreshNodes(); err != nil {
+	if err := ro.redkeyCluster.refreshNodes(); err != nil {
 		return err
 	}
 	return nil

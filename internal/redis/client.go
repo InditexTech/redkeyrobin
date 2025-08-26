@@ -93,7 +93,7 @@ type RedisInfo struct {
 	LatencyStats map[string]string
 }
 
-// ClusterInfo represents structured Redis cluster information.
+// ClusterInfo represents structured RedKey cluster  information.
 type ClusterInfo struct {
 	State                        string
 	SlotsAssigned                int

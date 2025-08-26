@@ -76,11 +76,11 @@ func (r HealthResponse) GetKeys() []string {
 	return []string{"status"}
 }
 
-type RedisClusterStatusResponse struct {
+type RedKeyClusterStatusResponse struct {
 	Status string `json:"status"`
 }
 
-func (r RedisClusterStatusResponse) GetKeys() []string {
+func (r RedKeyClusterStatusResponse) GetKeys() []string {
 	return []string{"status"}
 }
 

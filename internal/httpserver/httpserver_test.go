@@ -61,11 +61,11 @@ var node3 = &redis.RedisNode{
 
 var server = Server{
 	logger: util.GetLogger("http-server"),
-	cluster: cluster.NewFakeRedisCluster(
+	cluster: cluster.NewFakeRedKeyCluster(
 		context.TODO(),
 		&config.Configuration{
 			Redis: config.RedisConfig{
-				Cluster: config.RedisClusterConfig{
+				Cluster: config.RedKeyClusterConfig{
 					Status: "Ready",
 					Name:   "test",
 				},
@@ -79,8 +79,8 @@ var server = Server{
 		},
 		map[string][]cluster.RedisOperation{
 			"Resharding": {
-				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedisCluster{}, "Running", node1, node3, 10, time.Time{}),
-				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedisCluster{}, "Finished", node1, node2, 10, time.Time{}),
+				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedKeyCluster{}, "Running", node1, node3, 10, time.Time{}),
+				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedKeyCluster{}, "Finished", node1, node2, 10, time.Time{}),
 			},
 		},
 		make(chan struct{}, 5),
@@ -100,7 +100,7 @@ func TestInit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := NewServer(cluster.NewRedisCluster(t.Context(), &config.Configuration{}, make(chan struct{})))
+			server := NewServer(cluster.NewRedKeyCluster(t.Context(), &config.Configuration{}, make(chan struct{})))
 			err := server.Init(&util.Options{})
 			assert.Equal(t, tt.err, err)
 		})

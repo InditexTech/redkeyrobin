@@ -26,10 +26,10 @@ type Server struct {
 }
 
 // NewServer creates a new Server with the provided ConfigProvider.
-func NewServer(redisCluster cluster.Cluster) *Server {
+func NewServer(redkeyCluster cluster.Cluster) *Server {
 	return &Server{
 		logger:  util.GetLogger("http-server"),
-		cluster: redisCluster,
+		cluster: redkeyCluster,
 	}
 }
 
@@ -47,7 +47,7 @@ func (s *Server) Init(opts *util.Options) error {
 	}
 
 	if !s.cluster.IsStandalone() {
-		// Rediscluster endpoints
+		// RedKeyCluster endpoints
 		mux.HandleFunc("GET /v1/redkeycluster/status", s.GetRedKeyClusterStatus)
 		mux.HandleFunc("PUT /v1/redkeycluster/status", s.UpdateRedKeyClusterStatus)
 		mux.HandleFunc("GET /v1/redkeycluster/replicas", s.GetRedKeyClusterReplicas)

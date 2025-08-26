@@ -15,14 +15,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewRedisClusterReconciler(t *testing.T) {
-	reconciler, err := NewRedisClusterReconciler(&cluster.RedisCluster{}, make(chan struct{}))
+func TestNewRedKeyClusterReconciler(t *testing.T) {
+	reconciler, err := NewRedKeyClusterReconciler(&cluster.RedKeyCluster{}, make(chan struct{}))
 
 	assert.NoError(t, err)
 	assert.NotNil(t, reconciler)
 }
 
-func TestRedisClusterReconcilerReconcile(t *testing.T) {
+func TestRedKeyClusterReconcilerReconcile(t *testing.T) {
 	tests := []struct {
 		name          string
 		config        *config.Configuration
@@ -32,7 +32,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 			name: "Ready",
 			config: &config.Configuration{
 				Redis: config.RedisConfig{
-					Cluster: config.RedisClusterConfig{
+					Cluster: config.RedKeyClusterConfig{
 						Status:                   "Ready",
 						Replicas:                 3,
 						Name:                     "test",
@@ -50,7 +50,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 			name: "Scaling up",
 			config: &config.Configuration{
 				Redis: config.RedisConfig{
-					Cluster: config.RedisClusterConfig{
+					Cluster: config.RedKeyClusterConfig{
 						Status:                   "ScalingUp",
 						Replicas:                 3,
 						Name:                     "test",
@@ -68,7 +68,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 			name: "Scaling down",
 			config: &config.Configuration{
 				Redis: config.RedisConfig{
-					Cluster: config.RedisClusterConfig{
+					Cluster: config.RedKeyClusterConfig{
 						Status:                   "ScalingDown",
 						Replicas:                 3,
 						Name:                     "test",
@@ -86,7 +86,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 			name: "Upgrading",
 			config: &config.Configuration{
 				Redis: config.RedisConfig{
-					Cluster: config.RedisClusterConfig{
+					Cluster: config.RedKeyClusterConfig{
 						Status:                   "Upgrading",
 						Replicas:                 3,
 						Name:                     "test",
@@ -103,7 +103,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rdcl := cluster.NewFakeRedisCluster(
+			rdcl := cluster.NewFakeRedKeyCluster(
 				t.Context(),
 				tt.config,
 				"Unknown",
@@ -112,7 +112,7 @@ func TestRedisClusterReconcilerReconcile(t *testing.T) {
 				make(chan struct{}, 5),
 			)
 
-			reconciler, _ := NewRedisClusterReconciler(rdcl, make(chan struct{}))
+			reconciler, _ := NewRedKeyClusterReconciler(rdcl, make(chan struct{}))
 			reconciler.reconcile()
 			err := reconciler.doReconcile()
 
