@@ -38,9 +38,7 @@ const (
 
 // MetricsManager encapsulates Prometheus metrics for Redis.
 type MetricsManager struct {
-	logger *slog.Logger
-	// clusterInfo    *prometheus.GaugeVec
-	// nodeInfo       *prometheus.GaugeVec
+	logger  *slog.Logger
 	metrics map[string]*prometheus.GaugeVec
 }
 
