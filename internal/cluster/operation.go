@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 // RedisBaseOperationInterface represents the base interface for Redis operations

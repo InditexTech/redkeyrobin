@@ -5,8 +5,8 @@
 package reconciler
 
 import (
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedKeyClusterReconciler is responsible for reconciling a RedKey cluster .

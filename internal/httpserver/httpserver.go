@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/util"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

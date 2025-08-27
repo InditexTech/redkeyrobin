@@ -1,8 +1,8 @@
 openapi: 3.0.4
 info:
-  title: Swagger Redis Robin
+  title: Swagger RedKey Robin
   description: |-
-    Api developed for Redis Robin, a faithful partner who assists the operator in the dangerous Gotham.
+    Api developed for RedKey Robin, a faithful partner who assists the operator in the dangerous Gotham.
   contact:
     email: lddpaas@inditex.com
   version: 1.0.0
@@ -10,7 +10,7 @@ externalDocs:
   description: Find out more about RedKey Operator
   url: https://redis-sentinel.docs.inditex.dev/redis-at-inditex/latest/redis-ops-guide/deployment.html
 servers:
-  - url: https://api.inditex.com/redisrobin
+  - url: https://api.inditex.com/redkeyrobin
     description: Production server
 tags:
   - name: status
@@ -108,7 +108,7 @@ paths:
       tags:
         - status
       summary: Get current Cluster status 
-      description: Get current Cluster status from Redis Robin perspective
+      description: Get current Cluster status from RedKey Robin perspective
       operationId: GetClusterStatus
       responses:
         '200':

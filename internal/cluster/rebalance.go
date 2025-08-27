@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedisOperationRebalance represents a rebalance operation for a RedKey cluster .

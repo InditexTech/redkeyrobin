@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redismock/v9"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 	redisgo "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )

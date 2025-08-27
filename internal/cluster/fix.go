@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedisOperationFix represents a fix operation for a RedKey cluster .

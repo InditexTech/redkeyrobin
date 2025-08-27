@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
 )
 
 // Reconciler is an interface for reconciling a cluster.

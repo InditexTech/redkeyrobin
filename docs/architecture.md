@@ -21,9 +21,9 @@ There are four main components in Robin:
 
 ## Architecture
 
-The following image shows the architecture of Redis Robin:
+The following image shows the architecture of RedKey Robin:
 
-![Redis Robin Architecture](images/redis-robin-architecture.png)
+![RedKey Robin Architecture](images/redkey-robin-architecture.png)
 
 
 ## Redis Operations

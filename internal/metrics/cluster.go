@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 const (

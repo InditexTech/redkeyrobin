@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 type ResponseInterface interface {

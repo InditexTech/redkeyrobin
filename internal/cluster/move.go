@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedisOperationMove represents a move operation for a RedKey cluster .

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
 )
 
 // GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the RedKey cluster  from the Operator's perspective.

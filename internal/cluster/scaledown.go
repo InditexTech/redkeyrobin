@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedisOperationScaleDown represents a scale down operation for a RedKey cluster .

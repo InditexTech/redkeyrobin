@@ -5,7 +5,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-name      := redisrobin
+name      := redkeyrobin
 VERSION   := 1.0.0
 package   := github.com/inditextech/$(name)
 # Image URL to use for building/pushing image targets when using `pro` deployment profile.
@@ -84,7 +84,7 @@ IMAGE_REF ?= $(IMG)
 # Allowed deploying profiles.
 PROFILES := dev debug pro
 
-# Namespace where redis robin is deployed.
+# Namespace where redkey robin is deployed.
 NAMESPACE ?= redis-operator
 
 # Deploying profile used to generate the manifest files to deploy the operator.

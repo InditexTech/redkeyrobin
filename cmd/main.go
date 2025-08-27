@@ -7,12 +7,12 @@ package main
 import (
 	"os"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/config"
-	"github.com/inditextech/redisrobin/internal/httpserver"
-	"github.com/inditextech/redisrobin/internal/metrics"
-	"github.com/inditextech/redisrobin/internal/reconciler"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/httpserver"
+	"github.com/inditextech/redkeyrobin/internal/metrics"
+	"github.com/inditextech/redkeyrobin/internal/reconciler"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 func main() {

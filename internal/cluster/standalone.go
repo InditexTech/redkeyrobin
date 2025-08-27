@@ -8,9 +8,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/inditextech/redisrobin/internal/config"
-	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedKeyStandalone represents a standalone Redis

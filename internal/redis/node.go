@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedisSlotRange represents a range of Redis slots.

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-module github.com/inditextech/redisrobin
+module github.com/inditextech/redkeyrobin
 
 go 1.24.6
 

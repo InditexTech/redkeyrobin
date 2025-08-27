@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 

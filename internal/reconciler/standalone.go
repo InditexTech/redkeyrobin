@@ -7,8 +7,8 @@ package reconciler
 import (
 	"context"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 type RedisStandaloneReconciler struct {

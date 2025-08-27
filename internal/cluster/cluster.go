@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/config"
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 	"gopkg.in/yaml.v3"
 )
 

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/config"
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
