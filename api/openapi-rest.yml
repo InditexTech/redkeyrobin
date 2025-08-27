@@ -7,7 +7,7 @@ info:
     email: lddpaas@inditex.com
   version: 1.0.0
 externalDocs:
-  description: Find out more about Redis Operator
+  description: Find out more about RedKey Operator
   url: https://redis-sentinel.docs.inditex.dev/redis-at-inditex/latest/redis-ops-guide/deployment.html
 servers:
   - url: https://api.inditex.com/redisrobin
@@ -36,7 +36,7 @@ paths:
       tags:
         - status
       summary: Get current RedKey Cluster status
-      description: Get current RedKey Cluster status from Redis Operator perspective
+      description: Get current RedKey Cluster status from RedKey Operator perspective
       operationId: GetRedKeyClusterStatus
       responses:
         '200':

@@ -13,7 +13,7 @@ This document provides an overview of the Robin API, defining its endpoints and 
 
 The following endpoints are provided:
 
-- `/v1/redkeycluster/status`: endpoint to get and update the current RedKey Cluster  status from the Redis Operator persective. The possible statuses will be "Initializing", "Ready", "Error", "Upgrading", "ScalingDown", "ScalingUp", "Maintenance" or "Unknown". Methods provided:
+- `/v1/redkeycluster/status`: endpoint to get and update the current RedKey Cluster  status from the RedKey Operator persective. The possible statuses will be "Initializing", "Ready", "Error", "Upgrading", "ScalingDown", "ScalingUp", "Maintenance" or "Unknown". Methods provided:
   - `GET`: returns a JSON with the current RedKey Cluster  status in Robin. The JSON contains the field `status` (string).
   - `PUT`: updates the RedKey Cluster  status. It expects a JSON with the field `status` (string). 
 - `/v1/redkeycluster/replicas`: endpoint to get and update the RedKey Cluster  replicas. Methods provided:
@@ -21,7 +21,7 @@ The following endpoints are provided:
   - `PUT`: updates the RedKey Cluster  replicas. It expects a JSON with the field `replicas` (integer) and, optionally, `replicas_per_master` (integer). Once received, Robin will modify the cluster to have the desired replicas and replicas per master. 
 - `/v1/cluster/status`: endpoint to get the current RedKey Cluster  status from the Robin persective. The possible statuses will be "Ready", "Error", "Resharding", "Rebalancing", "Fixing" and "CheckingIntegrity", "Resetting" and a error status per each previos status ("MeetingError", "ForgettingError", etc). Methods provided:
   - `GET`: returns a JSON with the current RedKey Cluster  status in Robin. The JSON contains the field `status` (string).
-- `/v1/cluster/move`: endpoint to ask Robin to move slots between two nodes. It will be called by the Redis Operator to empty (reshard) a node. Methods provided:
+- `/v1/cluster/move`: endpoint to ask Robin to move slots between two nodes. It will be called by the RedKey Operator to empty (reshard) a node. Methods provided:
   - `PUT`: request to reshard a node. It expects a JSON with the fields `from` (string) and `to` (string), which are the node indexes between which to move slots (names can also be used), and, optionally, `slots` (integer), with the number of slots to move (if not provided, all slots of from node are moved).
 - `/v1/cluster/check`: endpoint to perform a RedKey Cluster  check. This is an auxiliar endpoint that can be invoked by the Operator or manually to actively check if RedKey Cluster  is healthy. Methods provided:
   - `GET`: performs a `redis-cli --cluster check` over the RedKey Cluster  and returns the result. 

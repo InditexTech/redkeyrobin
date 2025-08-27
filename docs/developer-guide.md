@@ -10,7 +10,7 @@ Quickly provision Redis Robin in Kubernetes.
 
 ## Local development and testing
 
-A *local K8s cluster* can be used to deploy the Redis Operator from a pre-built image or directly compiling from the source code.
+A *local K8s cluster* can be used to deploy the RedKey Operator from a pre-built image or directly compiling from the source code.
 
 This will be helpfull to develop and test new features, fix bugs, and test releases locally.
 
@@ -18,9 +18,9 @@ As we will see below, you can use the `make` command to deploy the different com
 
 ## Development profiles
 
-Three **Deployment Profiles** have been defined. Basically, these profiles determine which image will be used to deploy the Redis Operator pod. These are the 3 Deployment Profiles and the default images used to create the Redis Operator pod:
+Three **Deployment Profiles** have been defined. Basically, these profiles determine which image will be used to deploy the RedKey Operator pod. These are the 3 Deployment Profiles and the default images used to create the RedKey Operator pod:
 
-| Profile | Image used to create the Redis Operator pod | Purpose |
+| Profile | Image used to create the RedKey Operator pod | Purpose |
 |---------|---------------------------------------------|---------|
 | debug | delve:1.24.0 | Debug code from your IDE using Delve |
 | dev | redis-robin:0.1.0-dev | Test a locally built (from source code) release | 
@@ -28,7 +28,7 @@ Three **Deployment Profiles** have been defined. Basically, these profiles deter
 
 ## Create your Kubernetes cluster
 
-You can deploy your own Kubernetes cluster locally to develop Redis Operator with the tool of your choice (Docker Desktop, Rancher Desktop, K3D, Kind,...).
+You can deploy your own Kubernetes cluster locally to develop RedKey Operator with the tool of your choice (Docker Desktop, Rancher Desktop, K3D, Kind,...).
 
 We recommend you to use Kind. To start a local registry and a K8S cluster with Kind you can use the following script (from Kind official doc page):
 
@@ -114,7 +114,7 @@ We provide and easy way to build and push the images for `dev` and `debug` profi
 
 - `make dev-docker-build`: builds an image containing the Redis Robin built from the source code. This image is published in Docker local registry.
 - `make dev-docker-push`: pushes the image built with the command above to the corresponding registry.
-- `make debug-docker`: builds an image that will allow us to create an *empty* pod as the redis operator to which we will copy the manager binary and run it, as we'll explain later.
+- `make debug-docker`: builds an image that will allow us to create an *empty* pod as the redkey operator to which we will copy the manager binary and run it, as we'll explain later.
 - `make debug-docker-push`: pushes the image built with the command above to he corresponding registry.
 
 **To test a released Redis Robin version you'll have to manually pull the image, tag and push to your local registry.**
@@ -141,7 +141,7 @@ make debug-docker-push-robin IMG_DEV_ROBIN=localhost:5001/redis-robin:0.1.0
 
 Once the Redis Robin is available in your local registry, you can follow these steps to deploy it into you K8s cluster:
 
-1. Install the Redis Operator. Please refer to the [RedKey Operator](https://github.com/InditexTech/redkeyoperator/) to know how to deploy the Redis Operator.
+1. Install the RedKey Operator. Please refer to the [RedKey Operator](https://github.com/InditexTech/redkeyoperator/) to know how to deploy the RedKey Operator.
 
 2. Create a RedKey Cluster  setting `spec.robin.template.spec.containers[0].image` to `$IMG_ROBIN`, `$IMG_DEV_ROBIN` or `$IMG_DEBUG` depending on the profile you want to test. You can use the RedKey Cluster  sample in `config/samples/redis_v1_redkeycluster.yml`
 
