@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	redkeyClusterMetrics = "redis_cluster_metrics"
+	redkeyClusterMetrics = "redkey_cluster_metrics"
 	redisNodesMetrics    = "redis_nodes_metrics"
 )
 
