@@ -63,9 +63,9 @@ type clusterGetter interface {
 	GetNamespace() string
 	// GetMetadata returns the metadata of the cluster.
 	GetMetadata() map[string]string
-	// GetClusterMaxRetries returns the maximum number of retries for a RedKey cluster  check connection operation
+	// GetClusterMaxRetries returns the maximum number of retries for a RedKey Cluster check connection operation
 	GetClusterMaxRetries() int
-	// GetClusterBackOff returns the backoff duration for a RedKey cluster  check connection operation
+	// GetClusterBackOff returns the backoff duration for a RedKey Cluster check connection operation
 	GetClusterBackOff() time.Duration
 	// GetMetricsRedisInfoKeys returns the Redis info keys to be collected
 	GetMetricsRedisInfoKeys() []string
@@ -120,7 +120,7 @@ type Cluster interface {
 	ResetNode(node *redis.RedisNode) error
 }
 
-// NewCluster creates a new cluster. It returns a standalone or RedKey cluster  based on the cluster type.
+// NewCluster creates a new cluster. It returns a standalone or RedKey Cluster based on the cluster type.
 func NewCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) Cluster {
 	if conf.Redis.Standalone {
 		return NewRedKeyStandalone(ctx, conf)
@@ -141,12 +141,12 @@ type clusterBase struct {
 // ---------------------------------------------- GETTERS ---------------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// GetRedKeyClusterStatus returns the status of the RedKey cluster  from Operator perspective
+// GetRedKeyClusterStatus returns the status of the RedKey Cluster from Operator perspective
 func (rc *clusterBase) GetRedKeyClusterStatus() string {
 	return rc.conf.Redis.Cluster.Status
 }
 
-// GetStatus returns the status of the RedKey cluster  from Robin perspective
+// GetStatus returns the status of the RedKey Cluster from Robin perspective
 func (rc *clusterBase) GetStatus() string {
 	return rc.status
 }
@@ -181,7 +181,7 @@ func (rc *clusterBase) GetAddress() string {
 	return rc.conf.Redis.Cluster.Name
 }
 
-// GetReconcilerInterval returns the interval of the RedKey cluster  reconciler
+// GetReconcilerInterval returns the interval of the RedKey Cluster reconciler
 func (rc *clusterBase) GetReconcilerInterval() int {
 	return rc.conf.Redis.Reconciler.IntervalSeconds
 }
@@ -191,12 +191,12 @@ func (rc *clusterBase) GetReconcilerOperationCleanupInterval() int {
 	return rc.conf.Redis.Reconciler.OperationCleanupIntervalSeconds
 }
 
-// GetClusterMaxRetries returns the maximum number of retries for a RedKey cluster  check connection operation
+// GetClusterMaxRetries returns the maximum number of retries for a RedKey Cluster check connection operation
 func (rc *clusterBase) GetClusterMaxRetries() int {
 	return rc.conf.Redis.Cluster.MaxRetries
 }
 
-// GetClusterBackOff returns the backoff duration for a RedKey cluster  check connection operation
+// GetClusterBackOff returns the backoff duration for a RedKey Cluster check connection operation
 func (rc *clusterBase) GetClusterBackOff() time.Duration {
 	return rc.conf.Redis.Cluster.BackOff
 }
@@ -230,7 +230,7 @@ func (rc *clusterBase) GetMetadata() map[string]string {
 // ---------------------------------------------- ASKERS ----------------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// IsEphemeral returns true if the RedKey cluster  is ephemeral
+// IsEphemeral returns true if the RedKey Cluster is ephemeral
 func (rc *clusterBase) IsEphemeral() bool {
 	return rc.conf.Redis.Cluster.Ephemeral
 }
