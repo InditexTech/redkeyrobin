@@ -12,7 +12,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationFix represents a fix operation for a RedKey cluster .
+// RedisOperationFix represents a fix operation for a RedKey cluster.
 type RedisOperationFix struct {
 	RedisOperationBase
 }

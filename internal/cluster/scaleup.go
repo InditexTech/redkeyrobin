@@ -13,7 +13,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationScaleUp represents a scale up operation for a RedKey cluster .
+// RedisOperationScaleUp represents a scale up operation for a RedKey cluster.
 type RedisOperationScaleUp struct {
 	RedisOperationBase
 }

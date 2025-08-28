@@ -13,7 +13,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationScaleDown represents a scale down operation for a RedKey cluster .
+// RedisOperationScaleDown represents a scale down operation for a RedKey cluster.
 type RedisOperationScaleDown struct {
 	RedisOperationBase
 }

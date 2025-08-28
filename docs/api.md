@@ -26,7 +26,7 @@ The following endpoints are provided:
 - `/v1/cluster/check`: endpoint to perform a RedKey Cluster check. This is an auxiliar endpoint that can be invoked by the Operator or manually to actively check if RedKey Cluster is healthy. Methods provided:
   - `GET`: performs a `redis-cli --cluster check` over the RedKey Cluster and returns the result. 
 - `/v1/cluster/fix`: endpoint to perform a RedKey Cluster fix, which involves doing a integrity check: cluster meet, cluster forget, cluster rebalance, cluster fix and cluster ratio assurance. This is an auxiliar endpoint that can be invoked by the Operator or manually to actively perform the fix operations. Methods provided:
-  - `PUT`: performs the fix operations over the RedKey Cluster .
+  - `PUT`: performs the fix operations over the RedKey Cluster.
 - `/v1/cluster/reset/{nodeIndex}`: endpoint to reset the node `{nodeIndex}`. Methods provided:
   - `PUT`: performs the node reset and returns the result.
 - `/v1/cluster/nodes`: endpoint that returns the information that Robin has about the nodes. Methods provided:

@@ -28,13 +28,13 @@ The following image shows the architecture of RedKey Robin:
 
 ## Redis Operations
 
-In order to have knowledge about what is being executed on the RedKey Cluster , Robin introduces the concept of Redis Operations. A Redis Operation is an action or a set of actions that run in one or several RedKey cluster nodes to create, modify, check or delete the cluster. 
+In order to have knowledge about what is being executed on the RedKey Cluster, Robin introduces the concept of Redis Operations. A Redis Operation is an action or a set of actions that run in one or several RedKey cluster nodes to create, modify, check or delete the cluster. 
 
 Robin uses Redis Operations to avoid executing twice the same action on the RedKey Cluster at the same time (for example reseting a node) and to avoid incompatible actions at the same time (for example rebalancing the cluster and resharding a node).
 
 A Redis Operation is represented by the RedisOperation struct (package `internal/cluster`). This struct contains the information about the operation: the name, status, when it started, when it finished (if already finished), the nodes involved (if any) and the Redis command to run. For the latter, we define the interface RedisCommand, which represents the actions that run on the clusters. There are two RedisComand implementations:
 
-- RedisCLICommand: runs a `redis-cli --cluster` command on the RedKey Cluster .
+- RedisCLICommand: runs a `redis-cli --cluster` command on the RedKey Cluster.
 - RedisLibraryCommand: runs programmatic actions on the RedKey Cluster using the `github.com/redis/go-redis/v9` library and, optionally, redis-cli command using a RedisCLICommand.
 
 > [!WARNING] 

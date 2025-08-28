@@ -9,7 +9,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedKeyClusterReconciler is responsible for reconciling a RedKey cluster .
+// RedKeyClusterReconciler is responsible for reconciling a RedKey cluster.
 type RedKeyClusterReconciler struct {
 	baseClusterReconciler
 }

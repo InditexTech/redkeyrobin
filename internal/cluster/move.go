@@ -13,7 +13,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationMove represents a move operation for a RedKey cluster .
+// RedisOperationMove represents a move operation for a RedKey cluster.
 type RedisOperationMove struct {
 	RedisOperationBase
 	slots int

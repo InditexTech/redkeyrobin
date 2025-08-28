@@ -13,7 +13,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationCheckIntegrity represents a check integrity operation for a RedKey cluster .
+// RedisOperationCheckIntegrity represents a check integrity operation for a RedKey cluster.
 type RedisOperationCheckIntegrity struct {
 	RedisOperationBase
 }

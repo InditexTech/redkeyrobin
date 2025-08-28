@@ -13,7 +13,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationUpgrade represents an upgrade operation for a RedKey cluster .
+// RedisOperationUpgrade represents an upgrade operation for a RedKey cluster.
 type RedisOperationUpgrade struct {
 	RedisOperationBase
 }

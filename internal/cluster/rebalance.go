@@ -12,7 +12,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationRebalance represents a rebalance operation for a RedKey cluster .
+// RedisOperationRebalance represents a rebalance operation for a RedKey cluster.
 type RedisOperationRebalance struct {
 	RedisOperationBase
 	weights map[string]int

@@ -153,7 +153,7 @@ func (rc *RedKeyCluster) GetReplicasOfNode(node *redis.RedisNode) []*redis.Redis
 // ---------------------------------------------- SETTERS ---------------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// SetReplicas sets the number of replicas in the RedKey cluster .
+// SetReplicas sets the number of replicas in the RedKey cluster.
 // It returns an OperationAlreadyDoneError if the current number of replicas is equal to the desired number of replicas.
 func (rc *RedKeyCluster) SetReplicas(replicas int, replicasPerMaster *int) error {
 	currentReplicas := rc.GetReplicas()
@@ -192,7 +192,7 @@ func (rc *RedKeyCluster) SetRedKeyClusterStatus(status string) error {
 // --------------------------------------------- PUBLIC  ----------------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// Init initializes the RedKey cluster . It should be called after creating a new RedKey cluster .
+// Init initializes the RedKey cluster. It should be called after creating a new RedKey cluster.
 // It sets the Robin status from the RedKey Cluster status and creates the nodes and initializes them.
 func (rc *RedKeyCluster) Init() error {
 	// Initialize nodes
@@ -217,7 +217,7 @@ func (rc *RedKeyCluster) Init() error {
 // ---------------------------------------- PUBLIC OPERATIONS -----------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// Rebalance rebalances the RedKey cluster .
+// Rebalance rebalances the RedKey cluster.
 // It receives the weights of the nodes (map) and the async and force flags (bool).
 // It launches the cluster rebalance operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
 // It returns an OperationInProgressError if the cluster is already rebalancing, unless the force flag is set, in which case the ongoing rebalance operation is cancelled.
@@ -277,7 +277,7 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	return rc.launchOperation(NewRedisOperationMove(rc.ctx, rc, from, to, slots), Resharding, true)
 }
 
-// Check checks the RedKey cluster .
+// Check checks the RedKey cluster.
 // It launches the cluster check operation and waits for it to finish asynchronously.
 // It returns a ClusterCheckResult with the results of the check.
 func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
@@ -296,7 +296,7 @@ func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
 	return result, nil
 }
 
-// Fix fixes the RedKey cluster .
+// Fix fixes the RedKey cluster.
 // It receives the async and force flags (bool).
 // It launches the cluster fix operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
 // It returns an OperationInProgressError if the cluster is already fixing, unless the force flag is set, in which case the ongoing fixing operation is cancelled.

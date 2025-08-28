@@ -43,7 +43,7 @@ func (s *Server) UpdateRedKeyClusterStatus(w http.ResponseWriter, r *http.Reques
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// GetRedKeyClusterReplicas handles the GET /v1/redkeycluster/replicas endpoint. It returns the current number of replicas in the RedKey cluster .
+// GetRedKeyClusterReplicas handles the GET /v1/redkeycluster/replicas endpoint. It returns the current number of replicas in the RedKey cluster.
 func (s *Server) GetRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redkey cluster replicas")
 
@@ -54,7 +54,7 @@ func (s *Server) GetRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// UpdateRedKeyClusterReplicas handles the PUT /v1/redkeycluster/replicas endpoint. It updates the number of replicas in the RedKey cluster .
+// UpdateRedKeyClusterReplicas handles the PUT /v1/redkeycluster/replicas endpoint. It updates the number of replicas in the RedKey cluster.
 func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Update redkey cluster replicas")
 
@@ -171,7 +171,7 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// FixCluster handles the POST /v1/cluster/fix endpoint. It fixes the integrity of the RedKey cluster .
+// FixCluster handles the POST /v1/cluster/fix endpoint. It fixes the integrity of the RedKey cluster.
 func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Fix cluster")
 
@@ -229,7 +229,7 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// GetNodes handles the GET /v1/cluster/nodes endpoint. It returns the list of nodes in the RedKey cluster .
+// GetNodes handles the GET /v1/cluster/nodes endpoint. It returns the list of nodes in the RedKey cluster.
 func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster nodes")
 
