@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetRedisClusterStatus(t *testing.T) {
+func TestGetRedKeyClusterStatus(t *testing.T) {
 	tests := []struct {
 		name               string
 		expectedBody       ResponseInterface
@@ -21,7 +21,7 @@ func TestGetRedisClusterStatus(t *testing.T) {
 	}{
 		{
 			name: "good request",
-			expectedBody: RedisClusterStatusResponse{
+			expectedBody: RedKeyClusterStatusResponse{
 				Status: "Ready",
 			},
 			expectedStatusCode: http.StatusOK,
@@ -29,12 +29,12 @@ func TestGetRedisClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/rediscluster/status", "", "", nil, server.GetRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/redkeycluster/status", "", "", nil, server.GetRedKeyClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
 
-func TestUpdateRedisClusterStatus(t *testing.T) {
+func TestUpdateRedKeyClusterStatus(t *testing.T) {
 	tests := []struct {
 		name               string
 		request            string
@@ -60,7 +60,7 @@ func TestUpdateRedisClusterStatus(t *testing.T) {
 		{
 			name:    "good request",
 			request: `{"status": "Ready"}`,
-			expectedBody: RedisClusterStatusResponse{
+			expectedBody: RedKeyClusterStatusResponse{
 				Status: "Ready",
 			},
 			expectedStatusCode: http.StatusOK,
@@ -68,12 +68,12 @@ func TestUpdateRedisClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "POST", "/rediscluster/status", tt.request, "", nil, server.UpdateRedisClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "POST", "/redkeycluster/status", tt.request, "", nil, server.UpdateRedKeyClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
 
-func TestGetClusterReplicas(t *testing.T) {
+func TestGetRedKeyClusterReplicas(t *testing.T) {
 	tests := []struct {
 		name               string
 		request            string
@@ -91,12 +91,12 @@ func TestGetClusterReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "GET", "/cluster/replicas", tt.request, "", nil, server.GetClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "GET", "/redkeycluster/replicas", tt.request, "", nil, server.GetRedKeyClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
 
-func TestUpdateClusterReplicas(t *testing.T) {
+func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 	tests := []struct {
 		name               string
 		request            string
@@ -158,7 +158,7 @@ func TestUpdateClusterReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "PUT", "/cluster/replicas", tt.request, "", nil, server.UpdateClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
+			testRequest(t, "PUT", "/redkeycluster/replicas", tt.request, "", nil, server.UpdateRedKeyClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }

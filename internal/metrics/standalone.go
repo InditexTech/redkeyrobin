@@ -7,8 +7,8 @@ package metrics
 import (
 	"context"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedisStandaloneMetricsPoller is a standalone metrics poller.

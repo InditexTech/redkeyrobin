@@ -7,12 +7,12 @@ package main
 import (
 	"os"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/config"
-	"github.com/inditextech/redisrobin/internal/httpserver"
-	"github.com/inditextech/redisrobin/internal/metrics"
-	"github.com/inditextech/redisrobin/internal/reconciler"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/httpserver"
+	"github.com/inditextech/redkeyrobin/internal/metrics"
+	"github.com/inditextech/redkeyrobin/internal/reconciler"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 func main() {
@@ -37,14 +37,14 @@ func main() {
 	// Initialize the cluster
 	cluster := cluster.NewCluster(ctx, conf, channel)
 	if err := cluster.Init(); err != nil {
-		logger.Error("Unable to initialize Redis Cluster", "error", err)
+		logger.Error("Unable to initialize RedKey Cluster", "error", err)
 		os.Exit(1)
 	}
 
 	// Create and launch the cluster reconciler
 	reconciler, err := reconciler.NewReconciler(cluster, channel)
 	if err != nil {
-		logger.Error("Unable to create Redis reconciler", "error", err)
+		logger.Error("Unable to create reconciler", "error", err)
 		os.Exit(1)
 	}
 	go reconciler.Start(ctx)
@@ -53,7 +53,7 @@ func main() {
 	if !opts.DisableMetrics {
 		metricsPoller, err := metrics.NewMetricsPoller(cluster)
 		if err != nil {
-			logger.Error("Unable to create Redis metrics poller", "error", err)
+			logger.Error("Unable to create metrics poller", "error", err)
 			os.Exit(1)
 		}
 		go metricsPoller.Start(ctx)

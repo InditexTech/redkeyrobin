@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 // nodeInfoReplacer is used to clean up node info strings.

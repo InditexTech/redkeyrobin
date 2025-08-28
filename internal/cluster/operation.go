@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 // RedisBaseOperationInterface represents the base interface for Redis operations
@@ -25,7 +25,7 @@ type RedisBaseOperationInterface interface {
 	GetNodeTo() *redis.RedisNode
 }
 
-// RedisOperation represents an operation in the Redis cluster, such as rebalancing or resharding
+// RedisOperation represents an operation in the RedKey cluster, such as rebalancing or resharding
 type RedisOperation interface {
 	RedisBaseOperationInterface
 	Launch() error
@@ -36,7 +36,7 @@ type RedisOperation interface {
 type RedisOperationBase struct {
 	name          string
 	status        string
-	redisCluster  *RedisCluster
+	redkeyCluster *RedKeyCluster
 	nodeFrom      *redis.RedisNode
 	nodeTo        *redis.RedisNode
 	initTimestamp time.Time

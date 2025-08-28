@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
 )
 
 // Reconciler is an interface for reconciling a cluster.
@@ -29,7 +29,7 @@ func NewReconciler(cluster cluster.Cluster, channel chan struct{}) (Reconciler, 
 	if cluster.IsStandalone() {
 		return NewStandaloneReconciler(cluster, channel)
 	} else {
-		return NewRedisClusterReconciler(cluster, channel)
+		return NewRedKeyClusterReconciler(cluster, channel)
 	}
 }
 
@@ -65,7 +65,7 @@ func (br *baseClusterReconciler) Start(ctx context.Context) {
 	}
 }
 
-// reconcile reconciles the Redis cluster based on its current status.
+// reconcile reconciles the RedKey cluster based on its current status.
 func (br *baseClusterReconciler) reconcile() {
 	if err := br.delegate.doReconcile(); err != nil {
 		br.logger.Error("Error reconciling cluster", "error", err)

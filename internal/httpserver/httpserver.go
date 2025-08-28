@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/cluster"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/util"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -26,10 +26,10 @@ type Server struct {
 }
 
 // NewServer creates a new Server with the provided ConfigProvider.
-func NewServer(redisCluster cluster.Cluster) *Server {
+func NewServer(redkeyCluster cluster.Cluster) *Server {
 	return &Server{
 		logger:  util.GetLogger("http-server"),
-		cluster: redisCluster,
+		cluster: redkeyCluster,
 	}
 }
 
@@ -47,11 +47,11 @@ func (s *Server) Init(opts *util.Options) error {
 	}
 
 	if !s.cluster.IsStandalone() {
-		// Rediscluster endpoints
-		mux.HandleFunc("GET /v1/rediscluster/status", s.GetRedisClusterStatus)
-		mux.HandleFunc("PUT /v1/rediscluster/status", s.UpdateRedisClusterStatus)
-		mux.HandleFunc("GET /v1/rediscluster/replicas", s.GetClusterReplicas)
-		mux.HandleFunc("PUT /v1/rediscluster/replicas", s.UpdateClusterReplicas)
+		// RedKeyCluster endpoints
+		mux.HandleFunc("GET /v1/redkeycluster/status", s.GetRedKeyClusterStatus)
+		mux.HandleFunc("PUT /v1/redkeycluster/status", s.UpdateRedKeyClusterStatus)
+		mux.HandleFunc("GET /v1/redkeycluster/replicas", s.GetRedKeyClusterReplicas)
+		mux.HandleFunc("PUT /v1/redkeycluster/replicas", s.UpdateRedKeyClusterReplicas)
 
 		// Cluster endpoints
 		mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)

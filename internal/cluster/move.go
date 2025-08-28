@@ -9,43 +9,43 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationMove represents a move operation for a Redis cluster.
+// RedisOperationMove represents a move operation for a RedKey cluster.
 type RedisOperationMove struct {
 	RedisOperationBase
 	slots int
 }
 
-func NewRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, from, to *redis.RedisNode, slots int) *RedisOperationMove {
+func NewRedisOperationMove(ctx context.Context, redkeyCluster *RedKeyCluster, from, to *redis.RedisNode, slots int) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
-			name:         "Move",
-			status:       "Pending",
-			logger:       util.GetLogger("operation.move"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
-			nodeFrom:     from,
-			nodeTo:       to,
+			name:          "Move",
+			status:        "Pending",
+			logger:        util.GetLogger("operation.move"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
+			nodeFrom:      from,
+			nodeTo:        to,
 		},
 
 		slots: slots,
 	}
 }
 
-func NewFakeRedisOperationMove(ctx context.Context, redisCluster *RedisCluster, status string, from, to *redis.RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
+func NewFakeRedisOperationMove(ctx context.Context, redkeyCluster *RedKeyCluster, status string, from, to *redis.RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
-			name:         "Move",
-			status:       status,
-			logger:       util.GetLogger("operation.move"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
-			endTimestamp: endTimestamp,
-			nodeFrom:     from,
-			nodeTo:       to,
+			name:          "Move",
+			status:        status,
+			logger:        util.GetLogger("operation.move"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
+			endTimestamp:  endTimestamp,
+			nodeFrom:      from,
+			nodeTo:        to,
 		},
 		slots: slots,
 	}
@@ -56,19 +56,19 @@ func (ro *RedisOperationMove) Launch() error {
 	ro.logger.Info("Moving slots", "slots", ro.slots, "from", ro.nodeFrom.Name, "to", ro.nodeTo.Name)
 
 	// Assure all nodes are up (redis-cli needs all nodes to be up)
-	if err := ro.redisCluster.ensureNodesAreUp(ro.ctx); err != nil {
+	if err := ro.redkeyCluster.ensureNodesAreUp(ro.ctx); err != nil {
 		return fmt.Errorf("error ensuring nodes are up: %v", err)
 	}
 
 	// Asure destination node is master
 	if !ro.nodeTo.IsMaster() {
-		if err := ro.redisCluster.convertNodesToMaster(ro.ctx, []*redis.RedisNode{ro.nodeTo}); err != nil {
+		if err := ro.redkeyCluster.convertNodesToMaster(ro.ctx, []*redis.RedisNode{ro.nodeTo}); err != nil {
 			return fmt.Errorf("error converting node '%s' to master: %v", ro.nodeTo.Name, err)
 		}
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.redisCluster.getAndCheckRedisClient(true)
+	redisClient, err := ro.redkeyCluster.getAndCheckRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -83,23 +83,23 @@ func (ro *RedisOperationMove) Launch() error {
 
 // Wait waits for the move operation to finish.
 func (ro *RedisOperationMove) Wait() error {
-	ro.redisCluster.status = Resharding
+	ro.redkeyCluster.status = Resharding
 
 	// Wait for reshard to finish
 	err := ro.Run()
 
 	// Reshard failed
 	if err != nil {
-		ro.redisCluster.status = ReshardingError
+		ro.redkeyCluster.status = ReshardingError
 		return fmt.Errorf("error moving slots from node '%s' to node '%s': %v", ro.nodeFrom.Name, ro.nodeTo.Name, err)
 	}
 
 	// Reshard finished successfully
-	ro.redisCluster.status = Ready
+	ro.redkeyCluster.status = Ready
 	ro.logger.Info("Slots moved successfully between nodes", "from", ro.nodeFrom.Name, "to", ro.nodeTo.Name)
 
 	// Update nodes info
-	if err := ro.redisCluster.refreshNodes(); err != nil {
+	if err := ro.redkeyCluster.refreshNodes(); err != nil {
 		return err
 	}
 	return nil

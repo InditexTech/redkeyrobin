@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
 // RedisSlotRange represents a range of Redis slots.
@@ -20,7 +20,7 @@ type RedisSlotRange struct {
 	End   int `json:"end"`
 }
 
-// RedisNode represents a Redis cluster node.
+// RedisNode represents a RedKey cluster node.
 type RedisNode struct {
 	Name       string           `json:"name"`
 	ID         string           `json:"id"`

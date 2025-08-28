@@ -6,29 +6,29 @@ SPDX-License-Identifier: Apache-2.0
 
 # Developer Guide
 
-Quickly provision Redis Robin in Kubernetes.
+Quickly provision RedKey Robin in Kubernetes.
 
 ## Local development and testing
 
-A *local K8s cluster* can be used to deploy the Redis Operator from a pre-built image or directly compiling from the source code.
+A *local K8s cluster* can be used to deploy the RedKey Operator from a pre-built image or directly compiling from the source code.
 
 This will be helpfull to develop and test new features, fix bugs, and test releases locally.
 
-As we will see below, you can use the `make` command to deploy the different components, as well as to deploy a sample Redis Cluster, or use the scripts that automate the basic workflows.
+As we will see below, you can use the `make` command to deploy the different components, as well as to deploy a sample RedKey Cluster, or use the scripts that automate the basic workflows.
 
 ## Development profiles
 
-Three **Deployment Profiles** have been defined. Basically, these profiles determine which image will be used to deploy the Redis Operator pod. These are the 3 Deployment Profiles and the default images used to create the Redis Operator pod:
+Three **Deployment Profiles** have been defined. Basically, these profiles determine which image will be used to deploy the RedKey Operator pod. These are the 3 Deployment Profiles and the default images used to create the RedKey Operator pod:
 
-| Profile | Image used to create the Redis Operator pod | Purpose |
+| Profile | Image used to create the RedKey Operator pod | Purpose |
 |---------|---------------------------------------------|---------|
 | debug | delve:1.24.0 | Debug code from your IDE using Delve |
-| dev | redis-robin:0.1.0-dev | Test a locally built (from source code) release | 
-| pro | redis-robin:0.1.0 | Test a released version |
+| dev | redkey-robin:0.1.0-dev | Test a locally built (from source code) release | 
+| pro | redkey-robin:0.1.0 | Test a released version |
 
 ## Create your Kubernetes cluster
 
-You can deploy your own Kubernetes cluster locally to develop Redis Operator with the tool of your choice (Docker Desktop, Rancher Desktop, K3D, Kind,...).
+You can deploy your own Kubernetes cluster locally to develop RedKey Operator with the tool of your choice (Docker Desktop, Rancher Desktop, K3D, Kind,...).
 
 We recommend you to use Kind. To start a local registry and a K8S cluster with Kind you can use the following script (from Kind official doc page):
 
@@ -102,22 +102,22 @@ set -o errexit
 ```
 
 
-## Redis Robin
+## RedKey Robin
 
-### Deploy Redis Robin from a custom image
+### Deploy RedKey Robin from a custom image
 
-Once your K8s cluster and registry are ready to work with, you need to make available the image you want to use to deploy Redis Robin.
+Once your K8s cluster and registry are ready to work with, you need to make available the image you want to use to deploy RedKey Robin.
 
 Your cluster must be configured to be able to access your local registry.
 
 We provide and easy way to build and push the images for `dev` and `debug` profiles:
 
-- `make dev-docker-build`: builds an image containing the Redis Robin built from the source code. This image is published in Docker local registry.
+- `make dev-docker-build`: builds an image containing the RedKey Robin built from the source code. This image is published in Docker local registry.
 - `make dev-docker-push`: pushes the image built with the command above to the corresponding registry.
-- `make debug-docker`: builds an image that will allow us to create an *empty* pod as the redis operator to which we will copy the manager binary and run it, as we'll explain later.
+- `make debug-docker`: builds an image that will allow us to create an *empty* pod as the redkey operator to which we will copy the manager binary and run it, as we'll explain later.
 - `make debug-docker-push`: pushes the image built with the command above to he corresponding registry.
 
-**To test a released Redis Robin version you'll have to manually pull the image, tag and push to your local registry.**
+**To test a released RedKey Robin version you'll have to manually pull the image, tag and push to your local registry.**
 
 The image names used by default by each profile (shown in the table above) can be overwritten using the environment variables:
 
@@ -128,35 +128,35 @@ The image names used by default by each profile (shown in the table above) can b
 E.G. these are the commands to build and push the image for `debug` profile:
 
 ```
-make debug-docker-build IMG_DEBUG=localhost:5001/redis-robin:delve
-make debug-docker-push IMG_DEBUG=localhost:5001/redis-robin:delve
+make debug-docker-build IMG_DEBUG=localhost:5001/redkey-robin:delve
+make debug-docker-push IMG_DEBUG=localhost:5001/redkey-robin:delve
 ```
 
 E.G. the commands when using `dev` profile:
 
 ```
-make debug-docker-build-robin IMG_DEV_ROBIN=localhost:5001/redis-robin:0.1.0
-make debug-docker-push-robin IMG_DEV_ROBIN=localhost:5001/redis-robin:0.1.0
+make debug-docker-build-robin IMG_DEV_ROBIN=localhost:5001/redkey-robin:0.1.0
+make debug-docker-push-robin IMG_DEV_ROBIN=localhost:5001/redkey-robin:0.1.0
 ```
 
-Once the Redis Robin is available in your local registry, you can follow these steps to deploy it into you K8s cluster:
+Once the RedKey Robin is available in your local registry, you can follow these steps to deploy it into you K8s cluster:
 
-1. Install the Redis Operator. Please refer to the [Redis Operator](https://github.com/InditexTech/redisoperator/) to know how to deploy the Redis Operator.
+1. Install the RedKey Operator. Please refer to the [RedKey Operator](https://github.com/InditexTech/redkeyoperator/) to know how to deploy the RedKey Operator.
 
-2. Create a Redis Cluster setting `spec.robin.template.spec.containers[0].image` to `$IMG_ROBIN`, `$IMG_DEV_ROBIN` or `$IMG_DEBUG` depending on the profile you want to test. You can use the Redis Cluster sample in `config/samples/redis_v1_rediscluster.yml`
+2. Create a RedKey Cluster setting `spec.robin.template.spec.containers[0].image` to `$IMG_ROBIN`, `$IMG_DEV_ROBIN` or `$IMG_DEBUG` depending on the profile you want to test. You can use the RedKey Cluster sample in `config/samples/redis_v1_redkeycluster.yml`
 
 
 
-### Debuging Redis Robin
+### Debuging RedKey Robin
 
-If you followed the steps described above to deploy the Redis Robin using the `debug` profile you'll have a Redis Cluster with a Redis Robin deployed.
+If you followed the steps described above to deploy the RedKey Robin using the `debug` profile you'll have a RedKey Cluster with a RedKey Robin deployed.
 
 This pod is created using a `golang` image with `Delve` installed on it. This will allow us to easily debug the robin code following these steps:
 
 1. Build the robin binary file from the source code.
-2. Copy the robin binary file to the `<RedisClusterName>`-robin pod.
-3. Run the robin binary inside the `<RedisClusterName>`-robin pod, using Delve to allow remote debugging connections.
-4. Port forward `40002` port to be able to connect to the exposed port in the `<RedisClusterName>`-robin pod.
+2. Copy the robin binary file to the `<RedKeyClusterName>`-robin pod.
+3. Run the robin binary inside the `<RedKeyClusterName>`-robin pod, using Delve to allow remote debugging connections.
+4. Port forward `40002` port to be able to connect to the exposed port in the `<RedKeyClusterName>`-robin pod.
 5. Connect from the IDE of your choice to remote debugging
 
 To follow the 3 first steps simply execute:
@@ -165,7 +165,7 @@ To follow the 3 first steps simply execute:
 make debug-robin
 ```
 
-The robin will the be running in your `<RedisClusterName>`-robin pod and you'll see pod's standard output printing in your terminal. The robin logs will then be streamed to the terminal.
+The robin will the be running in your `<RedKeyClusterName>`-robin pod and you'll see pod's standard output printing in your terminal. The robin logs will then be streamed to the terminal.
 
 To enable the port forwarding:
 
@@ -173,7 +173,7 @@ To enable the port forwarding:
 make port-forward-robin
 ```
 
-You can now attach your local debug from the IDE of your choice to the debug session in the `<RedisClusterName>`-robin pod. As an example, you'll find the configuration needed to launch the debug from VSCode here:
+You can now attach your local debug from the IDE of your choice to the debug session in the `<RedKeyClusterName>`-robin pod. As an example, you'll find the configuration needed to launch the debug from VSCode here:
 
 ```
 {

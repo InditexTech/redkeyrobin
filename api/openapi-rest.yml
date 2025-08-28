@@ -1,70 +1,70 @@
 openapi: 3.0.4
 info:
-  title: Swagger Redis Robin
+  title: Swagger RedKey Robin
   description: |-
-    Api developed for Redis Robin, a faithful partner who assists the operator in the dangerous Gotham.
+    Api developed for RedKey Robin, a faithful partner who assists the operator in the dangerous Gotham.
   contact:
     email: lddpaas@inditex.com
   version: 1.0.0
 externalDocs:
-  description: Find out more about Redis Operator
+  description: Find out more about RedKey Operator
   url: https://redis-sentinel.docs.inditex.dev/redis-at-inditex/latest/redis-ops-guide/deployment.html
 servers:
-  - url: https://api.inditex.com/redisrobin
+  - url: https://api.inditex.com/redkeyrobin
     description: Production server
 tags:
   - name: status
-    description: Redis cluster status
+    description: RedKey cluster status
   - name: replicas
-    description: Redis cluster replicas
+    description: RedKey cluster replicas
   - name: move
-    description: Redis cluster reshard
+    description: RedKey cluster reshard
   - name: metrics
-    description: Redis cluster metrics
+    description: RedKey cluster metrics
   - name: check
-    description: Redis cluster check
+    description: RedKey cluster check
   - name: fix
-    description: Redis cluster fix
+    description: RedKey cluster fix
   - name: reset
-    description: Redis cluster node reset
+    description: RedKey cluster node reset
   - name: nodes
-    description: Redis cluster nodes
+    description: RedKey cluster nodes
   
 paths:
-  /v1/rediscluster/status:
+  /v1/redkeycluster/status:
     get:
       tags:
         - status
-      summary: Get current Redis Cluster status
-      description: Get current Redis Cluster status from Redis Operator perspective
-      operationId: GetRedisClusterStatus
+      summary: Get current RedKey Cluster status
+      description: Get current RedKey Cluster status from RedKey Operator perspective
+      operationId: GetRedKeyClusterStatus
       responses:
         '200':
           description: Return current status
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RedisClusterStatusResponse'
+                $ref: '#/components/schemas/RedKeyClusterStatusResponse'
     put:
       tags:
         - status
-      summary: Update Redis Cluster status
-      description: Update Redis Cluster status
-      operationId: UpdateRedisClusterStatus
+      summary: Update RedKey Cluster status
+      description: Update RedKey Cluster status
+      operationId: UpdateRedKeyClusterStatus
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RedisClusterStatusRequest'
+              $ref: '#/components/schemas/RedKeyClusterStatusRequest'
       responses:
         '200':
           description: Return updated status
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RedisClusterStatusResponse'
+                $ref: '#/components/schemas/RedKeyClusterStatusResponse'
 
-  /v1/cluster/replicas:
+  /v1/redkeycluster/replicas:
     get:
       tags:
         - replicas
@@ -108,7 +108,7 @@ paths:
       tags:
         - status
       summary: Get current Cluster status 
-      description: Get current Cluster status from Redis Robin perspective
+      description: Get current Cluster status from RedKey Robin perspective
       operationId: GetClusterStatus
       responses:
         '200':
@@ -122,8 +122,8 @@ paths:
     put:
       tags:
         - move
-      summary: Move slots between Redis Nodes
-      description: Move slots between Redis Nodes
+      summary: Move slots between Nodes
+      description: Move slots between Nodes
       operationId: MoveNodeSlots
       requestBody:
         content:
@@ -221,12 +221,12 @@ paths:
 
 components:
   schemas:
-    RedisClusterStatusResponse:
+    RedKeyClusterStatusResponse:
       type: object
       properties:
         status:
           type: string
-          description: Redis Cluster Status
+          description: RedKey Cluster Status
           example: Ready
           enum:
             - Initializing
@@ -237,12 +237,12 @@ components:
             - ScalingUp
             - Maintenance
             - Unknown
-    RedisClusterStatusRequest:
+    RedKeyClusterStatusRequest:
       type: object
       properties:
         status:
           type: string
-          description: Redis Cluster Status
+          description: RedKey Cluster Status
           example: Ready
           enum:
             - Initializing
@@ -282,7 +282,7 @@ components:
       properties:
         status:
           type: string
-          description: Redis Cluster Status
+          description: RedKey Cluster Status
           example: Ready
           enum:
             - Ready
@@ -308,12 +308,12 @@ components:
       properties:
         from:
           type: string
-          description: Redis Cluster node to move slots from. Can be the name name or the node index
+          description: RedKey Cluster node to move slots from. Can be the name name or the node index
           example: "0"
         to:
           type: string
-          description: Redis Cluster node to move slots to. Can be the name name or the node index
-          example: rediscluster-sample-1
+          description: RedKey Cluster node to move slots to. Can be the name name or the node index
+          example: redkeycluster-sample-1
         slots:
           type: integer
           description: Slots to move. If not provided, all slots will be moved
@@ -335,28 +335,28 @@ components:
       properties:
         status:
           type: string
-          description: Redis Cluster check status
+          description: RedKey Cluster check status
           example: Completed
           enum:
             - Completed
             - Error
         result:
           type: string
-          description: Redis Cluster check result
+          description: RedKey Cluster check result
           example: OK
           enum:
             - OK
             - Error
         error:
           type: string
-          description: Redis Cluster check error
+          description: RedKey Cluster check error
           example: Error message
     ClusterFixResponse:
       type: object
       properties:
         status:
           type: string
-          description: Redis Cluster fix status
+          description: RedKey Cluster fix status
           example: InProgress
           enum:
             - InProgress
@@ -366,25 +366,25 @@ components:
       properties:
         nodes:
           type: array
-          description: Redis Cluster nodes
+          description: RedKey Cluster nodes
           items:
             type: object
             properties:
               id:
                 type: string
-                description: Redis Cluster node ID
+                description: RedKey Cluster node ID
                 example: c3f4bad062e19339e0e07bb836db5e23f09f0dff
               name:
                 type: string
-                description: Redis Cluster node name
-                example: rediscluster-sample-0
+                description: RedKey Cluster node name
+                example: redkeycluster-sample-0
               flags:
                 type: string
-                description: Redis Cluster node flags
+                description: RedKey Cluster node flags
                 example: master
               slots:
                 type: array
-                description: Redis Cluster node slots
+                description: RedKey Cluster node slots
                 items:
                   type: array
                   items:
@@ -400,25 +400,25 @@ components:
                         example: 16383
               ip:
                 type: string
-                description: Redis Cluster node IP
+                description: RedKey Cluster node IP
                 example: "10.0.0.1"     
               masterId:
                 type: string
-                description: Redis Cluster node master ID
+                description: RedKey Cluster node master ID
                 example: c3f4bad062e19339e0e07bb836db5e23f09f0dff
               failures:
                 type: integer
-                description: Redis Cluster node failures
+                description: RedKey Cluster node failures
                 example: 0     
               sent:
                 type: integer
-                description: Redis Cluster node sent
+                description: RedKey Cluster node sent
                 example: 0
               recv:
                 type: integer
-                description: Redis Cluster node recv
+                description: RedKey Cluster node recv
                 example: 0
               linkStatus:
                 type: string
-                description: Redis Cluster node link status
+                description: RedKey Cluster node link status
                 example: connected

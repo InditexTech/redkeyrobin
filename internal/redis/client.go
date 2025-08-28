@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 	redisgo "github.com/redis/go-redis/v9"
 )
 
@@ -93,7 +93,7 @@ type RedisInfo struct {
 	LatencyStats map[string]string
 }
 
-// ClusterInfo represents structured Redis cluster information.
+// ClusterInfo represents structured RedKey cluster information.
 type ClusterInfo struct {
 	State                        string
 	SlotsAssigned                int

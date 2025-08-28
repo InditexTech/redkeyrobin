@@ -10,18 +10,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 	"gopkg.in/yaml.v3"
 )
 
-// RedisOperatorConfig holds operator-level Redis configuration.
+// RedisReconcilerConfig holds operator-level Redis configuration.
 type RedisReconcilerConfig struct {
 	IntervalSeconds                 int `yaml:"interval_seconds"`
 	OperationCleanupIntervalSeconds int `yaml:"operation_cleanup_interval_seconds"`
 }
 
-// RedisClusterConfig holds cluster-level Redis configuration.
-type RedisClusterConfig struct {
+// RedKeyClusterConfig holds cluster-level Redis configuration.
+type RedKeyClusterConfig struct {
 	Namespace                string        `yaml:"namespace"`
 	Name                     string        `yaml:"name"`
 	Replicas                 int           `yaml:"replicas"`
@@ -44,7 +44,7 @@ type RedisMetricsConfig struct {
 type RedisConfig struct {
 	Standalone bool                  `yaml:"standalone"`
 	Reconciler RedisReconcilerConfig `yaml:"reconciler"`
-	Cluster    RedisClusterConfig    `yaml:"cluster"`
+	Cluster    RedKeyClusterConfig   `yaml:"cluster"`
 	Metrics    RedisMetricsConfig    `yaml:"metrics"`
 }
 

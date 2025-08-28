@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/config"
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -58,11 +58,11 @@ var node3 = &redis.RedisNode{
 	MasterID: "1234567890",
 }
 
-var redisCluster = NewFakeRedisCluster(
+var redkeyCluster = NewFakeRedKeyCluster(
 	context.TODO(),
 	&config.Configuration{
 		Redis: config.RedisConfig{
-			Cluster: config.RedisClusterConfig{
+			Cluster: config.RedKeyClusterConfig{
 				Status:                   "Ready",
 				Replicas:                 3,
 				Name:                     "test",
@@ -98,7 +98,7 @@ func getIntPointer(val int) *int {
 	return &val
 }
 
-func TestRedisClusterAddOperation(t *testing.T) {
+func TestRedKeyClusterAddOperation(t *testing.T) {
 	tests := []struct {
 		name               string
 		operationName      string
@@ -108,39 +108,39 @@ func TestRedisClusterAddOperation(t *testing.T) {
 		{
 			name:               "add operation rebalancing",
 			operationName:      Rebalancing,
-			operation:          NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
+			operation:          NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
 			expectedOperations: 1,
 		},
 		{
 			name:               "add operation resharding",
 			operationName:      Resharding,
-			operation:          NewFakeRedisOperationMove(t.Context(), redisCluster, "Running", node1, node3, 10, time.Time{}),
+			operation:          NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Running", node1, node3, 10, time.Time{}),
 			expectedOperations: 1,
 		},
 		{
 			name:               "add operation resharding",
 			operationName:      Resharding,
-			operation:          NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node2, 10, time.Time{}),
+			operation:          NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Finished", node1, node2, 10, time.Time{}),
 			expectedOperations: 2,
 		},
 		{
 			name:               "add operation fixing",
 			operationName:      Fixing,
-			operation:          NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
+			operation:          NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Finished"),
 			expectedOperations: 1,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			redisCluster.addOperation(tt.operationName, tt.operation)
+			redkeyCluster.addOperation(tt.operationName, tt.operation)
 
-			assert.NotNil(t, redisCluster.operations[tt.operationName])
-			assert.Len(t, redisCluster.operations[tt.operationName], tt.expectedOperations)
+			assert.NotNil(t, redkeyCluster.operations[tt.operationName])
+			assert.Len(t, redkeyCluster.operations[tt.operationName], tt.expectedOperations)
 		})
 	}
 }
 
-func TestRedisClusterGetOperation(t *testing.T) {
+func TestRedKeyClusterGetOperation(t *testing.T) {
 	tests := []struct {
 		name            string
 		operationName   string
@@ -162,12 +162,12 @@ func TestRedisClusterGetOperation(t *testing.T) {
 			name:            "operation with status",
 			operationName:   Fixing,
 			operationStatus: "Finished",
-			expectedResult:  NewFakeRedisOperationFix(t.Context(), redisCluster, "Finished"),
+			expectedResult:  NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Finished"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := redisCluster.getOperation(tt.operationName, tt.operationStatus)
+			result := redkeyCluster.getOperation(tt.operationName, tt.operationStatus)
 
 			if tt.expectedResult != nil {
 				assert.NotNil(t, result)
@@ -179,7 +179,7 @@ func TestRedisClusterGetOperation(t *testing.T) {
 	}
 }
 
-func TestRedisClusterHasOperation(t *testing.T) {
+func TestRedKeyClusterHasOperation(t *testing.T) {
 	tests := []struct {
 		name            string
 		operationName   string
@@ -206,13 +206,13 @@ func TestRedisClusterHasOperation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := redisCluster.hasOperation(tt.operationName, tt.operationStatus)
+			result := redkeyCluster.hasOperation(tt.operationName, tt.operationStatus)
 			assert.Equal(t, result, tt.expectedResult)
 		})
 	}
 }
 
-func TestRedisClusterHasOperationInNode(t *testing.T) {
+func TestRedKeyClusterHasOperationInNode(t *testing.T) {
 	tests := []struct {
 		name            string
 		operationName   string
@@ -242,13 +242,13 @@ func TestRedisClusterHasOperationInNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := redisCluster.hasOperationInNode(tt.operationName, tt.operationStatus, tt.node)
+			result := redkeyCluster.hasOperationInNode(tt.operationName, tt.operationStatus, tt.node)
 			assert.Equal(t, result, tt.expectedResult)
 		})
 	}
 }
 
-func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
+func TestRedKeyClusterHasOperationBetweenNodes(t *testing.T) {
 	tests := []struct {
 		name            string
 		operationName   string
@@ -289,13 +289,13 @@ func TestRedisClusterHasOperationBetweenNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := redisCluster.hasOperationBetweenNodes(tt.operationName, tt.operationStatus, tt.nodeFrom, tt.nodeTo)
+			result := redkeyCluster.hasOperationBetweenNodes(tt.operationName, tt.operationStatus, tt.nodeFrom, tt.nodeTo)
 			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
 }
 
-func TestRedisClusterDoRemoveOutdatedOperations(t *testing.T) {
+func TestRedKeyClusterDoRemoveOutdatedOperations(t *testing.T) {
 	tests := []struct {
 		name               string
 		operations         map[string][]RedisOperation
@@ -305,10 +305,10 @@ func TestRedisClusterDoRemoveOutdatedOperations(t *testing.T) {
 			name: "no expired operations",
 			operations: map[string][]RedisOperation{
 				Rebalancing: {
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
 				},
 				Resharding: {
-					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*2)),
+					NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*2)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -320,11 +320,11 @@ func TestRedisClusterDoRemoveOutdatedOperations(t *testing.T) {
 			name: "one expired operation",
 			operations: map[string][]RedisOperation{
 				Rebalancing: {
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second*100)),
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Now().Add(-time.Second*100)),
 				},
 				Resharding: {
-					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*2)),
+					NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*2)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -336,12 +336,12 @@ func TestRedisClusterDoRemoveOutdatedOperations(t *testing.T) {
 			name: "several expired operations",
 			operations: map[string][]RedisOperation{
 				Rebalancing: {
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second*1000)),
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Now().Add(-time.Second*100)),
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Now().Add(-time.Second*1000)),
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Now().Add(-time.Second*100)),
 				},
 				Resharding: {
-					NewFakeRedisOperationMove(t.Context(), redisCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*20)),
+					NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Finished", node1, node3, 10, time.Now().Add(-time.Second*20)),
 				},
 			},
 			expectedOperations: map[string]int{
@@ -352,7 +352,7 @@ func TestRedisClusterDoRemoveOutdatedOperations(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rdcl := NewFakeRedisCluster(
+			rdcl := NewFakeRedKeyCluster(
 				t.Context(),
 				&config.Configuration{
 					Redis: config.RedisConfig{
@@ -376,52 +376,52 @@ func TestRedisClusterDoRemoveOutdatedOperations(t *testing.T) {
 	}
 }
 
-func TestRedisClusterGetters(t *testing.T) {
-	assert.Equal(t, redisCluster.GetRedisClusterStatus(), "Ready")
-	assert.Equal(t, redisCluster.GetStatus(), "Unknown")
-	assert.Equal(t, redisCluster.GetReplicas(), 3)
-	assert.Equal(t, redisCluster.GetReplicasPerMaster(), 0)
-	assert.Equal(t, redisCluster.GetName(), "test")
-	assert.Equal(t, redisCluster.GetNamespace(), "test")
-	assert.Equal(t, redisCluster.GetAddress(), "test")
-	assert.Equal(t, redisCluster.IsEphemeral(), false)
-	assert.Equal(t, redisCluster.GetReconcilerInterval(), 10)
-	assert.Equal(t, redisCluster.GetReconcilerOperationCleanupInterval(), 0)
-	assert.Equal(t, redisCluster.GetClusterMaxRetries(), 1)
-	assert.Equal(t, redisCluster.GetClusterBackOff(), time.Microsecond*10)
-	assert.Equal(t, redisCluster.GetClusterHealingTime(), 55)
-	assert.Equal(t, redisCluster.GetClusterHealthProbePeriod(), 40)
-	assert.Equal(t, redisCluster.GetMetricsRedisInfoKeys(), []string{"test"})
-	assert.Equal(t, redisCluster.GetMetricsInterval(), 110)
-	assert.Equal(t, redisCluster.GetMetadata(), map[string]string{"test": "test"})
-	assert.Equal(t, redisCluster.GetNode("test-0"), node1)
-	assert.Nil(t, redisCluster.GetNode("node4"))
+func TestRedKeyClusterGetters(t *testing.T) {
+	assert.Equal(t, redkeyCluster.GetRedKeyClusterStatus(), "Ready")
+	assert.Equal(t, redkeyCluster.GetStatus(), "Unknown")
+	assert.Equal(t, redkeyCluster.GetReplicas(), 3)
+	assert.Equal(t, redkeyCluster.GetReplicasPerMaster(), 0)
+	assert.Equal(t, redkeyCluster.GetName(), "test")
+	assert.Equal(t, redkeyCluster.GetNamespace(), "test")
+	assert.Equal(t, redkeyCluster.GetAddress(), "test")
+	assert.Equal(t, redkeyCluster.IsEphemeral(), false)
+	assert.Equal(t, redkeyCluster.GetReconcilerInterval(), 10)
+	assert.Equal(t, redkeyCluster.GetReconcilerOperationCleanupInterval(), 0)
+	assert.Equal(t, redkeyCluster.GetClusterMaxRetries(), 1)
+	assert.Equal(t, redkeyCluster.GetClusterBackOff(), time.Microsecond*10)
+	assert.Equal(t, redkeyCluster.GetClusterHealingTime(), 55)
+	assert.Equal(t, redkeyCluster.GetClusterHealthProbePeriod(), 40)
+	assert.Equal(t, redkeyCluster.GetMetricsRedisInfoKeys(), []string{"test"})
+	assert.Equal(t, redkeyCluster.GetMetricsInterval(), 110)
+	assert.Equal(t, redkeyCluster.GetMetadata(), map[string]string{"test": "test"})
+	assert.Equal(t, redkeyCluster.GetNode("test-0"), node1)
+	assert.Nil(t, redkeyCluster.GetNode("node4"))
 
-	nodes := redisCluster.GetNodes()
+	nodes := redkeyCluster.GetNodes()
 	assert.Len(t, nodes, 3)
 	assert.Contains(t, nodes, node1)
 	assert.Contains(t, nodes, node2)
 	assert.Contains(t, nodes, node3)
 
-	masterNodes := redisCluster.GetMasterNodes()
+	masterNodes := redkeyCluster.GetMasterNodes()
 	assert.Len(t, masterNodes, 2)
 	assert.Contains(t, masterNodes, node1)
 	assert.Contains(t, masterNodes, node2)
 
-	replicaNodes := redisCluster.GetReplicaNodes()
+	replicaNodes := redkeyCluster.GetReplicaNodes()
 	assert.Len(t, replicaNodes, 1)
 	assert.Contains(t, replicaNodes, node3)
 
-	replicasOfMaster := redisCluster.GetReplicasOfNode(node1)
+	replicasOfMaster := redkeyCluster.GetReplicasOfNode(node1)
 	assert.Len(t, replicasOfMaster, 1)
 	assert.Contains(t, replicasOfMaster, node3)
-	replicasOfMaster = redisCluster.GetReplicasOfNode(node2)
+	replicasOfMaster = redkeyCluster.GetReplicasOfNode(node2)
 	assert.Len(t, replicasOfMaster, 0)
-	replicasOfMaster = redisCluster.GetReplicasOfNode(node3)
+	replicasOfMaster = redkeyCluster.GetReplicasOfNode(node3)
 	assert.Len(t, replicasOfMaster, 0)
 }
 
-func TestRedisClusterGetNodeFromID(t *testing.T) {
+func TestRedKeyClusterGetNodeFromID(t *testing.T) {
 	tests := []struct {
 		name         string
 		nodeID       string
@@ -440,52 +440,52 @@ func TestRedisClusterGetNodeFromID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := redisCluster.GetNodeFromID(tt.nodeID)
+			node := redkeyCluster.GetNodeFromID(tt.nodeID)
 			assert.Equal(t, node, tt.expectedNode)
 		})
 	}
 }
 
-func TestRedisClusterAskers(t *testing.T) {
-	assert.False(t, redisCluster.IsBalanced())
-	assert.True(t, redisCluster.IsRebalancing())
+func TestRedKeyClusterAskers(t *testing.T) {
+	assert.False(t, redkeyCluster.IsBalanced())
+	assert.True(t, redkeyCluster.IsRebalancing())
 
-	assert.False(t, redisCluster.IsReshardingNodes(*node1, *node2))
-	assert.True(t, redisCluster.IsReshardingNodes(*node1, *node3))
-	assert.True(t, redisCluster.IsResharding())
+	assert.False(t, redkeyCluster.IsReshardingNodes(*node1, *node2))
+	assert.True(t, redkeyCluster.IsReshardingNodes(*node1, *node3))
+	assert.True(t, redkeyCluster.IsResharding())
 
-	assert.False(t, redisCluster.IsFixing())
-	assert.False(t, redisCluster.IsCheckingIntegrity())
-	assert.False(t, redisCluster.IsScalingUp())
-	assert.False(t, redisCluster.IsScalingDown())
-	assert.False(t, redisCluster.IsUpgrading())
+	assert.False(t, redkeyCluster.IsFixing())
+	assert.False(t, redkeyCluster.IsCheckingIntegrity())
+	assert.False(t, redkeyCluster.IsScalingUp())
+	assert.False(t, redkeyCluster.IsScalingDown())
+	assert.False(t, redkeyCluster.IsUpgrading())
 
-	assert.False(t, redisCluster.IsResettingNode(*node1))
-	assert.False(t, redisCluster.IsResetting())
+	assert.False(t, redkeyCluster.IsResettingNode(*node1))
+	assert.False(t, redkeyCluster.IsResetting())
 
-	assert.False(t, redisCluster.IsScaled())
-	assert.False(t, redisCluster.IsUpgraded())
-	assert.False(t, redisCluster.CanBeUpgraded())
+	assert.False(t, redkeyCluster.IsScaled())
+	assert.False(t, redkeyCluster.IsUpgraded())
+	assert.False(t, redkeyCluster.CanBeUpgraded())
 
-	assert.False(t, redisCluster.HasBeenRebalanced())
-	assert.False(t, redisCluster.HasMissingSlots())
-	assert.False(t, redisCluster.HasDesiredReplicas())
+	assert.False(t, redkeyCluster.HasBeenRebalanced())
+	assert.False(t, redkeyCluster.HasMissingSlots())
+	assert.False(t, redkeyCluster.HasDesiredReplicas())
 
-	assert.True(t, redisCluster.HasBeenResharded(*node1, *node2))
-	assert.False(t, redisCluster.HasBeenResharded(*node1, *node3))
+	assert.True(t, redkeyCluster.HasBeenResharded(*node1, *node2))
+	assert.False(t, redkeyCluster.HasBeenResharded(*node1, *node3))
 
-	assert.True(t, redisCluster.HasNode("test-0"))
-	assert.False(t, redisCluster.HasNode("notfound"))
+	assert.True(t, redkeyCluster.HasNode("test-0"))
+	assert.False(t, redkeyCluster.HasNode("notfound"))
 
-	assert.True(t, redisCluster.NodeHasReplicas(node1))
-	assert.False(t, redisCluster.NodeHasReplicas(node2))
-	assert.False(t, redisCluster.NodeHasReplicas(node3))
+	assert.True(t, redkeyCluster.NodeHasReplicas(node1))
+	assert.False(t, redkeyCluster.NodeHasReplicas(node2))
+	assert.False(t, redkeyCluster.NodeHasReplicas(node3))
 
-	assert.False(t, redisCluster.needsUpscale())
-	assert.False(t, redisCluster.needsDownscale())
+	assert.False(t, redkeyCluster.needsUpscale())
+	assert.False(t, redkeyCluster.needsDownscale())
 }
 
-func TestRedisClusterAddNode(t *testing.T) {
+func TestRedKeyClusterAddNode(t *testing.T) {
 	tests := []struct {
 		name          string
 		nodeName      string
@@ -507,17 +507,17 @@ func TestRedisClusterAddNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := redisCluster.addNode(tt.nodeName, tt.nodeAddr)
+			node := redkeyCluster.addNode(tt.nodeName, tt.nodeAddr)
 
 			assert.NotNil(t, node)
 			assert.Equal(t, node.Name, tt.nodeName)
 			assert.Equal(t, node.Addr, tt.nodeAddr)
-			assert.Len(t, redisCluster.nodes, tt.expectedNodes)
+			assert.Len(t, redkeyCluster.nodes, tt.expectedNodes)
 		})
 	}
 }
 
-func TestRedisClusterRemoveNode(t *testing.T) {
+func TestRedKeyClusterRemoveNode(t *testing.T) {
 	tests := []struct {
 		name          string
 		nodeName      string
@@ -538,8 +538,8 @@ func TestRedisClusterRemoveNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.removeNode(tt.nodeName)
-			assert.Len(t, redisCluster.nodes, tt.expectedNodes)
+			err := redkeyCluster.removeNode(tt.nodeName)
+			assert.Len(t, redkeyCluster.nodes, tt.expectedNodes)
 			if tt.expectedError != nil {
 				assert.Error(t, err)
 				assert.Equal(t, tt.expectedError, err)
@@ -550,7 +550,7 @@ func TestRedisClusterRemoveNode(t *testing.T) {
 	}
 }
 
-func TestRedisClusterForgetNode(t *testing.T) {
+func TestRedKeyClusterForgetNode(t *testing.T) {
 	tests := []struct {
 		name          string
 		node          *redis.RedisNode
@@ -571,7 +571,7 @@ func TestRedisClusterForgetNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.forgetNode(t.Context(), *tt.node)
+			err := redkeyCluster.forgetNode(t.Context(), *tt.node)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -583,7 +583,7 @@ func TestRedisClusterForgetNode(t *testing.T) {
 	}
 }
 
-func TestRedisClusterRefreshNodes(t *testing.T) {
+func TestRedKeyClusterRefreshNodes(t *testing.T) {
 	tests := []struct {
 		name          string
 		expectedError error
@@ -595,7 +595,7 @@ func TestRedisClusterRefreshNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.refreshNodes()
+			err := redkeyCluster.refreshNodes()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -607,7 +607,7 @@ func TestRedisClusterRefreshNodes(t *testing.T) {
 	}
 }
 
-func TestRedisClusterCheckNodes(t *testing.T) {
+func TestRedKeyClusterCheckNodes(t *testing.T) {
 	tests := []struct {
 		name          string
 		expectedError error
@@ -619,7 +619,7 @@ func TestRedisClusterCheckNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.checkNodes()
+			err := redkeyCluster.checkNodes()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -631,7 +631,7 @@ func TestRedisClusterCheckNodes(t *testing.T) {
 	}
 }
 
-func TestRedisClusterUpdateNodesInfo(t *testing.T) {
+func TestRedKeyClusterUpdateNodesInfo(t *testing.T) {
 	tests := []struct {
 		name      string
 		nodesInfo []redis.RedisNode
@@ -658,12 +658,12 @@ func TestRedisClusterUpdateNodesInfo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			redisCluster.updateNodesInfo(tt.nodesInfo)
+			redkeyCluster.updateNodesInfo(tt.nodesInfo)
 		})
 	}
 }
 
-func TestRedisClusterNeedsMeet(t *testing.T) {
+func TestRedKeyClusterNeedsMeet(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -678,7 +678,7 @@ func TestRedisClusterNeedsMeet(t *testing.T) {
 	}
 }
 
-func TestRedisClusterNeedsFix(t *testing.T) {
+func TestRedKeyClusterNeedsFix(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -693,7 +693,7 @@ func TestRedisClusterNeedsFix(t *testing.T) {
 	}
 }
 
-func TestRedisClusterMeetNodesIfNeeded(t *testing.T) {
+func TestRedKeyClusterMeetNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -708,7 +708,7 @@ func TestRedisClusterMeetNodesIfNeeded(t *testing.T) {
 	}
 }
 
-func TestRedisClusterAsignMissingSlotsIfNeeded(t *testing.T) {
+func TestRedKeyClusterAsignMissingSlotsIfNeeded(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -723,7 +723,7 @@ func TestRedisClusterAsignMissingSlotsIfNeeded(t *testing.T) {
 	}
 }
 
-func TestRedisClusterBalanceNodesIfNeeded(t *testing.T) {
+func TestRedKeyClusterBalanceNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -738,7 +738,7 @@ func TestRedisClusterBalanceNodesIfNeeded(t *testing.T) {
 	}
 }
 
-func TestRedisClusterFixClusterIfNeeded(t *testing.T) {
+func TestRedKeyClusterFixClusterIfNeeded(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -753,7 +753,7 @@ func TestRedisClusterFixClusterIfNeeded(t *testing.T) {
 	}
 }
 
-func TestRedisClusterAddNewNodesIfNeeded(t *testing.T) {
+func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -768,7 +768,7 @@ func TestRedisClusterAddNewNodesIfNeeded(t *testing.T) {
 	}
 }
 
-func TestRedisClusterRemoveNodesIfNeeded(t *testing.T) {
+func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -783,7 +783,7 @@ func TestRedisClusterRemoveNodesIfNeeded(t *testing.T) {
 	}
 }
 
-func TestRedisClusterRemoveSlotsFromNodes(t *testing.T) {
+func TestRedKeyClusterRemoveSlotsFromNodes(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -798,7 +798,7 @@ func TestRedisClusterRemoveSlotsFromNodes(t *testing.T) {
 	}
 }
 
-func TestRedisClusterForgetAndRemoveNodes(t *testing.T) {
+func TestRedKeyClusterForgetAndRemoveNodes(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -813,7 +813,7 @@ func TestRedisClusterForgetAndRemoveNodes(t *testing.T) {
 	}
 }
 
-func TestRedisClusterGetNodesToRemove(t *testing.T) {
+func TestRedKeyClusterGetNodesToRemove(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -828,7 +828,7 @@ func TestRedisClusterGetNodesToRemove(t *testing.T) {
 	}
 }
 
-func TestRedisClusterMeetNodes(t *testing.T) {
+func TestRedKeyClusterMeetNodes(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -843,7 +843,7 @@ func TestRedisClusterMeetNodes(t *testing.T) {
 	}
 }
 
-func TestRedisClusterRemoveOutdatedNodes(t *testing.T) {
+func TestRedKeyClusterRemoveOutdatedNodes(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -858,7 +858,7 @@ func TestRedisClusterRemoveOutdatedNodes(t *testing.T) {
 	}
 }
 
-func TestRedisClusterEnsureClusterRatio(t *testing.T) {
+func TestRedKeyClusterEnsureClusterRatio(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -873,7 +873,7 @@ func TestRedisClusterEnsureClusterRatio(t *testing.T) {
 	}
 }
 
-func TestRedisClusterEnsureReplicaSpread(t *testing.T) {
+func TestRedKeyClusterEnsureReplicaSpread(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -888,7 +888,7 @@ func TestRedisClusterEnsureReplicaSpread(t *testing.T) {
 	}
 }
 
-func TestRedisClusterConvertNodesToReplica(t *testing.T) {
+func TestRedKeyClusterConvertNodesToReplica(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -903,7 +903,7 @@ func TestRedisClusterConvertNodesToReplica(t *testing.T) {
 	}
 }
 
-func TestRedisClusterPromoteReplicasOfNode(t *testing.T) {
+func TestRedKeyClusterPromoteReplicasOfNode(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -918,7 +918,7 @@ func TestRedisClusterPromoteReplicasOfNode(t *testing.T) {
 	}
 }
 
-func TestRedisClusterConvertNodesToMaster(t *testing.T) {
+func TestRedKeyClusterConvertNodesToMaster(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -933,7 +933,7 @@ func TestRedisClusterConvertNodesToMaster(t *testing.T) {
 	}
 }
 
-func TestRedisClusterAssignMissingSlots(t *testing.T) {
+func TestRedKeyClusterAssignMissingSlots(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -948,7 +948,7 @@ func TestRedisClusterAssignMissingSlots(t *testing.T) {
 	}
 }
 
-func TestRedisClusterGetAndCheckRedisClient(t *testing.T) {
+func TestRedKeyClusterGetAndCheckRedisClient(t *testing.T) {
 	tests := []struct {
 		name           string
 		close          bool
@@ -964,7 +964,7 @@ func TestRedisClusterGetAndCheckRedisClient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := redisCluster.getAndCheckRedisClient(tt.close)
+			client, err := redkeyCluster.getAndCheckRedisClient(tt.close)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -978,7 +978,7 @@ func TestRedisClusterGetAndCheckRedisClient(t *testing.T) {
 	}
 }
 
-func TestRedisClusterInit(t *testing.T) {
+func TestRedKeyClusterInit(t *testing.T) {
 	tests := []struct {
 		name          string
 		expectedError error
@@ -990,7 +990,7 @@ func TestRedisClusterInit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.Init()
+			err := redkeyCluster.Init()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1002,7 +1002,7 @@ func TestRedisClusterInit(t *testing.T) {
 	}
 }
 
-func TestRedisClusterSetReplicas(t *testing.T) {
+func TestRedKeyClusterSetReplicas(t *testing.T) {
 	tests := []struct {
 		name              string
 		replicas          int
@@ -1051,7 +1051,7 @@ func TestRedisClusterSetReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.SetReplicas(tt.replicas, tt.replicasPerMaster)
+			err := redkeyCluster.SetReplicas(tt.replicas, tt.replicasPerMaster)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1060,16 +1060,16 @@ func TestRedisClusterSetReplicas(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			assert.Equal(t, redisCluster.GetReplicas(), tt.replicas)
+			assert.Equal(t, redkeyCluster.GetReplicas(), tt.replicas)
 
 			if tt.replicasPerMaster != nil {
-				assert.Equal(t, redisCluster.GetReplicasPerMaster(), *tt.replicasPerMaster)
+				assert.Equal(t, redkeyCluster.GetReplicasPerMaster(), *tt.replicasPerMaster)
 			}
 		})
 	}
 }
 
-func TestRedisClusterSetRedisClusterStatus(t *testing.T) {
+func TestRedKeyClusterSetRedKeyClusterStatus(t *testing.T) {
 	tests := []struct {
 		name          string
 		status        string
@@ -1083,7 +1083,7 @@ func TestRedisClusterSetRedisClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redisCluster.SetRedisClusterStatus(tt.status)
+			err := redkeyCluster.SetRedKeyClusterStatus(tt.status)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1095,7 +1095,7 @@ func TestRedisClusterSetRedisClusterStatus(t *testing.T) {
 	}
 }
 
-func TestRedisClusterRebalance(t *testing.T) {
+func TestRedKeyClusterRebalance(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1105,8 +1105,8 @@ func TestRedisClusterRebalance(t *testing.T) {
 		{
 			name: "rebalancing",
 			prepareTest: func() {
-				redisCluster.operations[Rebalancing] = []RedisOperation{
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Running", time.Time{}),
+				redkeyCluster.operations[Rebalancing] = []RedisOperation{
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Rebalance"},
@@ -1114,8 +1114,8 @@ func TestRedisClusterRebalance(t *testing.T) {
 		{
 			name: "rebalanced",
 			prepareTest: func() {
-				redisCluster.operations[Rebalancing] = []RedisOperation{
-					NewFakeRedisOperationRebalance(t.Context(), redisCluster, "Finished", time.Time{}),
+				redkeyCluster.operations[Rebalancing] = []RedisOperation{
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Time{}),
 				}
 			},
 			expectedError: &OperationCompletedError{Operation: "Rebalance"},
@@ -1123,7 +1123,7 @@ func TestRedisClusterRebalance(t *testing.T) {
 		{
 			name: "bad redis client",
 			prepareTest: func() {
-				redisCluster.operations[Rebalancing] = []RedisOperation{}
+				redkeyCluster.operations[Rebalancing] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
@@ -1132,7 +1132,7 @@ func TestRedisClusterRebalance(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.Rebalance(true, nil, tt.force)
+			err := redkeyCluster.Rebalance(true, nil, tt.force)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1144,7 +1144,7 @@ func TestRedisClusterRebalance(t *testing.T) {
 	}
 }
 
-func TestRedisClusterMoveSlots(t *testing.T) {
+func TestRedKeyClusterMoveSlots(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1155,8 +1155,8 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "moving",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []RedisOperation{
-					NewFakeRedisOperationMove(t.Context(), redisCluster, "Running", node1, node3, 10, time.Time{}),
+				redkeyCluster.operations[Resharding] = []RedisOperation{
+					NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Running", node1, node3, 10, time.Time{}),
 				}
 			},
 			from:          node1,
@@ -1166,7 +1166,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "origin has no slots",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []RedisOperation{}
+				redkeyCluster.operations[Resharding] = []RedisOperation{}
 				node1.Slots = []redis.RedisSlotRange{}
 			},
 			from:          node1,
@@ -1176,7 +1176,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "node is a replica",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []RedisOperation{}
+				redkeyCluster.operations[Resharding] = []RedisOperation{}
 			},
 			from:          node3,
 			to:            node1,
@@ -1185,8 +1185,8 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "node has replicas",
 			prepareTest: func() {
-				redisCluster.conf.Redis.Cluster.MaxRetries = 1
-				redisCluster.operations[Resharding] = []RedisOperation{}
+				redkeyCluster.conf.Redis.Cluster.MaxRetries = 1
+				redkeyCluster.operations[Resharding] = []RedisOperation{}
 				node1.Slots = []redis.RedisSlotRange{
 					{
 						Start: 1,
@@ -1198,7 +1198,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 				node3.MasterID = "1234567890"
 				node3.Flags = "slave"
 
-				redisCluster.nodes = map[string]*redis.RedisNode{
+				redkeyCluster.nodes = map[string]*redis.RedisNode{
 					"test-0": node1,
 					"test-1": node2,
 					"test-2": node3,
@@ -1215,7 +1215,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 		{
 			name: "bad redis client",
 			prepareTest: func() {
-				redisCluster.operations[Resharding] = []RedisOperation{}
+				redkeyCluster.operations[Resharding] = []RedisOperation{}
 				node2.MaxRetries = 1
 				node2.Backoff = time.Microsecond * 10
 				node3.MaxRetries = 1
@@ -1229,7 +1229,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.MoveSlots(tt.from, tt.to, 10)
+			err := redkeyCluster.MoveSlots(tt.from, tt.to, 10)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1241,7 +1241,7 @@ func TestRedisClusterMoveSlots(t *testing.T) {
 	}
 }
 
-func TestRedisClusterCheck(t *testing.T) {
+func TestRedKeyClusterCheck(t *testing.T) {
 	tests := []struct {
 		name          string
 		expectedError error
@@ -1253,7 +1253,7 @@ func TestRedisClusterCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := redisCluster.Check()
+			_, err := redkeyCluster.Check()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1265,7 +1265,7 @@ func TestRedisClusterCheck(t *testing.T) {
 	}
 }
 
-func TestRedisClusterFix(t *testing.T) {
+func TestRedKeyClusterFix(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1275,8 +1275,8 @@ func TestRedisClusterFix(t *testing.T) {
 		{
 			name: "fixing",
 			prepareTest: func() {
-				redisCluster.operations[Fixing] = []RedisOperation{
-					NewFakeRedisOperationFix(t.Context(), redisCluster, "Running"),
+				redkeyCluster.operations[Fixing] = []RedisOperation{
+					NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Fixing"},
@@ -1284,8 +1284,8 @@ func TestRedisClusterFix(t *testing.T) {
 		{
 			name: "bad redis client",
 			prepareTest: func() {
-				redisCluster.operations[Fixing] = []RedisOperation{}
-				redisCluster.conf.Redis.Cluster.MaxRetries = 1
+				redkeyCluster.operations[Fixing] = []RedisOperation{}
+				redkeyCluster.conf.Redis.Cluster.MaxRetries = 1
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
@@ -1294,7 +1294,7 @@ func TestRedisClusterFix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.Fix(true, tt.force)
+			err := redkeyCluster.Fix(true, tt.force)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1306,7 +1306,7 @@ func TestRedisClusterFix(t *testing.T) {
 	}
 }
 
-func TestRedisClusterCheckIntegrity(t *testing.T) {
+func TestRedKeyClusterCheckIntegrity(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1316,8 +1316,8 @@ func TestRedisClusterCheckIntegrity(t *testing.T) {
 		{
 			name: "checking integrity",
 			prepareTest: func() {
-				redisCluster.operations[CheckingIntegrity] = []RedisOperation{
-					NewFakeRedisOperationCheckIntegrity(t.Context(), redisCluster, "Running"),
+				redkeyCluster.operations[CheckingIntegrity] = []RedisOperation{
+					NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "CheckingIntegrity"},
@@ -1325,7 +1325,7 @@ func TestRedisClusterCheckIntegrity(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[CheckingIntegrity] = []RedisOperation{}
+				redkeyCluster.operations[CheckingIntegrity] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error checking cluster integrity: failed to connect after 1 retries"),
@@ -1334,7 +1334,7 @@ func TestRedisClusterCheckIntegrity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.CheckIntegrity(false, tt.force)
+			err := redkeyCluster.CheckIntegrity(false, tt.force)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1346,7 +1346,7 @@ func TestRedisClusterCheckIntegrity(t *testing.T) {
 	}
 }
 
-func TestRedisClusterScaleUp(t *testing.T) {
+func TestRedKeyClusterScaleUp(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1356,8 +1356,8 @@ func TestRedisClusterScaleUp(t *testing.T) {
 		{
 			name: "scaling up",
 			prepareTest: func() {
-				redisCluster.operations[ScalingUp] = []RedisOperation{
-					NewFakeRedisOperationScaleUp(t.Context(), redisCluster, "Running"),
+				redkeyCluster.operations[ScalingUp] = []RedisOperation{
+					NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "ScaleUp"},
@@ -1365,7 +1365,7 @@ func TestRedisClusterScaleUp(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[ScalingUp] = []RedisOperation{}
+				redkeyCluster.operations[ScalingUp] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error scaling up cluster: failed to connect after 1 retries"),
@@ -1374,7 +1374,7 @@ func TestRedisClusterScaleUp(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.ScaleUp(tt.force)
+			err := redkeyCluster.ScaleUp(tt.force)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1386,7 +1386,7 @@ func TestRedisClusterScaleUp(t *testing.T) {
 	}
 }
 
-func TestRedisClusterScaleDown(t *testing.T) {
+func TestRedKeyClusterScaleDown(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1396,8 +1396,8 @@ func TestRedisClusterScaleDown(t *testing.T) {
 		{
 			name: "scaling down",
 			prepareTest: func() {
-				redisCluster.operations[ScalingDown] = []RedisOperation{
-					NewFakeRedisOperationScaleDown(t.Context(), redisCluster, "Running"),
+				redkeyCluster.operations[ScalingDown] = []RedisOperation{
+					NewFakeRedisOperationScaleDown(t.Context(), redkeyCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "ScaleDown"},
@@ -1405,7 +1405,7 @@ func TestRedisClusterScaleDown(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[ScalingDown] = []RedisOperation{}
+				redkeyCluster.operations[ScalingDown] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error scaling down cluster: failed to connect after 1 retries"),
@@ -1414,7 +1414,7 @@ func TestRedisClusterScaleDown(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.ScaleDown(tt.force)
+			err := redkeyCluster.ScaleDown(tt.force)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1426,7 +1426,7 @@ func TestRedisClusterScaleDown(t *testing.T) {
 	}
 }
 
-func TestRedisClusterUpgrade(t *testing.T) {
+func TestRedKeyClusterUpgrade(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1436,8 +1436,8 @@ func TestRedisClusterUpgrade(t *testing.T) {
 		{
 			name: "upgrading",
 			prepareTest: func() {
-				redisCluster.operations[Upgrading] = []RedisOperation{
-					NewFakeRedisOperationUpgrade(t.Context(), redisCluster, "Running"),
+				redkeyCluster.operations[Upgrading] = []RedisOperation{
+					NewFakeRedisOperationUpgrade(t.Context(), redkeyCluster, "Running"),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Upgrade"},
@@ -1445,7 +1445,7 @@ func TestRedisClusterUpgrade(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[Upgrading] = []RedisOperation{}
+				redkeyCluster.operations[Upgrading] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error upgrading cluster: failed to connect after 1 retries"),
@@ -1454,7 +1454,7 @@ func TestRedisClusterUpgrade(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.Upgrade(tt.force)
+			err := redkeyCluster.Upgrade(tt.force)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -1466,7 +1466,7 @@ func TestRedisClusterUpgrade(t *testing.T) {
 	}
 }
 
-func TestRedisClusterReset(t *testing.T) {
+func TestRedKeyClusterReset(t *testing.T) {
 	tests := []struct {
 		name          string
 		prepareTest   func()
@@ -1476,8 +1476,8 @@ func TestRedisClusterReset(t *testing.T) {
 		{
 			name: "resetting",
 			prepareTest: func() {
-				redisCluster.operations[Resetting] = []RedisOperation{
-					NewFakeRedisOperationResetNode(t.Context(), redisCluster, "Running", node1),
+				redkeyCluster.operations[Resetting] = []RedisOperation{
+					NewFakeRedisOperationResetNode(t.Context(), redkeyCluster, "Running", node1),
 				}
 			},
 			expectedError: &OperationInProgressError{Operation: "Resetting"},
@@ -1485,7 +1485,7 @@ func TestRedisClusterReset(t *testing.T) {
 		{
 			name: "good",
 			prepareTest: func() {
-				redisCluster.operations[Resetting] = []RedisOperation{}
+				redkeyCluster.operations[Resetting] = []RedisOperation{}
 			},
 			force:         true,
 			expectedError: fmt.Errorf("error resetting cluster node 'test-0': failed to connect after 1 retries"),
@@ -1494,7 +1494,7 @@ func TestRedisClusterReset(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.prepareTest()
-			err := redisCluster.ResetNode(node1)
+			err := redkeyCluster.ResetNode(node1)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

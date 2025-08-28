@@ -9,35 +9,35 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationCheckIntegrity represents a check integrity operation for a Redis cluster.
+// RedisOperationCheckIntegrity represents a check integrity operation for a RedKey cluster.
 type RedisOperationCheckIntegrity struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationCheckIntegrity(ctx context.Context, redisCluster *RedisCluster) *RedisOperationCheckIntegrity {
+func NewRedisOperationCheckIntegrity(ctx context.Context, redkeyCluster *RedKeyCluster) *RedisOperationCheckIntegrity {
 	return &RedisOperationCheckIntegrity{
 		RedisOperationBase: RedisOperationBase{
-			name:         "CheckIntegrity",
-			status:       "Pending",
-			logger:       util.GetLogger("operation.integrity"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
+			name:          "CheckIntegrity",
+			status:        "Pending",
+			logger:        util.GetLogger("operation.integrity"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationCheckIntegrity(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationCheckIntegrity {
+func NewFakeRedisOperationCheckIntegrity(ctx context.Context, redkeyCluster *RedKeyCluster, status string) *RedisOperationCheckIntegrity {
 	return &RedisOperationCheckIntegrity{
 		RedisOperationBase: RedisOperationBase{
-			name:         "CheckIntegrity",
-			status:       status,
-			logger:       util.GetLogger("operation.integrity"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
+			name:          "CheckIntegrity",
+			status:        status,
+			logger:        util.GetLogger("operation.integrity"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
 		},
 	}
 }
@@ -60,63 +60,63 @@ func (ro *RedisOperationCheckIntegrity) Launch() error {
 
 // Wait waits for the check integrity operation to finish.
 func (ro *RedisOperationCheckIntegrity) Wait() error {
-	ro.redisCluster.status = CheckingIntegrity
+	ro.redkeyCluster.status = CheckingIntegrity
 
 	// Wait for check cluster integrity to finish
 	err := ro.Run()
 
 	// Fix failed
 	if err != nil {
-		ro.redisCluster.status = CheckingIntegrityError
+		ro.redkeyCluster.status = CheckingIntegrityError
 		return fmt.Errorf("error checking cluster integrity: %v", err)
 	}
 
 	// Check integrity finished successfully
-	ro.redisCluster.status = Ready
+	ro.redkeyCluster.status = Ready
 	ro.logger.Info("Cluster integrity successfully checked")
 
 	return nil
 }
 
-// doCheckIntegrity checks the integrity of the Redis cluster
+// doCheckIntegrity checks the integrity of the RedKey cluster
 func (ro *RedisOperationCheckIntegrity) doCheckIntegrity(ctx context.Context) error {
 	// Check nodes info
-	if err := ro.redisCluster.checkNodes(); err != nil {
+	if err := ro.redkeyCluster.checkNodes(); err != nil {
 		return err
 	}
 
 	// Forget outdated nodes
-	if err := ro.redisCluster.removeOutdatedNodes(ctx); err != nil {
+	if err := ro.redkeyCluster.removeOutdatedNodes(ctx); err != nil {
 		ro.logger.Error("Error removing outdated nodes", "error", err)
 	}
 
 	// Meet nodes if needed
-	if err := ro.redisCluster.meetNodesIfNeeded(ctx); err != nil {
+	if err := ro.redkeyCluster.meetNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Ensure cluster ratio
-	if err := ro.redisCluster.ensureClusterRatio(ctx); err != nil {
+	if err := ro.redkeyCluster.ensureClusterRatio(ctx); err != nil {
 		return err
 	}
 
 	// Assign missing slots if needed
-	if err := ro.redisCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
+	if err := ro.redkeyCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Fix cluster if needed
-	if err := ro.redisCluster.fixClusterIfNeeded(ctx); err != nil {
+	if err := ro.redkeyCluster.fixClusterIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Balance cluster if needed
-	if err := ro.redisCluster.balanceClusterIfNeeded(ctx, nil); err != nil {
+	if err := ro.redkeyCluster.balanceClusterIfNeeded(nil); err != nil {
 		return err
 	}
 
 	// Update nodes info
-	if err := ro.redisCluster.refreshNodes(); err != nil {
+	if err := ro.redkeyCluster.refreshNodes(); err != nil {
 		return err
 	}
 

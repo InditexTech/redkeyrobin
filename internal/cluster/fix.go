@@ -9,34 +9,34 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisOperationFix represents a fix operation for a Redis cluster.
+// RedisOperationFix represents a fix operation for a RedKey cluster.
 type RedisOperationFix struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationFix(ctx context.Context, redisCluster *RedisCluster) *RedisOperationFix {
+func NewRedisOperationFix(ctx context.Context, redkeyCluster *RedKeyCluster) *RedisOperationFix {
 	return &RedisOperationFix{
 		RedisOperationBase: RedisOperationBase{
-			name:         "Fix",
-			status:       "Pending",
-			logger:       util.GetLogger("operation.fix"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
+			name:          "Fix",
+			status:        "Pending",
+			logger:        util.GetLogger("operation.fix"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationFix(ctx context.Context, redisCluster *RedisCluster, status string) *RedisOperationFix {
+func NewFakeRedisOperationFix(ctx context.Context, redkeyCluster *RedKeyCluster, status string) *RedisOperationFix {
 	return &RedisOperationFix{
 		RedisOperationBase: RedisOperationBase{
-			name:         "Fix",
-			status:       status,
-			logger:       util.GetLogger("operation.fix"),
-			ctx:          ctx,
-			redisCluster: redisCluster,
+			name:          "Fix",
+			status:        status,
+			logger:        util.GetLogger("operation.fix"),
+			ctx:           ctx,
+			redkeyCluster: redkeyCluster,
 		},
 	}
 }
@@ -46,12 +46,12 @@ func (ro *RedisOperationFix) Launch() error {
 	ro.logger.Info("Fixing cluster")
 
 	// Assure all nodes are up (redis-cli needs all nodes to be up)
-	if err := ro.redisCluster.ensureNodesAreUp(ro.ctx); err != nil {
+	if err := ro.redkeyCluster.ensureNodesAreUp(ro.ctx); err != nil {
 		return fmt.Errorf("error ensuring nodes are up: %v", err)
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.redisCluster.getAndCheckRedisClient(true)
+	redisClient, err := ro.redkeyCluster.getAndCheckRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -84,7 +84,7 @@ func (ro *RedisOperationFix) Wait() error {
 	ro.logger.Info("Cluster fixed successfully")
 
 	// Update nodes info
-	if err := ro.redisCluster.refreshNodes(); err != nil {
+	if err := ro.redkeyCluster.refreshNodes(); err != nil {
 		return err
 	}
 	return nil

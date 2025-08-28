@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redisrobin/internal/redis"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
-// TODO: Test launch. Implement a redisCluster mock and redisClient mock
+// TODO: Test launch. Implement a redkeyCluster mock and redisClient mock
 func TestRedisOperationRebalanceWait(t *testing.T) {
 	tests := []struct {
 		name string
@@ -34,7 +34,7 @@ func TestRedisOperationRebalanceWait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			operation := NewFakeRedisOperationRebalance(context.Background(), redisCluster, "Running", time.Time{})
+			operation := NewFakeRedisOperationRebalance(context.Background(), redkeyCluster, "Running", time.Time{})
 			operation.cmd = tt.cmd
 
 			tt.cmd.Start()

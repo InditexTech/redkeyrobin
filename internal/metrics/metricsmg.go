@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/inditextech/redisrobin/internal/util"
+	"github.com/inditextech/redkeyrobin/internal/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -38,9 +38,7 @@ const (
 
 // MetricsManager encapsulates Prometheus metrics for Redis.
 type MetricsManager struct {
-	logger *slog.Logger
-	// clusterInfo    *prometheus.GaugeVec
-	// nodeInfo       *prometheus.GaugeVec
+	logger  *slog.Logger
 	metrics map[string]*prometheus.GaugeVec
 }
 

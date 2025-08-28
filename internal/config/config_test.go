@@ -19,7 +19,7 @@ func TestConfigurationString(t *testing.T) {
 			Reconciler: RedisReconcilerConfig{
 				IntervalSeconds: 10,
 			},
-			Cluster: RedisClusterConfig{
+			Cluster: RedKeyClusterConfig{
 				HealthProbePeriodSeconds: 20,
 				HealingTimeSeconds:       30,
 			},
