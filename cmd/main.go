@@ -44,7 +44,7 @@ func main() {
 	// Create and launch the cluster reconciler
 	reconciler, err := reconciler.NewReconciler(cluster, channel)
 	if err != nil {
-		logger.Error("Unable to create Redis reconciler", "error", err)
+		logger.Error("Unable to create reconciler", "error", err)
 		os.Exit(1)
 	}
 	go reconciler.Start(ctx)
@@ -53,7 +53,7 @@ func main() {
 	if !opts.DisableMetrics {
 		metricsPoller, err := metrics.NewMetricsPoller(cluster)
 		if err != nil {
-			logger.Error("Unable to create Redis metrics poller", "error", err)
+			logger.Error("Unable to create metrics poller", "error", err)
 			os.Exit(1)
 		}
 		go metricsPoller.Start(ctx)

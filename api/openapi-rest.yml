@@ -122,8 +122,8 @@ paths:
     put:
       tags:
         - move
-      summary: Move slots between Redis Nodes
-      description: Move slots between Redis Nodes
+      summary: Move slots between Nodes
+      description: Move slots between Nodes
       operationId: MoveNodeSlots
       requestBody:
         content:

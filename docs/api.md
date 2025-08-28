@@ -47,7 +47,7 @@ In order to have traceability, know what Robin is doing and not launching the sa
 
 - 200 OK: the request is already done. This response will depend on the called endpoint:
   - `/v1/cluster/replicas`: the RedKey Cluster has already the requested replicas.
-  - `/v1/cluster/move`: the Redis node received at `from` is already empty, `from` node is a replica or `from` node has replicas (and one of them has been promoted to master).
+  - `/v1/cluster/move`: the node received at `from` is already empty, `from` node is a replica or `from` node has replicas (and one of them has been promoted to master).
   - `/v1/cluster/fix`: this endpoint will not returns this status code.
 - 201 Created: the request triggers the action, that is, a new goroutine to perform the action has been launched.
 - 202 Accepted: the requested action is already running, therefore, the request does not trigger a new goroutine. This status code is only used by `/v1/cluster/move`.
