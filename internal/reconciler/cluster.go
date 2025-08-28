@@ -26,7 +26,7 @@ func NewRedKeyClusterReconciler(cluster cluster.Cluster, channel chan struct{}) 
 	return reconciler, nil
 }
 
-// doReconcile reconciles the RedKey cluster  based on its current status.
+// doReconcile reconciles the RedKey cluster based on its current status.
 func (r *RedKeyClusterReconciler) doReconcile() error {
 	// Reconcile based on the current status
 	switch r.cluster.GetRedKeyClusterStatus() {

@@ -15,7 +15,7 @@ There are four main components in Robin:
 
 - **HTTP Server**: server that handles the API calls. It is implemented in `internal/httpserver` package and used by controller-manager to expose Robin endpoints.
 - **Reconciler**: agent that is reponsible for reconciling the RedKey Cluster  in its different states. It is implemented in `internal/reconciler` package and launched as a goroutine.
-- **Metrics**: agent that is responsible for gathering the RedKey Cluster  metrics and including them in a Prometheus format for controller-manager. It is implemented in `internal/metrics` package and launched as a goroutine (can be disabled).
+- **Metrics**: agent that is responsible for gathering the RedKey Cluster metrics and including them in a Prometheus format for controller-manager. It is implemented in `internal/metrics` package and launched as a goroutine (can be disabled).
 - **RedKey Cluster**: object that represents a RedKey Cluster and that contains the operations that can be done within the cluster. It is implemented in `internal/cluster`, created on boot and used by the rest components.
 
 

@@ -14,7 +14,7 @@ A *local K8s cluster* can be used to deploy the RedKey Operator from a pre-built
 
 This will be helpfull to develop and test new features, fix bugs, and test releases locally.
 
-As we will see below, you can use the `make` command to deploy the different components, as well as to deploy a sample RedKey Cluster , or use the scripts that automate the basic workflows.
+As we will see below, you can use the `make` command to deploy the different components, as well as to deploy a sample RedKey Cluster, or use the scripts that automate the basic workflows.
 
 ## Development profiles
 

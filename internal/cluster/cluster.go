@@ -74,7 +74,7 @@ type clusterGetter interface {
 }
 
 type clusterSetter interface {
-	// SetRedKeyClusterStatus sets the status of the RedKey cluster .
+	// SetRedKeyClusterStatus sets the status of the RedKey cluster.
 	SetRedKeyClusterStatus(status string) error
 	// SetReplicas sets the number of replicas of the cluster.
 	SetReplicas(replicas int, replicasPerMaster *int) error

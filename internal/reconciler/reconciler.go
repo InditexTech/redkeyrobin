@@ -65,7 +65,7 @@ func (br *baseClusterReconciler) Start(ctx context.Context) {
 	}
 }
 
-// reconcile reconciles the RedKey cluster  based on its current status.
+// reconcile reconciles the RedKey cluster based on its current status.
 func (br *baseClusterReconciler) reconcile() {
 	if err := br.delegate.doReconcile(); err != nil {
 		br.logger.Error("Error reconciling cluster", "error", err)

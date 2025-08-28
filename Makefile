@@ -9,7 +9,7 @@ name      := redkeyrobin
 VERSION   := 1.0.0
 package   := github.com/inditextech/$(name)
 # Image URL to use for building/pushing image targets when using `pro` deployment profile.
-IMG ?= redis-robin:$(VERSION)
+IMG ?= redkey-robin:$(VERSION)
 
 
 # .............................................................................
@@ -71,7 +71,7 @@ endif
 
 # Image URL to use for building/pushing image targets when using `dev` deployment profile.
 # We always use version 0.1.0 for this purpose.
-IMG_DEV ?= redis-robin:0.1.0-dev
+IMG_DEV ?= redkey-robin:0.1.0-dev
 
 # Image URL to use for deploying the operator pod when using `debug` deployment profile.
 # A base golang image is used with Delve installed, in order to be able to remotely debug the manager.
@@ -85,7 +85,7 @@ IMAGE_REF ?= $(IMG)
 PROFILES := dev debug pro
 
 # Namespace where redkey robin is deployed.
-NAMESPACE ?= redis-operator
+NAMESPACE ?= redkey-operator
 
 # Deploying profile used to generate the manifest files to deploy the operator.
 # The files to generate the manifests are kustomized from the directory config/deploy-profile/<PROFILE>.
@@ -222,24 +222,24 @@ debug-docker-push: ##	Push docker image for debugging from debug.Dockerfile (use
 
 
 ##@ Deployment
-REDIS_ROBIN=$(shell kubectl -n ${NAMESPACE} get po -l='redis.redkeycluster.operator/component=robin' -o=jsonpath='{.items[0].metadata.name}')
+REDKEY_ROBIN=$(shell kubectl -n ${NAMESPACE} get po -l='redis.redkeycluster.operator/component=robin' -o=jsonpath='{.items[0].metadata.name}')
 dev-deploy: ## 		Build a new robin binary, copy the file to the webhook pod and run it.
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -gcflags="all=-N -l" -C robin -o ../bin/robin  main.go
 	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.redkeycluster.operator/component=robin
-	kubectl cp ./bin/robin $(REDIS_ROBIN):/robin -n ${NAMESPACE}
-	kubectl exec -it po/$(REDIS_ROBIN) -n ${NAMESPACE} exec /robin
+	kubectl cp ./bin/robin $(REDKEY_ROBIN):/robin -n ${NAMESPACE}
+	kubectl exec -it po/$(REDKEY_ROBIN) -n ${NAMESPACE} exec /robin
 
 debug: ##		Build a new robin binary, copy the file to the pod and run it in debug mode (listening on port 40000 for Delve connections).
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -gcflags="all=-N -l" -o bin/robin  ./cmd/main.go
 	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.redkeycluster.operator/component=robin
-	kubectl cp ./bin/robin $(REDIS_ROBIN):/robin -n ${NAMESPACE}
-	kubectl exec -it po/$(REDIS_ROBIN) -n ${NAMESPACE} -- dlv --listen=:40000 --headless=true --api-version=2 --accept-multiclient exec /robin --continue
+	kubectl cp ./bin/robin $(REDKEY_ROBIN):/robin -n ${NAMESPACE}
+	kubectl exec -it po/$(REDKEY_ROBIN) -n ${NAMESPACE} -- dlv --listen=:40000 --headless=true --api-version=2 --accept-multiclient exec /robin --continue
 
 port-forward: ##		Port forwarding of port 40000 for debugging robin with Delve.
-	kubectl port-forward pod/$(REDIS_ROBIN) 40000:40000 -n ${NAMESPACE}
+	kubectl port-forward pod/$(REDKEY_ROBIN) 40000:40000 -n ${NAMESPACE}
 
 port-forward-metrics: ##		Port forwarding of port 8080 for debugging the manager with Delve.
-	kubectl port-forward pod/$(REDIS_ROBIN) 8080:8080 -n ${NAMESPACE}
+	kubectl port-forward pod/$(REDKEY_ROBIN) 8080:8080 -n ${NAMESPACE}
 
 ##@ Test
 ginkgo:
