@@ -49,7 +49,7 @@ func NewRedKeyClusterMetricsPoller(redkeyCluster cluster.Cluster) (*RedKeyCluste
 		nodeInfoLabelKeys = append(nodeInfoLabelKeys, k)
 	}
 
-	metricsManager.RegisterDynamicMetric(redkeyClusterMetrics, "RedKey cluster  metrics", clusterInfoLabelKeys)
+	metricsManager.RegisterDynamicMetric(redkeyClusterMetrics, "RedKey cluster metrics", clusterInfoLabelKeys)
 	metricsManager.RegisterDynamicMetric(redisNodesMetrics, "Redis nodes metrics", nodeInfoLabelKeys)
 
 	// Create a cluster manager for IP tracking & reset logic.

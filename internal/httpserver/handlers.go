@@ -11,7 +11,7 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/cluster"
 )
 
-// GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the RedKey cluster  from the Operator's perspective.
+// GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the RedKey cluster from the Operator's perspective.
 func (s *Server) GetRedKeyClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get redkey cluster status")
 
@@ -21,7 +21,7 @@ func (s *Server) GetRedKeyClusterStatus(w http.ResponseWriter, r *http.Request) 
 	s.sendResponse(w, http.StatusOK, response)
 }
 
-// UpdateRedKeyClusterStatus handles the PUT /v1/redkeycluster/status endpoint. It updates the status of the RedKey cluster  from the Operator's perspective.
+// UpdateRedKeyClusterStatus handles the PUT /v1/redkeycluster/status endpoint. It updates the status of the RedKey cluster from the Operator's perspective.
 func (s *Server) UpdateRedKeyClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Update redkey cluster status")
 
@@ -86,7 +86,7 @@ func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Requ
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
-// GetClusterStatus handles the GET /v1/cluster/status endpoint. It returns the current status of the RedKey cluster  from the Robin's perspective.
+// GetClusterStatus handles the GET /v1/cluster/status endpoint. It returns the current status of the RedKey cluster from the Robin's perspective.
 func (s *Server) GetClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster status")
 
@@ -152,7 +152,7 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
-// CheckCluster handles the GET /v1/cluster/check endpoint. It checks the integrity of the RedKey cluster  and returns a list of errors and warnings.
+// CheckCluster handles the GET /v1/cluster/check endpoint. It checks the integrity of the RedKey cluster and returns a list of errors and warnings.
 func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Check cluster")
 

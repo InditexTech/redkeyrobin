@@ -14,7 +14,7 @@ This page provides an overview of Robin's internal architecture, showing its int
 There are four main components in Robin:
 
 - **HTTP Server**: server that handles the API calls. It is implemented in `internal/httpserver` package and used by controller-manager to expose Robin endpoints.
-- **Reconciler**: agent that is reponsible for reconciling the RedKey Cluster  in its different states. It is implemented in `internal/reconciler` package and launched as a goroutine.
+- **Reconciler**: agent that is reponsible for reconciling the RedKey Cluster in its different states. It is implemented in `internal/reconciler` package and launched as a goroutine.
 - **Metrics**: agent that is responsible for gathering the RedKey Cluster metrics and including them in a Prometheus format for controller-manager. It is implemented in `internal/metrics` package and launched as a goroutine (can be disabled).
 - **RedKey Cluster**: object that represents a RedKey Cluster and that contains the operations that can be done within the cluster. It is implemented in `internal/cluster`, created on boot and used by the rest components.
 
@@ -30,12 +30,12 @@ The following image shows the architecture of RedKey Robin:
 
 In order to have knowledge about what is being executed on the RedKey Cluster , Robin introduces the concept of Redis Operations. A Redis Operation is an action or a set of actions that run in one or several RedKey cluster nodes to create, modify, check or delete the cluster. 
 
-Robin uses Redis Operations to avoid executing twice the same action on the RedKey Cluster  at the same time (for example reseting a node) and to avoid incompatible actions at the same time (for example rebalancing the cluster and resharding a node).
+Robin uses Redis Operations to avoid executing twice the same action on the RedKey Cluster at the same time (for example reseting a node) and to avoid incompatible actions at the same time (for example rebalancing the cluster and resharding a node).
 
 A Redis Operation is represented by the RedisOperation struct (package `internal/cluster`). This struct contains the information about the operation: the name, status, when it started, when it finished (if already finished), the nodes involved (if any) and the Redis command to run. For the latter, we define the interface RedisCommand, which represents the actions that run on the clusters. There are two RedisComand implementations:
 
 - RedisCLICommand: runs a `redis-cli --cluster` command on the RedKey Cluster .
-- RedisLibraryCommand: runs programmatic actions on the RedKey Cluster  using the `github.com/redis/go-redis/v9` library and, optionally, redis-cli command using a RedisCLICommand.
+- RedisLibraryCommand: runs programmatic actions on the RedKey Cluster using the `github.com/redis/go-redis/v9` library and, optionally, redis-cli command using a RedisCLICommand.
 
 > [!WARNING] 
 > The `redis-cli --cluster` command requires that all nodes in the cluster are up and reachable. If any node is down, the command may fail or produce no results.

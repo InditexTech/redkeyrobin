@@ -45,7 +45,7 @@ func (r *RedKeyClusterReconciler) doReconcile() error {
 	}
 }
 
-// reconciles the RedKey cluster  when it is in the Configuring status, building the cluster.
+// reconciles the RedKey cluster when it is in the Configuring status, building the cluster.
 func (r *RedKeyClusterReconciler) reconcileConfiguringStatus() error {
 	if err := r.cluster.CheckIntegrity(false, true); err != nil {
 		return err
@@ -53,7 +53,7 @@ func (r *RedKeyClusterReconciler) reconcileConfiguringStatus() error {
 	return nil
 }
 
-// reconcileReadyStatus reconciles the RedKey cluster  when it is in the Ready status.
+// reconcileReadyStatus reconciles the RedKey cluster when it is in the Ready status.
 func (r *RedKeyClusterReconciler) reconcileReadyStatus() error {
 	// Check cluster integrity
 	if err := r.cluster.CheckIntegrity(false, true); err != nil {
@@ -63,7 +63,7 @@ func (r *RedKeyClusterReconciler) reconcileReadyStatus() error {
 	return nil
 }
 
-// reconcileScalingUpStatus reconciles the RedKey cluster  when it is in the ScalingUp status.
+// reconcileScalingUpStatus reconciles the RedKey cluster when it is in the ScalingUp status.
 func (r *RedKeyClusterReconciler) reconcileScalingUpStatus() error {
 	// Check if the cluster needs to be scaled up
 	if r.cluster.IsScaled() {
@@ -78,7 +78,7 @@ func (r *RedKeyClusterReconciler) reconcileScalingUpStatus() error {
 	return nil
 }
 
-// reconcileScalingDownStatus reconciles the RedKey cluster  when it is in the ScalingDown status.
+// reconcileScalingDownStatus reconciles the RedKey cluster when it is in the ScalingDown status.
 func (r *RedKeyClusterReconciler) reconcileScalingDownStatus() error {
 	// Check if the cluster needs to be scaled down
 	// If the status is Unknown, ScaleDown should be called to check if the cluster is scaled and update the status. This can happen if Robin is restarted while the cluster is being scaled down.
@@ -94,7 +94,7 @@ func (r *RedKeyClusterReconciler) reconcileScalingDownStatus() error {
 	return nil
 }
 
-// reconcileUpgradingStatus reconciles the RedKey cluster  when it is in the Upgrading status.
+// reconcileUpgradingStatus reconciles the RedKey cluster when it is in the Upgrading status.
 func (r *RedKeyClusterReconciler) reconcileUpgradingStatus() error {
 	// Check if the cluster needs to be upgraded
 	if !r.cluster.IsUpgraded() && !r.cluster.CanBeUpgraded() {

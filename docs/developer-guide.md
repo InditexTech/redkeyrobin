@@ -143,13 +143,13 @@ Once the RedKey Robin is available in your local registry, you can follow these 
 
 1. Install the RedKey Operator. Please refer to the [RedKey Operator](https://github.com/InditexTech/redkeyoperator/) to know how to deploy the RedKey Operator.
 
-2. Create a RedKey Cluster  setting `spec.robin.template.spec.containers[0].image` to `$IMG_ROBIN`, `$IMG_DEV_ROBIN` or `$IMG_DEBUG` depending on the profile you want to test. You can use the RedKey Cluster  sample in `config/samples/redis_v1_redkeycluster.yml`
+2. Create a RedKey Cluster setting `spec.robin.template.spec.containers[0].image` to `$IMG_ROBIN`, `$IMG_DEV_ROBIN` or `$IMG_DEBUG` depending on the profile you want to test. You can use the RedKey Cluster sample in `config/samples/redis_v1_redkeycluster.yml`
 
 
 
 ### Debuging RedKey Robin
 
-If you followed the steps described above to deploy the RedKey Robin using the `debug` profile you'll have a RedKey Cluster  with a RedKey Robin deployed.
+If you followed the steps described above to deploy the RedKey Robin using the `debug` profile you'll have a RedKey Cluster with a RedKey Robin deployed.
 
 This pod is created using a `golang` image with `Delve` installed on it. This will allow us to easily debug the robin code following these steps:
 

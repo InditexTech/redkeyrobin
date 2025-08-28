@@ -158,10 +158,10 @@ func (rc *RedKeyCluster) GetReplicasOfNode(node *redis.RedisNode) []*redis.Redis
 func (rc *RedKeyCluster) SetReplicas(replicas int, replicasPerMaster *int) error {
 	currentReplicas := rc.GetReplicas()
 	currentReplicasPerMaster := rc.GetReplicasPerMaster()
-	rc.logger.Info("Changing RedKey Cluster  replicas", "current", currentReplicas, "desired", replicas)
+	rc.logger.Info("Changing RedKey Cluster replicas", "current", currentReplicas, "desired", replicas)
 
 	if replicasPerMaster != nil && currentReplicasPerMaster != *replicasPerMaster {
-		rc.logger.Info("Changing RedKey Cluster  replicas per master", "current", currentReplicasPerMaster, "desired", replicasPerMaster)
+		rc.logger.Info("Changing RedKey Cluster replicas per master", "current", currentReplicasPerMaster, "desired", replicasPerMaster)
 		rc.conf.Redis.Cluster.ReplicasPerMaster = *replicasPerMaster
 	}
 
@@ -183,7 +183,7 @@ func (rc *RedKeyCluster) SetReplicas(replicas int, replicasPerMaster *int) error
 
 // SetRedKeyClusterStatus sets the status of the RedKey cluster
 func (rc *RedKeyCluster) SetRedKeyClusterStatus(status string) error {
-	rc.logger.Info("Changing RedKey Cluster  status", "current", rc.GetRedKeyClusterStatus(), "desired", status)
+	rc.logger.Info("Changing RedKey Cluster status", "current", rc.GetRedKeyClusterStatus(), "desired", status)
 	rc.conf.Redis.Cluster.Status = status
 	return nil
 }
@@ -193,7 +193,7 @@ func (rc *RedKeyCluster) SetRedKeyClusterStatus(status string) error {
 // ----------------------------------------------------------------------------------------------------
 
 // Init initializes the RedKey cluster . It should be called after creating a new RedKey cluster .
-// It sets the Robin status from the RedKey Cluster  status and creates the nodes and initializes them.
+// It sets the Robin status from the RedKey Cluster status and creates the nodes and initializes them.
 func (rc *RedKeyCluster) Init() error {
 	// Initialize nodes
 	for i := range rc.GetDesiredReplicas() {
@@ -406,12 +406,12 @@ func (rc *RedKeyCluster) ResetNode(node *redis.RedisNode) error {
 // ---------------------------------------------- ASKERS ----------------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// IsStandalone returns true if the RedKey cluster  is standalone
+// IsStandalone returns true if the RedKey cluster is standalone
 func (rc *RedKeyCluster) IsStandalone() bool {
 	return false
 }
 
-// IsBalanced returns true if the RedKey cluster  is balanced
+// IsBalanced returns true if the RedKey cluster is balanced
 func (rc *RedKeyCluster) IsBalanced() bool {
 	masters := rc.GetMasterNodes()
 	slotsPerMaster := int(math.Ceil(float64(RedKeyClusterTotalSlots) / float64(len(masters))))
@@ -520,7 +520,7 @@ func (rc *RedKeyCluster) HasMissingSlots() bool {
 	return slotCount != RedKeyClusterTotalSlots
 }
 
-// HasDesiredReplicas returns true if the RedKey cluster  has the desired number of replicas
+// HasDesiredReplicas returns true if the RedKey cluster has the desired number of replicas
 func (rc *RedKeyCluster) HasDesiredReplicas() bool {
 	return rc.GetDesiredReplicas() == len(rc.GetNodes()) && rc.GetReplicas() == len(rc.GetMasterNodes()) && rc.GetReplicasPerMaster()*rc.GetReplicas() == len(rc.GetReplicaNodes())
 }
@@ -535,7 +535,7 @@ func (rc *RedKeyCluster) HasBeenResharded(from, to redis.RedisNode) bool {
 	return rc.hasOperationBetweenNodes(Resharding, "Finished", from, to)
 }
 
-// HasNode returns true if the RedKey cluster  has a node with the specified name
+// HasNode returns true if the RedKey cluster has a node with the specified name
 func (rc *RedKeyCluster) HasNode(name string) bool {
 	rc.mux.RLock()
 	defer rc.mux.RUnlock()
@@ -700,7 +700,7 @@ func (rc *RedKeyCluster) updateNodesInfo(nodesInfo []redis.RedisNode) {
 	}
 }
 
-// needsMeet checks if the RedKey cluster  needs to meet nodes
+// needsMeet checks if the RedKey cluster needs to meet nodes
 func (rc *RedKeyCluster) needsMeet(ctx context.Context) (bool, error) {
 	// Compile a map of all the IPs which should be listed for each node.
 	// We are using a map to make it faster, as searching a has table is better than a list
@@ -737,7 +737,7 @@ func (rc *RedKeyCluster) needsMeet(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// needsFix checks if the RedKey cluster  needs to be fixed
+// needsFix checks if the RedKey cluster needs to be fixed
 func (rc *RedKeyCluster) needsFix(ctx context.Context) (bool, error) {
 	// Get Redis client and check connection
 	redisClient, err := rc.getAndCheckRedisClient(false)
@@ -755,17 +755,17 @@ func (rc *RedKeyCluster) needsFix(ctx context.Context) (bool, error) {
 	return result.CommandCodeOutput != 0, nil
 }
 
-// needsUpscale checks if the RedKey cluster  needs to be scaled up
+// needsUpscale checks if the RedKey cluster needs to be scaled up
 func (rc *RedKeyCluster) needsUpscale() bool {
 	return len(rc.GetNodes()) < rc.GetDesiredReplicas()
 }
 
-// needsDownscale checks if the RedKey cluster  needs to be scaled down
+// needsDownscale checks if the RedKey cluster needs to be scaled down
 func (rc *RedKeyCluster) needsDownscale() bool {
 	return len(rc.GetNodes()) > rc.GetDesiredReplicas()
 }
 
-// meetNodesIfNeeded meets the nodes of the RedKey cluster  if needed
+// meetNodesIfNeeded meets the nodes of the RedKey cluster if needed
 func (rc *RedKeyCluster) meetNodesIfNeeded(ctx context.Context) error {
 	// Check if the cluster needs to meet nodes
 	needsMeet, err := rc.needsMeet(ctx)
@@ -781,7 +781,7 @@ func (rc *RedKeyCluster) meetNodesIfNeeded(ctx context.Context) error {
 	return nil
 }
 
-// assignMissingSlotsIfNeeded assigns missing slots to the RedKey cluster  if needed
+// assignMissingSlotsIfNeeded assigns missing slots to the RedKey cluster if needed
 func (rc *RedKeyCluster) assignMissingSlotsIfNeeded(ctx context.Context) error {
 	// Check if the cluster has missing slots
 	if !rc.HasMissingSlots() {
@@ -798,7 +798,7 @@ func (rc *RedKeyCluster) assignMissingSlotsIfNeeded(ctx context.Context) error {
 	return nil
 }
 
-// balanceClusterIfNeeded balances the RedKey cluster  if needed
+// balanceClusterIfNeeded balances the RedKey cluster if needed
 func (rc *RedKeyCluster) balanceClusterIfNeeded(weights map[string]int) error {
 	// Check if the cluster is balanced
 	if rc.IsBalanced() {
@@ -813,7 +813,7 @@ func (rc *RedKeyCluster) balanceClusterIfNeeded(weights map[string]int) error {
 	return nil
 }
 
-// fixClusterIfNeeded fixes the RedKey cluster  if needed
+// fixClusterIfNeeded fixes the RedKey cluster if needed
 func (rc *RedKeyCluster) fixClusterIfNeeded(ctx context.Context) error {
 	// Check if the cluster needs a fix
 	needsFix, err := rc.needsFix(ctx)
@@ -831,7 +831,7 @@ func (rc *RedKeyCluster) fixClusterIfNeeded(ctx context.Context) error {
 	return nil
 }
 
-// addNewNodesIfNeeded adds new nodes to the RedKey cluster  if needed
+// addNewNodesIfNeeded adds new nodes to the RedKey cluster if needed
 func (rc *RedKeyCluster) addNewNodesIfNeeded() error {
 	// Check if the cluster needs to be scaled up
 	if !rc.needsUpscale() {
@@ -1035,7 +1035,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 	return nil
 }
 
-// ensureClusterRatio ensures that the RedKey cluster  has the right ratio of masters and replicas
+// ensureClusterRatio ensures that the RedKey cluster has the right ratio of masters and replicas
 func (rc *RedKeyCluster) ensureClusterRatio(ctx context.Context) error {
 	// When all the nodes are ready, we need to make sure there is the right ratio of masters and replicas for the redkey cluster
 	// If there are too many replicas, we need to reset and add as a master
