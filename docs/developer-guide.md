@@ -23,8 +23,8 @@ Three **Deployment Profiles** have been defined. Basically, these profiles deter
 | Profile | Image used to create the RedKey Operator pod | Purpose |
 |---------|---------------------------------------------|---------|
 | debug | delve:1.24.0 | Debug code from your IDE using Delve |
-| dev | redis-robin:0.1.0-dev | Test a locally built (from source code) release | 
-| pro | redis-robin:0.1.0 | Test a released version |
+| dev | redkey-robin:0.1.0-dev | Test a locally built (from source code) release | 
+| pro | redkey-robin:0.1.0 | Test a released version |
 
 ## Create your Kubernetes cluster
 
@@ -128,15 +128,15 @@ The image names used by default by each profile (shown in the table above) can b
 E.G. these are the commands to build and push the image for `debug` profile:
 
 ```
-make debug-docker-build IMG_DEBUG=localhost:5001/redis-robin:delve
-make debug-docker-push IMG_DEBUG=localhost:5001/redis-robin:delve
+make debug-docker-build IMG_DEBUG=localhost:5001/redkey-robin:delve
+make debug-docker-push IMG_DEBUG=localhost:5001/redkey-robin:delve
 ```
 
 E.G. the commands when using `dev` profile:
 
 ```
-make debug-docker-build-robin IMG_DEV_ROBIN=localhost:5001/redis-robin:0.1.0
-make debug-docker-push-robin IMG_DEV_ROBIN=localhost:5001/redis-robin:0.1.0
+make debug-docker-build-robin IMG_DEV_ROBIN=localhost:5001/redkey-robin:0.1.0
+make debug-docker-push-robin IMG_DEV_ROBIN=localhost:5001/redkey-robin:0.1.0
 ```
 
 Once the RedKey Robin is available in your local registry, you can follow these steps to deploy it into you K8s cluster:

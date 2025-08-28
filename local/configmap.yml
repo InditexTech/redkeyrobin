@@ -6,7 +6,7 @@ metadata:
   domain: swdelivery
   slot: sample
   layer: middleware-redis
-  namespace: redis-operator
+  namespace: redkey-operator
   platformid: "meccanoarteixo2"
   service: "showpaas"
 redis:
@@ -14,7 +14,7 @@ redis:
     interval_seconds: 60
   cluster:
     replicas: 1
-    namespace: redis-operator
+    namespace: redkey-operator
     name: redkeycluster-sample
     status: Ready
     replicas_per_master: 0
