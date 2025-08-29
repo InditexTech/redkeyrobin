@@ -36,6 +36,7 @@ const (
 	CheckingIntegrityError        = "CheckingIntegrityError"
 	Resetting                     = "Resetting"
 	ResettingError                = "ResettingError"
+	NoReconciling                 = "NoReconciling"
 	RedKeyClusterTotalSlots       = 16384
 	RedisNodesUnbalancedThreshold = 2
 )
@@ -118,6 +119,8 @@ type Cluster interface {
 	Upgrade(force bool) error
 	// ResetNode resets a node of the cluster.
 	ResetNode(node *redis.RedisNode) error
+	// Clears stored nodes.
+	ClearNodes() error
 }
 
 // NewCluster creates a new cluster. It returns a standalone or RedKey Cluster based on the cluster type.

@@ -219,6 +219,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClusterNodesResponse'
 
+  /v1/cluster/recreate:
+    put:
+      tags:
+        - recreate
+      summary: Recreates the cluster
+      description: Recreates the cluster discovering the nodes
+      operationId: RecreateCluster
+      responses:
+        '201':
+          description: Cluster recreation has been launched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterRecreateResponse'
+
 components:
   schemas:
     RedKeyClusterStatusResponse:
@@ -422,3 +437,13 @@ components:
                 type: string
                 description: RedKey Cluster node link status
                 example: connected
+    ClusterRecreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: RedKey Cluster recreation status
+          example: InProgress
+          enum:
+            - InProgress
+            - Error

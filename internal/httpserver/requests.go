@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ValidRedKeyClusterStatus = []string{cluster.Initializing, cluster.Configuring, cluster.Ready, cluster.Error, cluster.Upgrading, cluster.ScalingDown, cluster.ScalingUp, cluster.Maintenance, cluster.Unknown}
+	ValidRedKeyClusterStatus = []string{cluster.Initializing, cluster.Configuring, cluster.Ready, cluster.Error, cluster.Upgrading, cluster.ScalingDown, cluster.ScalingUp, cluster.Maintenance, cluster.Unknown, cluster.NoReconciling}
 )
 
 type RequestInterface interface {

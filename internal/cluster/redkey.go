@@ -402,6 +402,12 @@ func (rc *RedKeyCluster) ResetNode(node *redis.RedisNode) error {
 	return rc.launchOperation(NewRedisOperationResetNode(rc.ctx, rc, node), Upgrading, false)
 }
 
+// Clears the stored nodes creating a new map.
+func (rc *RedKeyCluster) ClearNodes() error {
+	rc.nodes = make(map[string]*redis.RedisNode)
+	return nil
+}
+
 // ----------------------------------------------------------------------------------------------------
 // ---------------------------------------------- ASKERS ----------------------------------------------
 // ----------------------------------------------------------------------------------------------------

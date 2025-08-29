@@ -456,3 +456,32 @@ func TestGetNodes(t *testing.T) {
 		})
 	}
 }
+
+func TestRecreateCluster(t *testing.T) {
+	tests := []struct {
+		name               string
+		request            string
+		expectedBody       ResponseInterface
+		expectedStatusCode int
+	}{
+		{
+			name: "good request",
+			expectedBody: ClusterRecreateResponse{
+				Status: "In progress",
+			},
+			expectedStatusCode: http.StatusCreated,
+		},
+		{
+			name: "fix in progress",
+			expectedBody: ClusterRecreateResponse{
+				Status: "In progress",
+			},
+			expectedStatusCode: http.StatusAccepted,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testRequest(t, "PUT", "/cluster/fix", tt.request, "", nil, server.FixCluster, tt.expectedStatusCode, tt.expectedBody)
+		})
+	}
+}
