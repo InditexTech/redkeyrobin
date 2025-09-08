@@ -141,3 +141,11 @@ type ClusterNodesResponse struct {
 func (r ClusterNodesResponse) GetKeys() []string {
 	return []string{"nodes"}
 }
+
+type ClusterRecreateResponse struct {
+	Status string `json:"status"`
+}
+
+func (r ClusterRecreateResponse) GetKeys() []string {
+	return []string{"status"}
+}

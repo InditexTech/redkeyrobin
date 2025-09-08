@@ -194,6 +194,32 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
+// FixCluster handles the PUT /v1/cluster/recreate endpoint. It recreates the RedKey cluster.
+func (s *Server) RecreateCluster(w http.ResponseWriter, r *http.Request) {
+	s.logger.Info("Recreate cluster")
+
+	s.cluster.ClearNodes()
+	err := s.cluster.Init()
+	if err == nil {
+		err = s.cluster.CheckIntegrity(true, false)
+	}
+
+	// Send the response
+	response := ClusterRecreateResponse{
+		Status: "In progress",
+	}
+	if err != nil {
+		if _, ok := err.(*cluster.OperationInProgressError); ok {
+			s.sendResponse(w, http.StatusAccepted, response)
+			return
+		}
+
+		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error recreating cluster: %v", err))
+		return
+	}
+	s.sendResponse(w, http.StatusCreated, response)
+}
+
 // ResetNode handles the POST /v1/cluster/reset/{nodeIndex} endpoint. It resets a Redis node.
 func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Reset node")

@@ -59,6 +59,7 @@ func (s *Server) Init(opts *util.Options) error {
 		mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
 		mux.HandleFunc("PUT /v1/cluster/reset/{nodeIndex}", s.ResetNode)
 		mux.HandleFunc("GET /v1/cluster/nodes", s.GetNodes)
+		mux.HandleFunc("PUT /v1/cluster/recreate", s.RecreateCluster)
 	}
 
 	// Create the server
