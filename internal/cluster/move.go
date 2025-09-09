@@ -19,14 +19,14 @@ type RedisOperationMove struct {
 	slots int
 }
 
-func NewRedisOperationMove(ctx context.Context, redkeyCluster Cluster, from, to *redis.RedisNode, slots int) *RedisOperationMove {
+func NewRedisOperationMove(ctx context.Context, cluster Cluster, from, to *redis.RedisNode, slots int) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
 			name:     "Move",
 			status:   "Pending",
 			logger:   util.GetLogger("operation.move"),
 			ctx:      ctx,
-			cluster:  redkeyCluster,
+			cluster:  cluster,
 			nodeFrom: from,
 			nodeTo:   to,
 		},
@@ -35,14 +35,14 @@ func NewRedisOperationMove(ctx context.Context, redkeyCluster Cluster, from, to 
 	}
 }
 
-func NewFakeRedisOperationMove(ctx context.Context, redkeyCluster Cluster, status string, from, to *redis.RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
+func NewFakeRedisOperationMove(ctx context.Context, cluster Cluster, status string, from, to *redis.RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
 			name:         "Move",
 			status:       status,
 			logger:       util.GetLogger("operation.move"),
 			ctx:          ctx,
-			cluster:      redkeyCluster,
+			cluster:      cluster,
 			endTimestamp: endTimestamp,
 			nodeFrom:     from,
 			nodeTo:       to,

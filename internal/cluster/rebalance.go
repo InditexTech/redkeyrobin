@@ -18,27 +18,27 @@ type RedisOperationRebalance struct {
 	weights map[string]int
 }
 
-func NewRedisOperationRebalance(ctx context.Context, redkeyCluster *RedKeyCluster, weights map[string]int) *RedisOperationRebalance {
+func NewRedisOperationRebalance(ctx context.Context, cluster Cluster, weights map[string]int) *RedisOperationRebalance {
 	return &RedisOperationRebalance{
 		RedisOperationBase: RedisOperationBase{
 			name:    "Rebalance",
 			status:  "Pending",
 			logger:  util.GetLogger("operation.rebalance"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 		weights: weights,
 	}
 }
 
-func NewFakeRedisOperationRebalance(ctx context.Context, redkeyCluster Cluster, status string, endTimestamp time.Time) *RedisOperationRebalance {
+func NewFakeRedisOperationRebalance(ctx context.Context, cluster Cluster, status string, endTimestamp time.Time) *RedisOperationRebalance {
 	return &RedisOperationRebalance{
 		RedisOperationBase: RedisOperationBase{
 			name:         "Rebalance",
 			status:       status,
 			logger:       util.GetLogger("operation.rebalance"),
 			ctx:          ctx,
-			cluster:      redkeyCluster,
+			cluster:      cluster,
 			endTimestamp: endTimestamp,
 		},
 	}

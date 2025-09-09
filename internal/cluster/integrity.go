@@ -18,26 +18,26 @@ type RedisOperationCheckIntegrity struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationCheckIntegrity(ctx context.Context, redkeyCluster Cluster) *RedisOperationCheckIntegrity {
+func NewRedisOperationCheckIntegrity(ctx context.Context, cluster Cluster) *RedisOperationCheckIntegrity {
 	return &RedisOperationCheckIntegrity{
 		RedisOperationBase: RedisOperationBase{
 			name:    "CheckIntegrity",
 			status:  "Pending",
 			logger:  util.GetLogger("operation.integrity"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationCheckIntegrity(ctx context.Context, redkeyCluster Cluster, status string) *RedisOperationCheckIntegrity {
+func NewFakeRedisOperationCheckIntegrity(ctx context.Context, cluster Cluster, status string) *RedisOperationCheckIntegrity {
 	return &RedisOperationCheckIntegrity{
 		RedisOperationBase: RedisOperationBase{
 			name:    "CheckIntegrity",
 			status:  status,
 			logger:  util.GetLogger("operation.integrity"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }

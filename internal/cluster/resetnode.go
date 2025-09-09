@@ -18,27 +18,27 @@ type RedisOperationResetNode struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationResetNode(ctx context.Context, redkeyCluster Cluster, node *redis.RedisNode) *RedisOperationResetNode {
+func NewRedisOperationResetNode(ctx context.Context, cluster Cluster, node *redis.RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
 			name:     "ResetNode",
 			status:   "Pending",
 			logger:   util.GetLogger("operation.resetnode"),
 			ctx:      ctx,
-			cluster:  redkeyCluster,
+			cluster:  cluster,
 			nodeFrom: node,
 		},
 	}
 }
 
-func NewFakeRedisOperationResetNode(ctx context.Context, redkeyCluster Cluster, status string, node *redis.RedisNode) *RedisOperationResetNode {
+func NewFakeRedisOperationResetNode(ctx context.Context, cluster Cluster, status string, node *redis.RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
 			name:     "ResetNode",
 			status:   status,
 			logger:   util.GetLogger("operation.resetnode"),
 			ctx:      ctx,
-			cluster:  redkeyCluster,
+			cluster:  cluster,
 			nodeFrom: node,
 		},
 	}

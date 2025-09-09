@@ -17,26 +17,26 @@ type RedisOperationFix struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationFix(ctx context.Context, redkeyCluster *RedKeyCluster) *RedisOperationFix {
+func NewRedisOperationFix(ctx context.Context, cluster Cluster) *RedisOperationFix {
 	return &RedisOperationFix{
 		RedisOperationBase: RedisOperationBase{
 			name:    "Fix",
 			status:  "Pending",
 			logger:  util.GetLogger("operation.fix"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationFix(ctx context.Context, redkeyCluster *RedKeyCluster, status string) *RedisOperationFix {
+func NewFakeRedisOperationFix(ctx context.Context, cluster Cluster, status string) *RedisOperationFix {
 	return &RedisOperationFix{
 		RedisOperationBase: RedisOperationBase{
 			name:    "Fix",
 			status:  status,
 			logger:  util.GetLogger("operation.fix"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }

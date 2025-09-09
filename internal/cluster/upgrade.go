@@ -18,26 +18,26 @@ type RedisOperationUpgrade struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationUpgrade(ctx context.Context, redkeyCluster Cluster) *RedisOperationUpgrade {
+func NewRedisOperationUpgrade(ctx context.Context, cluster Cluster) *RedisOperationUpgrade {
 	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
 			name:    "Upgrade",
 			status:  "Pending",
 			logger:  util.GetLogger("operation.upgrade"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationUpgrade(ctx context.Context, redkeyCluster Cluster, status string) *RedisOperationUpgrade {
+func NewFakeRedisOperationUpgrade(ctx context.Context, cluster Cluster, status string) *RedisOperationUpgrade {
 	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
 			name:    "Upgrade",
 			status:  status,
 			logger:  util.GetLogger("operation.upgrade"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }

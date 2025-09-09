@@ -18,26 +18,26 @@ type RedisOperationScaleDown struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationScaleDown(ctx context.Context, redkeyCluster Cluster) *RedisOperationScaleDown {
+func NewRedisOperationScaleDown(ctx context.Context, cluster Cluster) *RedisOperationScaleDown {
 	return &RedisOperationScaleDown{
 		RedisOperationBase: RedisOperationBase{
 			name:    "ScaleDown",
 			status:  "Pending",
 			logger:  util.GetLogger("operation.scaledown"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationScaleDown(ctx context.Context, redkeyCluster Cluster, status string) *RedisOperationScaleDown {
+func NewFakeRedisOperationScaleDown(ctx context.Context, cluster Cluster, status string) *RedisOperationScaleDown {
 	return &RedisOperationScaleDown{
 		RedisOperationBase: RedisOperationBase{
 			name:    "ScaleDown",
 			status:  status,
 			logger:  util.GetLogger("operation.scaledown"),
 			ctx:     ctx,
-			cluster: redkeyCluster,
+			cluster: cluster,
 		},
 	}
 }

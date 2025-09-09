@@ -27,6 +27,18 @@ type RedKeyCluster struct {
 	operations map[string][]RedisOperation
 	channel    chan struct{}
 	mux        sync.RWMutex
+
+	clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+	operationFactory *OperationFactory 
+}
+
+// Default client factory for RedKeyCluster (global, no closure)
+func defaultRedKeyClusterClientFactory(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+	redisClient := redis.NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
+	if err := redisClient.CheckConnection(maxRetries, backoff); err != nil {
+		return nil, err
+	}
+	return redisClient, nil
 }
 
 // NewRedKeyCluster creates a new RedKey cluster
@@ -38,10 +50,12 @@ func NewRedKeyCluster(ctx context.Context, conf *config.Configuration, channel c
 			conf:   conf,
 			status: Unknown,
 		},
-		nodes:      make(map[string]*redis.RedisNode),
-		operations: make(map[string][]RedisOperation),
-		channel:    channel,
-		mux:        sync.RWMutex{},
+		nodes:         make(map[string]*redis.RedisNode),
+		operations:    make(map[string][]RedisOperation),
+		channel:       channel,
+		mux:           sync.RWMutex{},
+		clientFactory: defaultRedKeyClusterClientFactory,
+		operationFactory: defaultOperationFactory(),
 	}
 }
 
@@ -54,11 +68,25 @@ func NewFakeRedKeyCluster(ctx context.Context, conf *config.Configuration, statu
 			conf:   conf,
 			status: status,
 		},
-		nodes:      nodes,
-		operations: operations,
-		channel:    channel,
-		mux:        sync.RWMutex{},
+		nodes:         nodes,
+		operations:    operations,
+		channel:       channel,
+		mux:           sync.RWMutex{},
+		clientFactory: defaultRedKeyClusterClientFactory,
+		operationFactory: defaultOperationFactory(),
 	}
+}
+
+// WithClientFactory allows to configure a custom function to obtain clients (used for testing)
+func (rc *RedKeyCluster) WithClientFactory(factory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)) *RedKeyCluster {
+	rc.clientFactory = factory
+	return rc
+}
+
+// WithOperationFactory allows to configure a custom operation factory (used for testing)
+func (rc *RedKeyCluster) WithOperationFactory(factory *OperationFactory) *RedKeyCluster {
+	rc.operationFactory = factory
+	return rc
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -241,7 +269,7 @@ func (rc *RedKeyCluster) Rebalance(async bool, weights map[string]int, force boo
 	}
 
 	// Launch cluster rebalance operation
-	return rc.launchOperation(NewRedisOperationRebalance(rc.ctx, rc, weights), Rebalancing, async)
+    return rc.launchOperation(rc.operationFactory.NewRebalance(rc.ctx, rc, weights), Rebalancing, async)
 }
 
 // MoveSlots moves slots from one Redis node to another.
@@ -274,7 +302,7 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	}
 
 	// Launch move operation
-	return rc.launchOperation(NewRedisOperationMove(rc.ctx, rc, from, to, slots), Resharding, true)
+	return rc.launchOperation(rc.operationFactory.NewMove(rc.ctx, rc, from, to, slots), Resharding, true)
 }
 
 // Check checks the RedKey cluster.
@@ -316,7 +344,7 @@ func (rc *RedKeyCluster) Fix(async bool, force bool) error {
 	}
 
 	// Launch cluster fix operation
-	return rc.launchOperation(NewRedisOperationFix(rc.ctx, rc), Fixing, async)
+	return rc.launchOperation(rc.operationFactory.NewFix(rc.ctx, rc), Fixing, async)
 }
 
 // CheckIntegrity checks the integrity of the RedKey cluster
@@ -339,7 +367,7 @@ func (rc *RedKeyCluster) CheckIntegrity(async, force bool) error {
 	}
 
 	// Launch cluster check integrity operation
-	return rc.launchOperation(NewRedisOperationCheckIntegrity(rc.ctx, rc), CheckingIntegrity, async)
+	return rc.launchOperation(rc.operationFactory.NewCheckIntegrity(rc.ctx, rc), CheckingIntegrity, async)
 }
 
 // ScaleUp scales up the RedKey cluster
@@ -354,7 +382,7 @@ func (rc *RedKeyCluster) ScaleUp(force bool) error {
 	}
 
 	// Launch cluster scaling up operation
-	return rc.launchOperation(NewRedisOperationScaleUp(rc.ctx, rc), ScalingUp, false)
+	return rc.launchOperation(rc.operationFactory.NewScaleUp(rc.ctx, rc), ScalingUp, false)
 }
 
 // ScaleDown scales down the RedKey cluster
@@ -369,7 +397,7 @@ func (rc *RedKeyCluster) ScaleDown(force bool) error {
 	}
 
 	// Launch cluster scaling down operation
-	return rc.launchOperation(NewRedisOperationScaleDown(rc.ctx, rc), ScalingDown, false)
+	return rc.launchOperation(rc.operationFactory.NewScaleDown(rc.ctx, rc), ScalingDown, false)
 }
 
 // Upgrade upgrades the RedKey cluster
@@ -384,7 +412,7 @@ func (rc *RedKeyCluster) Upgrade(force bool) error {
 	}
 
 	// Launch cluster upgrade operation
-	return rc.launchOperation(NewRedisOperationUpgrade(rc.ctx, rc), Upgrading, false)
+	return rc.launchOperation(rc.operationFactory.NewUpgrade(rc.ctx, rc), Upgrading, false)
 }
 
 // Check reset a Redis node in the cluster
@@ -399,7 +427,7 @@ func (rc *RedKeyCluster) ResetNode(node *redis.RedisNode) error {
 	}
 
 	// Launch reset node operation
-	return rc.launchOperation(NewRedisOperationResetNode(rc.ctx, rc, node), Upgrading, false)
+	return rc.launchOperation(rc.operationFactory.NewResetNode(rc.ctx, rc, node), Upgrading, false)
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -1313,17 +1341,21 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 	return nil
 }
 
+// getClient returns a Redis client using the configured client factory
+func (rc *RedKeyCluster) getClient() (redis.RedisClientInterface, error) {
+	return rc.clientFactory(rc.ctx, rc.GetAddress(), rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+}
+
 // getAndCheckRedisClient creates a Redis client and checks the connection
 func (rc *RedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
-	// Create Redis client
-	redisClient := redis.NewRedisClient(rc.ctx, rc.GetAddress(), os.Getenv("REDISAUTH"), 0)
-	if close {
-		defer redisClient.Close()
+	// Create Redis client using the client factory
+	redisClient, err := rc.getClient()
+	if err != nil {
+		return nil, err
 	}
 
-	// Check connection
-	if err := redisClient.CheckConnection(rc.GetClusterMaxRetries(), rc.GetClusterBackOff()); err != nil {
-		return nil, err
+	if close {
+		defer redisClient.Close()
 	}
 
 	return redisClient, nil
