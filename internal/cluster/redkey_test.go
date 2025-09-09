@@ -574,8 +574,8 @@ func TestRedKeyClusterForgetNode(t *testing.T) {
 		expectedError error
 	}{
 		{
-			name: "node does not exist",
-			node: redis.NewFakeRedisNode("node4", mockClientFactory),
+			name:          "node does not exist",
+			node:          redis.NewFakeRedisNode("node4", mockClientFactory),
 			expectedError: fmt.Errorf("node node4 not found"),
 		},
 		{

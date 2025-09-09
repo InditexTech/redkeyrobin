@@ -23,13 +23,6 @@ func (mcp *MockClientProvider) SetGetClientError(err error) {
 	mcp.getClientError = err
 }
 
-func (mcp *MockClientProvider) getClient(ctx context.Context) (RedisClientInterface, error) {
-	if mcp.getClientError != nil {
-		return nil, mcp.getClientError
-	}
-	return mcp.mockClient, nil
-}
-
 // MockRedisClient is a mock implementation of RedisClient for testing
 type MockRedisClient struct {
 	// Error control fields for each method

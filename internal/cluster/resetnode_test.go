@@ -167,7 +167,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			// Create context with or without node name based on test case
 			var ctx context.Context
 			if tt.nodeName != "" {
-				ctx = context.WithValue(context.Background(), "nodeName", tt.nodeName)
+				ctx = context.WithValue(context.Background(), nodeNameKey, tt.nodeName)
 			} else {
 				ctx = context.Background()
 			}

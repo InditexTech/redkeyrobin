@@ -49,7 +49,7 @@ func (ro *RedisOperationResetNode) Launch() error {
 	ro.logger.Info("Resetting node", "node", ro.nodeFrom.Name)
 
 	// Create context with node name
-	ctx := context.WithValue(ro.ctx, "nodeName", ro.nodeFrom.Name)
+	ctx := context.WithValue(ro.ctx, nodeNameKey, ro.nodeFrom.Name)
 
 	// Launch upgrade operation
 	cmd := redis.NewRedisLibraryCommand(ctx, ro.doResetNode)
@@ -82,7 +82,7 @@ func (ro *RedisOperationResetNode) Wait() error {
 // doResetNode reset a node of the RedKey cluster
 func (ro *RedisOperationResetNode) doResetNode(ctx context.Context) error {
 	// Get the node
-	nodeName, ok := ctx.Value("nodeName").(string)
+	nodeName, ok := ctx.Value(nodeNameKey).(string)
 	if !ok {
 		return fmt.Errorf("node name not found in context")
 	}
