@@ -15,47 +15,64 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var node1 = &redis.RedisNode{
-	Name:  "test-0",
-	ID:    "1234567890",
-	Addr:  "node1",
-	IP:    "1.1.1.1",
-	Flags: "master",
-	Slots: []redis.RedisSlotRange{
+var mockClientFactory = func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+	client := redis.MockRedisClient{}
+	return client, nil
+}
+
+var mockClientFactoryError = func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+	return nil, fmt.Errorf("error creating client")
+}
+
+var node1 = redis.NewFakeRedisNode("test-0", mockClientFactoryError)
+var node2 = redis.NewFakeRedisNode("node2", mockClientFactory)
+var node3 = redis.NewFakeRedisNode("node3", mockClientFactory)
+
+func init() {
+	// Configure node1 properties
+	node1.Addr = "node1"
+	node1.MaxRetries = 1
+	node1.Backoff = time.Microsecond * 10
+	node1.ID = "1234567890"
+	node1.IP = "1.1.1.1"
+	node1.Flags = "master"
+	node1.Slots = []redis.RedisSlotRange{
 		{
 			Start: 1,
 			End:   5461,
 		},
-	},
-	MasterID: "",
-}
-var node2 = &redis.RedisNode{
-	Name:  "node2",
-	ID:    "0987654321",
-	Addr:  "node2",
-	IP:    "2.2.2.2",
-	Flags: "master, addr",
-	Slots: []redis.RedisSlotRange{
+	}
+	node1.MasterID = ""
+
+	// Configure node2 properties
+	node2.Addr = "node2"
+	node2.MaxRetries = 1
+	node2.Backoff = time.Microsecond * 10
+	node2.ID = "0987654321"
+	node2.IP = "2.2.2.2"
+	node2.Flags = "master, addr"
+	node2.Slots = []redis.RedisSlotRange{
 		{
 			Start: 5462,
 			End:   10922,
 		},
-	},
-	MasterID: "",
-}
-var node3 = &redis.RedisNode{
-	Name:  "node3",
-	ID:    "0987654321",
-	Addr:  "node2",
-	IP:    "2.2.2.2",
-	Flags: "slave",
-	Slots: []redis.RedisSlotRange{
+	}
+	node2.MasterID = ""
+
+	// Configure node3 properties
+	node3.Addr = "node2"
+	node3.MaxRetries = 1
+	node3.Backoff = time.Microsecond * 10
+	node3.ID = "0987654321"
+	node3.IP = "2.2.2.2"
+	node3.Flags = "slave"
+	node3.Slots = []redis.RedisSlotRange{
 		{
 			Start: 10923,
 			End:   16384,
 		},
-	},
-	MasterID: "1234567890",
+	}
+	node3.MasterID = "1234567890"
 }
 
 var redkeyCluster = NewFakeRedKeyCluster(
@@ -558,14 +575,12 @@ func TestRedKeyClusterForgetNode(t *testing.T) {
 	}{
 		{
 			name: "node does not exist",
-			node: &redis.RedisNode{
-				Name: "node4",
-			},
+			node: redis.NewFakeRedisNode("node4", mockClientFactory),
 			expectedError: fmt.Errorf("node node4 not found"),
 		},
 		{
 			name:          "get bad redis client",
-			node:          node1,
+			node:          redis.NewFakeRedisNode("test-1", mockClientFactoryError),
 			expectedError: fmt.Errorf("error forgetting node"),
 		},
 	}
@@ -639,20 +654,26 @@ func TestRedKeyClusterUpdateNodesInfo(t *testing.T) {
 		{
 			name: "update nodes info",
 			nodesInfo: []redis.RedisNode{
-				{
-					Name:  "node1",
-					ID:    "1234567890",
-					Addr:  "node1",
-					IP:    "9.9.9.9",
-					Flags: "master",
-				},
-				{
-					Name:  "node2",
-					ID:    "6666666666",
-					Addr:  "node2",
-					IP:    "change not affecting",
-					Flags: "slave",
-				},
+				func() redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.Addr = "node1"
+					node.MaxRetries = 1
+					node.Backoff = time.Microsecond * 10
+					node.ID = "1234567890"
+					node.IP = "9.9.9.9"
+					node.Flags = "master"
+					return *node
+				}(),
+				func() redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", mockClientFactory)
+					node.Addr = "node2"
+					node.MaxRetries = 1
+					node.Backoff = time.Microsecond * 10
+					node.ID = "6666666666"
+					node.IP = "change not affecting"
+					node.Flags = "slave"
+					return *node
+				}(),
 			},
 		},
 	}
@@ -1223,7 +1244,7 @@ func TestRedKeyClusterMoveSlots(t *testing.T) {
 			},
 			from:          node2,
 			to:            node3,
-			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
+			expectedError: fmt.Errorf("error ensuring nodes are up: error creating client"),
 		},
 	}
 	for _, tt := range tests {
@@ -1288,7 +1309,7 @@ func TestRedKeyClusterFix(t *testing.T) {
 				redkeyCluster.conf.Redis.Cluster.MaxRetries = 1
 			},
 			force:         true,
-			expectedError: fmt.Errorf("error ensuring nodes are up: failed to connect after 1 retries"),
+			expectedError: fmt.Errorf("error ensuring nodes are up: error creating client"),
 		},
 	}
 	for _, tt := range tests {
@@ -1488,7 +1509,7 @@ func TestRedKeyClusterReset(t *testing.T) {
 				redkeyCluster.operations[Resetting] = []RedisOperation{}
 			},
 			force:         true,
-			expectedError: fmt.Errorf("error resetting cluster node 'test-0': failed to connect after 1 retries"),
+			expectedError: fmt.Errorf("error resetting cluster node 'test-0': error creating client"),
 		},
 	}
 	for _, tt := range tests {

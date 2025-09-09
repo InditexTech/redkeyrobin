@@ -36,7 +36,7 @@ type RedisOperation interface {
 type RedisOperationBase struct {
 	name          string
 	status        string
-	redkeyCluster *RedKeyCluster
+	cluster       Cluster
 	nodeFrom      *redis.RedisNode
 	nodeTo        *redis.RedisNode
 	initTimestamp time.Time

@@ -18,28 +18,28 @@ type RedisOperationResetNode struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationResetNode(ctx context.Context, redkeyCluster *RedKeyCluster, node *redis.RedisNode) *RedisOperationResetNode {
+func NewRedisOperationResetNode(ctx context.Context, redkeyCluster Cluster, node *redis.RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
-			name:          "ResetNode",
-			status:        "Pending",
-			logger:        util.GetLogger("operation.resetnode"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
-			nodeFrom:      node,
+			name:     "ResetNode",
+			status:   "Pending",
+			logger:   util.GetLogger("operation.resetnode"),
+			ctx:      ctx,
+			cluster:  redkeyCluster,
+			nodeFrom: node,
 		},
 	}
 }
 
-func NewFakeRedisOperationResetNode(ctx context.Context, redkeyCluster *RedKeyCluster, status string, node *redis.RedisNode) *RedisOperationResetNode {
+func NewFakeRedisOperationResetNode(ctx context.Context, redkeyCluster Cluster, status string, node *redis.RedisNode) *RedisOperationResetNode {
 	return &RedisOperationResetNode{
 		RedisOperationBase: RedisOperationBase{
-			name:          "ResetNode",
-			status:        status,
-			logger:        util.GetLogger("operation.resetnode"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
-			nodeFrom:      node,
+			name:     "ResetNode",
+			status:   status,
+			logger:   util.GetLogger("operation.resetnode"),
+			ctx:      ctx,
+			cluster:  redkeyCluster,
+			nodeFrom: node,
 		},
 	}
 }
@@ -87,7 +87,7 @@ func (ro *RedisOperationResetNode) doResetNode(ctx context.Context) error {
 		return fmt.Errorf("node name not found in context")
 	}
 
-	node := ro.redkeyCluster.GetNode(nodeName)
+	node := ro.cluster.GetNode(nodeName)
 	if node == nil {
 		return fmt.Errorf("node '%s' not found", nodeName)
 	}
@@ -98,34 +98,34 @@ func (ro *RedisOperationResetNode) doResetNode(ctx context.Context) error {
 	}
 
 	// Forget the node if it is ephemeral
-	if ro.redkeyCluster.IsEphemeral() {
-		if err := ro.redkeyCluster.forgetNode(ctx, *node); err != nil {
+	if ro.cluster.IsEphemeral() {
+		if err := ro.cluster.forgetNode(ctx, *node); err != nil {
 			return err
 		}
 	}
 
 	// Check nodes info
-	if err := ro.redkeyCluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(); err != nil {
 		return err
 	}
 
 	// Forget outdated nodes
-	if err := ro.redkeyCluster.removeOutdatedNodes(ctx); err != nil {
+	if err := ro.cluster.removeOutdatedNodes(ctx); err != nil {
 		return err
 	}
 
 	// Meet nodes if needed
-	if err := ro.redkeyCluster.meetNodesIfNeeded(ctx); err != nil {
+	if err := ro.cluster.meetNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Ensure cluster ratio
-	if err := ro.redkeyCluster.ensureClusterRatio(ctx); err != nil {
+	if err := ro.cluster.ensureClusterRatio(ctx); err != nil {
 		return err
 	}
 
 	// Update nodes info
-	if err := ro.redkeyCluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodes(); err != nil {
 		return err
 	}
 

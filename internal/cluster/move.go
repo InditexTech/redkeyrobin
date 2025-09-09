@@ -19,33 +19,33 @@ type RedisOperationMove struct {
 	slots int
 }
 
-func NewRedisOperationMove(ctx context.Context, redkeyCluster *RedKeyCluster, from, to *redis.RedisNode, slots int) *RedisOperationMove {
+func NewRedisOperationMove(ctx context.Context, redkeyCluster Cluster, from, to *redis.RedisNode, slots int) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
-			name:          "Move",
-			status:        "Pending",
-			logger:        util.GetLogger("operation.move"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
-			nodeFrom:      from,
-			nodeTo:        to,
+			name:     "Move",
+			status:   "Pending",
+			logger:   util.GetLogger("operation.move"),
+			ctx:      ctx,
+			cluster:  redkeyCluster,
+			nodeFrom: from,
+			nodeTo:   to,
 		},
 
 		slots: slots,
 	}
 }
 
-func NewFakeRedisOperationMove(ctx context.Context, redkeyCluster *RedKeyCluster, status string, from, to *redis.RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
+func NewFakeRedisOperationMove(ctx context.Context, redkeyCluster Cluster, status string, from, to *redis.RedisNode, slots int, endTimestamp time.Time) *RedisOperationMove {
 	return &RedisOperationMove{
 		RedisOperationBase: RedisOperationBase{
-			name:          "Move",
-			status:        status,
-			logger:        util.GetLogger("operation.move"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
-			endTimestamp:  endTimestamp,
-			nodeFrom:      from,
-			nodeTo:        to,
+			name:         "Move",
+			status:       status,
+			logger:       util.GetLogger("operation.move"),
+			ctx:          ctx,
+			cluster:      redkeyCluster,
+			endTimestamp: endTimestamp,
+			nodeFrom:     from,
+			nodeTo:       to,
 		},
 		slots: slots,
 	}
@@ -56,19 +56,19 @@ func (ro *RedisOperationMove) Launch() error {
 	ro.logger.Info("Moving slots", "slots", ro.slots, "from", ro.nodeFrom.Name, "to", ro.nodeTo.Name)
 
 	// Assure all nodes are up (redis-cli needs all nodes to be up)
-	if err := ro.redkeyCluster.ensureNodesAreUp(ro.ctx); err != nil {
+	if err := ro.cluster.ensureNodesAreUp(ro.ctx); err != nil {
 		return fmt.Errorf("error ensuring nodes are up: %v", err)
 	}
 
 	// Asure destination node is master
 	if !ro.nodeTo.IsMaster() {
-		if err := ro.redkeyCluster.convertNodesToMaster(ro.ctx, []*redis.RedisNode{ro.nodeTo}); err != nil {
+		if err := ro.cluster.convertNodesToMaster(ro.ctx, []*redis.RedisNode{ro.nodeTo}); err != nil {
 			return fmt.Errorf("error converting node '%s' to master: %v", ro.nodeTo.Name, err)
 		}
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.redkeyCluster.getAndCheckRedisClient(true)
+	redisClient, err := ro.cluster.getAndCheckRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -78,28 +78,34 @@ func (ro *RedisOperationMove) Launch() error {
 	if cmd.Err != nil {
 		return fmt.Errorf("error moving slots: %v", cmd.Err)
 	}
+
+	// Update operation
+	ro.cmd = cmd
+	ro.status = "Running"
+	ro.initTimestamp = time.Now()
+
 	return nil
 }
 
 // Wait waits for the move operation to finish.
 func (ro *RedisOperationMove) Wait() error {
-	ro.redkeyCluster.status = Resharding
+	ro.cluster.SetStatus(Resharding)
 
 	// Wait for reshard to finish
 	err := ro.Run()
 
 	// Reshard failed
 	if err != nil {
-		ro.redkeyCluster.status = ReshardingError
+		ro.cluster.SetStatus(ReshardingError)
 		return fmt.Errorf("error moving slots from node '%s' to node '%s': %v", ro.nodeFrom.Name, ro.nodeTo.Name, err)
 	}
 
 	// Reshard finished successfully
-	ro.redkeyCluster.status = Ready
+	ro.cluster.SetStatus(Ready)
 	ro.logger.Info("Slots moved successfully between nodes", "from", ro.nodeFrom.Name, "to", ro.nodeTo.Name)
 
 	// Update nodes info
-	if err := ro.redkeyCluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodes(); err != nil {
 		return err
 	}
 	return nil

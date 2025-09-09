@@ -30,7 +30,7 @@ type RedKeyCluster struct {
 }
 
 // NewRedKeyCluster creates a new RedKey cluster
-func NewRedKeyCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) *RedKeyCluster {
+func NewRedKeyCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) Cluster {
 	return &RedKeyCluster{
 		clusterBase: clusterBase{
 			ctx:    ctx,
@@ -571,12 +571,7 @@ func (rc *RedKeyCluster) addNode(name, addr string) *redis.RedisNode {
 	rc.mux.RLock()
 	defer rc.mux.RUnlock()
 
-	node := &redis.RedisNode{
-		Name:       name,
-		Addr:       addr,
-		MaxRetries: rc.GetClusterMaxRetries(),
-		Backoff:    rc.GetClusterBackOff(),
-	}
+	node := redis.NewRedisNode(name, addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 
 	rc.logger.Info("Initializing node", "node", node.Name)
 	if err := node.Init(rc.ctx); err != nil {
@@ -659,12 +654,7 @@ func (rc *RedKeyCluster) checkNodes() error {
 		}
 
 		// Init a fresh node to check if IP or ID have changed. This can happen if the node has been restarted
-		freshNode := redis.RedisNode{
-			Name:       nodeName,
-			Addr:       node.Addr,
-			MaxRetries: rc.GetClusterMaxRetries(),
-			Backoff:    rc.GetClusterBackOff(),
-		}
+		freshNode := redis.NewRedisNode(nodeName, node.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 		if err := freshNode.Init(rc.ctx); err != nil {
 			rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
 			continue
@@ -1324,7 +1314,7 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 }
 
 // getAndCheckRedisClient creates a Redis client and checks the connection
-func (rc *RedKeyCluster) getAndCheckRedisClient(close bool) (*redis.RedisClient, error) {
+func (rc *RedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
 	// Create Redis client
 	redisClient := redis.NewRedisClient(rc.ctx, rc.GetAddress(), os.Getenv("REDISAUTH"), 0)
 	if close {

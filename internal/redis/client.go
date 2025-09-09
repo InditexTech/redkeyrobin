@@ -70,6 +70,44 @@ const (
 // Redis Client
 // -----------------------------------------------------------------------------
 
+// RedisClientInterface defines the interface for RedisClient.
+type RedisClientInterface interface {
+	// Close closes the Redis connection.
+	Close() error
+	// CheckConnection pings the Redis server until a connection is established.
+	CheckConnection(maxRetries int, backoff time.Duration) error
+	// GetInfo retrieves and parses the Redis INFO output for the given IP.
+	GetInfo() (*RedisInfo, error)
+	// GetClusterInfo retrieves and parses cluster information from Redis.
+	GetClusterInfo() (*ClusterInfo, error)
+	// GetNodesInfo retrieves and parses the cluster nodes information.
+	GetNodesInfo() ([]RedisNode, error)
+	// GetMyID retrieves the ID of the current Redis node.
+	GetMyID() (string, error)
+	// ClusterForgetNode removes a node from the cluster.
+	ClusterForgetNode(nodeID string) error
+	// ClusterMeet instructs the current node to meet the specified node.
+	ClusterMeet(ip string, port int) error
+	// ClusterReplicate instructs the current node to
+	ClusterReplicate(nodeID string) error
+	// ClusterReset instructs the current node to reset.
+	ClusterReset(hard bool) error
+	// ClusterForget removes a node in the current node from the cluster.
+	ClusterForget(nodeID string) error
+	// ClusterAddSlots adds the specified slots to the current node.
+	ClusterAddSlots(slots ...int) error
+	// ClusterFailover triggers a manual failover of the current node.
+	ClusterFailover() error
+	// ClusterCheck executes "redis-cli --cluster check <addr>" and parses its output.
+	ClusterCheck(ctx context.Context) (*ClusterCheckResult, error)
+	// ClusterFix executes "redis-cli --cluster fix <addr>" asynchrously and returns the command reference.
+	ClusterFix(ctx context.Context) *RedisCLICommand
+	// ReshardNode executes "redis-cli --cluster reshard <addr> --cluster-from <source> --cluster-to <target> --cluster-slots <slots> --cluster-yes" asynchronously and returns the command reference.
+	ReshardNode(ctx context.Context, source, target RedisNode, slots int) *RedisCLICommand
+	// ClusterRebalance executes "redis-cli --cluster rebalance <addr> --cluster-weight <weight> --cluster-yes" asynchronously and returns the command reference.
+	ClusterRebalance(ctx context.Context, weights map[string]int) *RedisCLICommand
+}
+
 // RedisClient encapsulates a connection to Redis.
 type RedisClient struct {
 	logger *slog.Logger
