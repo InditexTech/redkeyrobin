@@ -1027,7 +1027,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 	for _, node := range rc.nodes {
 		clusterNodes, err := node.GetClusterNodes(ctx)
 		if err != nil {
-			return fmt.Errorf("error getting cluster nodes from node %s: %w", node.Name, err)
+			return fmt.Errorf("error getting cluster nodes from node %s: %v", node.Name, err)
 		}
 
 		for _, clusterNode := range clusterNodes {
@@ -1038,7 +1038,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 
 			// Forget the node
 			if err := node.ForgetNode(ctx, clusterNode); err != nil {
-				return fmt.Errorf("error forgetting node %s from node %s: %w", clusterNode.ID, node.Name, err)
+				return fmt.Errorf("error forgetting node %s from node %s: %v", clusterNode.ID, node.Name, err)
 			}
 
 			rc.logger.Info("Node forgotten successfully", "node", clusterNode.ID, "from", node.Name)
@@ -1128,7 +1128,7 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 		} else if len(replicas) < int(replicasPerMaster) { // Too few replicas
 			masterNeedsReplicas = append(masterNeedsReplicas, master)
 		} else if len(replicas) > int(replicasPerMaster) { // Too much replicas
-			replicaNeedsMove = append(replicaNeedsMove, replicas[:replicasPerMaster]...)
+			replicaNeedsMove = append(replicaNeedsMove, replicas[replicasPerMaster:]...)
 		}
 	}
 
@@ -1145,6 +1145,22 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 		for _, master := range masters {
 			if master.Name == replica.MasterID {
 				pointedAtMaster = true
+				// Update the replica's MasterID to use the master's ID instead of name
+				replica.MasterID = master.ID
+
+				// Check if this master now has the right number of replicas and can be removed from masterNeedsReplicas
+				currentReplicas := rc.GetReplicasOfNode(master)
+				replicasPerMaster := rc.GetReplicasPerMaster()
+				if len(currentReplicas)+1 >= int(replicasPerMaster) { // +1 because we just assigned this replica
+					// Remove this master from masterNeedsReplicas
+					for i, needsReplicasMaster := range masterNeedsReplicas {
+						if needsReplicasMaster.ID == master.ID {
+							masterNeedsReplicas = append(masterNeedsReplicas[:i], masterNeedsReplicas[i+1:]...)
+							break
+						}
+					}
+				}
+				break
 			}
 		}
 		if !pointedAtMaster {
@@ -1226,7 +1242,7 @@ func (rc *RedKeyCluster) convertNodesToMaster(ctx context.Context, nodes []*redi
 		if err := node.Reset(ctx); err != nil {
 			return err
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(rc.GetNodeResetWaitTime())
 	}
 
 	// Meet the cluster to promote the nodes to masters

@@ -1079,30 +1079,80 @@ func TestRedKeyClusterFixClusterIfNeeded(t *testing.T) {
 
 func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 	tests := []struct {
-		name string
-	}{
-		{
-			name: "",
-		},
-	}
+		name             string
+		nodes            []*redis.RedisNode
+		operationFactory *OperationFactory
+		clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+		expectedError    error
+	}{}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:       "test-cluster",
+							MaxRetries: 1,
+							BackOff:    time.Microsecond * 10,
+						},
+					},
+				},
+				"Ready",
+				map[string]*redis.RedisNode{},
+				make(map[string][]RedisOperation),
+				make(chan struct{}, 1),
+			).WithClientFactory(tt.clientFactory).WithOperationFactory(tt.operationFactory)
 
+			err := cluster.addNewNodesIfNeeded()
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
 
 func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 	tests := []struct {
-		name string
-	}{
-		{
-			name: "",
-		},
-	}
+		name             string
+		nodes            []*redis.RedisNode
+		operationFactory *OperationFactory
+		clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+		expectedError    error
+	}{}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:       "test-cluster",
+							MaxRetries: 1,
+							BackOff:    time.Microsecond * 10,
+						},
+					},
+				},
+				"Ready",
+				map[string]*redis.RedisNode{},
+				make(map[string][]RedisOperation),
+				make(chan struct{}, 1),
+			).WithClientFactory(tt.clientFactory).WithOperationFactory(tt.operationFactory)
 
+			err := cluster.removeNodesIfNeeded(t.Context())
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
@@ -1214,30 +1264,324 @@ func TestRedKeyClusterRemoveSlotsFromNodes(t *testing.T) {
 
 func TestRedKeyClusterForgetAndRemoveNodes(t *testing.T) {
 	tests := []struct {
-		name string
-	}{
-		{
-			name: "",
-		},
-	}
+		name             string
+		nodes            []*redis.RedisNode
+		operationFactory *OperationFactory
+		clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+		expectedError    error
+	}{}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:       "test-cluster",
+							MaxRetries: 1,
+							BackOff:    time.Microsecond * 10,
+						},
+					},
+				},
+				"Ready",
+				map[string]*redis.RedisNode{},
+				make(map[string][]RedisOperation),
+				make(chan struct{}, 1),
+			).WithClientFactory(tt.clientFactory).WithOperationFactory(tt.operationFactory)
 
+			err := cluster.forgetAndRemoveNodes(t.Context(), tt.nodes)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
 
 func TestRedKeyClusterGetNodesToRemove(t *testing.T) {
+	// Create mock client factory that fails on Reset for convertNodesToMaster
+	mockClientFactoryResetError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		client := redis.MockRedisClient{
+			ClusterResetError: fmt.Errorf("reset error"),
+		}
+		return client, nil
+	}
+
 	tests := []struct {
-		name string
+		name          string
+		nodes         map[string]*redis.RedisNode
+		clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+		expectedNodes []*redis.RedisNode
+		expectedError error
 	}{
 		{
-			name: "",
+			name: "NotEnoughNodesToRemove",
+			nodes: map[string]*redis.RedisNode{
+				"node0-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-0", mockClientFactory)
+					node.ID = "node0-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedNodes: nil,
+			expectedError: fmt.Errorf("not enough nodes to remove"),
+		},
+		{
+			name: "ConvertNodesToMasterError",
+			nodes: map[string]*redis.RedisNode{
+				"node0-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-0", mockClientFactoryResetError)
+					node.ID = "node0-id"
+					node.Flags = "slave"
+					return node
+				}(),
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node3-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedNodes: nil,
+			expectedError: fmt.Errorf("reset error"),
+		},
+		{
+			name: "SuccessRemoveSingleNode",
+			nodes: map[string]*redis.RedisNode{
+				"node0-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-0", mockClientFactory)
+					node.ID = "node0-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node3-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedNodes: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "SuccessRemoveMultipleNodes",
+			nodes: map[string]*redis.RedisNode{
+				"node0-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-0", mockClientFactory)
+					node.ID = "node0-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node3-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node4-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-4", mockClientFactory)
+					node.ID = "node4-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedNodes: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "master"
+					return node
+				}(),
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-4", mockClientFactory)
+					node.ID = "node4-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "SuccessOrderedByOrdinal",
+			nodes: map[string]*redis.RedisNode{
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node0-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-0", mockClientFactory)
+					node.ID = "node0-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node3-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedNodes: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "SuccessMixedNodeTypes",
+			nodes: map[string]*redis.RedisNode{
+				"node0-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-0", mockClientFactory)
+					node.ID = "node0-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"node3-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedNodes: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-3", mockClientFactory)
+					node.ID = "node3-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			expectedError: nil,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:                       "test-cluster",
+							Replicas:                   3,
+							ReplicasPerMaster:          0,
+							ClusterMeetWaitTimeSeconds: 0,
+							NodeResetWaitTimeSeconds:   0,
+							MaxRetries:                 1,
+							BackOff:                    time.Microsecond * 10,
+						},
+					},
+				},
+				"Ready",
+				tt.nodes,
+				make(map[string][]RedisOperation),
+				make(chan struct{}, 1),
+			).WithClientFactory(tt.clientFactory)
 
+			nodes, err := cluster.getNodesToRemove(context.Background())
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError.Error(), err.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Len(t, nodes, len(tt.expectedNodes))
+				for i, expectedNode := range tt.expectedNodes {
+					assert.Equal(t, expectedNode.Name, nodes[i].Name)
+					assert.Equal(t, expectedNode.ID, nodes[i].ID)
+				}
+			}
 		})
 	}
 }
@@ -1371,12 +1715,172 @@ func TestRedKeyClusterMeetNodes(t *testing.T) {
 }
 
 func TestRedKeyClusterRemoveOutdatedNodes(t *testing.T) {
+	// Create mock client factories for different error scenarios
+	mockClientFactoryGetNodesError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		client := redis.MockRedisClient{
+			GetNodesInfoError: fmt.Errorf("get nodes info error"),
+		}
+		return client, nil
+	}
+
+	mockClientFactoryForgetNodeError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		// Create nodes with "fail" flag to be removed
+		nodeToRemove := redis.NewFakeRedisNode("outdated-node", mockClientFactory)
+		nodeToRemove.ID = "outdated-id"
+		nodeToRemove.Flags = "fail"
+
+		client := redis.MockRedisClient{
+			MockNodesInfo:      []redis.RedisNode{*nodeToRemove},
+			ClusterForgetError: fmt.Errorf("forget node error"),
+		}
+		return client, nil
+	}
+
 	tests := []struct {
 		name          string
 		nodes         map[string]*redis.RedisNode
 		clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
 		expectedError error
-	}{}
+	}{
+		{
+			name: "GetClusterNodesError",
+			nodes: map[string]*redis.RedisNode{
+				"node1": redis.NewFakeRedisNode("node1", mockClientFactoryGetNodesError),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: fmt.Errorf("error getting cluster nodes from node node1: get nodes info error"),
+		},
+		{
+			name: "ForgetNodeError",
+			nodes: map[string]*redis.RedisNode{
+				"node1": redis.NewFakeRedisNode("node1", mockClientFactoryForgetNodeError),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: fmt.Errorf("error forgetting node outdated-id from node node1: forget node error"),
+		},
+		{
+			name: "RefreshNodesError",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					// Create a node that returns healthy nodes (no removal needed)
+					healthyNode := redis.NewFakeRedisNode("healthy-node", mockClientFactory)
+					healthyNode.ID = "healthy-id"
+					healthyNode.Flags = "master"
+
+					mockClientFactoryHealthy := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{*healthyNode},
+						}
+						return client, nil
+					}
+					return redis.NewFakeRedisNode("node1", mockClientFactoryHealthy)
+				}(),
+			},
+			clientFactory: mockClientFactoryRefreshError,
+			expectedError: fmt.Errorf("error refreshing nodes info: %v", errRefresh),
+		},
+		{
+			name: "SuccessNoOutdatedNodes",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					healthyNode := redis.NewFakeRedisNode("healthy-node", mockClientFactory)
+					healthyNode.ID = "healthy-id"
+					healthyNode.Flags = "master"
+
+					mockClientFactoryHealthy := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{*healthyNode},
+						}
+						return client, nil
+					}
+					return redis.NewFakeRedisNode("node1", mockClientFactoryHealthy)
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessFailFlagNode",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					failedNode := redis.NewFakeRedisNode("failed-node", mockClientFactory)
+					failedNode.ID = "failed-id"
+					failedNode.Flags = "fail"
+
+					mockClientFactoryWithFailedNode := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{*failedNode},
+						}
+						return client, nil
+					}
+					return redis.NewFakeRedisNode("node1", mockClientFactoryWithFailedNode)
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessNoAddrFlagNode",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					noaddrNode := redis.NewFakeRedisNode("noaddr-node", mockClientFactory)
+					noaddrNode.ID = "noaddr-id"
+					noaddrNode.Flags = "noaddr"
+
+					mockClientFactoryWithNoAddrNode := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{*noaddrNode},
+						}
+						return client, nil
+					}
+					return redis.NewFakeRedisNode("node1", mockClientFactoryWithNoAddrNode)
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessMultipleNodes",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					failedNode := redis.NewFakeRedisNode("failed-node", mockClientFactory)
+					failedNode.ID = "failed-id"
+					failedNode.Flags = "fail"
+
+					noaddrNode := redis.NewFakeRedisNode("noaddr-node", mockClientFactory)
+					noaddrNode.ID = "noaddr-id"
+					noaddrNode.Flags = "noaddr"
+
+					healthyNode := redis.NewFakeRedisNode("healthy-node", mockClientFactory)
+					healthyNode.ID = "healthy-id"
+					healthyNode.Flags = "master"
+
+					mockClientFactoryMultiple := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{*failedNode, *noaddrNode, *healthyNode},
+						}
+						return client, nil
+					}
+					return redis.NewFakeRedisNode("node1", mockClientFactoryMultiple)
+				}(),
+				"node2": func() *redis.RedisNode {
+					healthyNode := redis.NewFakeRedisNode("healthy-node2", mockClientFactory)
+					healthyNode.ID = "healthy-id2"
+					healthyNode.Flags = "master"
+
+					mockClientFactoryHealthy := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{*healthyNode},
+						}
+						return client, nil
+					}
+					return redis.NewFakeRedisNode("node2", mockClientFactoryHealthy)
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1425,12 +1929,207 @@ func TestRedKeyClusterEnsureClusterRatio(t *testing.T) {
 }
 
 func TestRedKeyClusterEnsureReplicaSpread(t *testing.T) {
+	// Create mock client factories for different error scenarios
+	mockClientFactoryReplicateError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		client := redis.MockRedisClient{
+			ClusterReplicateError: fmt.Errorf("replicate error"),
+		}
+		return client, nil
+	}
+
 	tests := []struct {
 		name          string
 		nodes         map[string]*redis.RedisNode
 		clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
 		expectedError error
-	}{}
+	}{
+		{
+			name: "NotEnoughReplicas",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"master2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master2", mockClientFactory)
+					node.ID = "master2-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "unknown-master-id" // Points to unknown master, needs move
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: fmt.Errorf("there are not enough replicas to convert. masters=%d replicas=%d", 2, 1),
+		},
+		{
+			name: "ReplicateNodeError",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactoryReplicateError)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "unknown-master-id" // Points to unknown master, needs move
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: fmt.Errorf("error promoting replica replica1 to master master1: replicate error"),
+		},
+		{
+			name: "RefreshNodesError",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "unknown-master-id" // Points to unknown master, needs move
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactoryRefreshError,
+			expectedError: fmt.Errorf("error refreshing nodes info: %v", errRefresh),
+		},
+		{
+			name: "SuccessNoChangesNeeded",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "master1-id" // Points to correct master
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessReplicaPointingToUnknownMaster",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "unknown-master-id" // Points to unknown master, needs move
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessReplicaPointingToMasterName",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "master1" // Points to master name, should be auto-corrected to master ID
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessReplicaPointingToReplica",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "master1-id"
+					return node
+				}(),
+				"replica2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica2", mockClientFactory)
+					node.ID = "replica2-id"
+					node.Flags = "slave"
+					node.MasterID = "replica1-id" // Points to replica, needs move
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessTooManyReplicasForMaster",
+			nodes: map[string]*redis.RedisNode{
+				"master1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"master2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master2", mockClientFactory)
+					node.ID = "master2-id"
+					node.Flags = "master"
+					return node
+				}(),
+				"replica1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave"
+					node.MasterID = "master1-id"
+					return node
+				}(),
+				"replica2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica2", mockClientFactory)
+					node.ID = "replica2-id"
+					node.Flags = "slave"
+					node.MasterID = "master1-id" // Two replicas for master1, one should move to master2
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1439,9 +2138,10 @@ func TestRedKeyClusterEnsureReplicaSpread(t *testing.T) {
 				&config.Configuration{
 					Redis: config.RedisConfig{
 						Cluster: config.RedKeyClusterConfig{
-							Name:       "test-cluster",
-							MaxRetries: 1,
-							BackOff:    time.Microsecond * 10,
+							Name:              "test-cluster",
+							MaxRetries:        1,
+							BackOff:           time.Microsecond * 10,
+							ReplicasPerMaster: 1,
 						},
 					},
 				},
@@ -1464,13 +2164,203 @@ func TestRedKeyClusterEnsureReplicaSpread(t *testing.T) {
 }
 
 func TestRedKeyClusterConvertNodesToReplica(t *testing.T) {
+	// Create mock client factories for different error scenarios
+	mockClientFactoryRemoveSlotsError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		client := redis.MockRedisClient{
+			ClusterRebalanceError: fmt.Errorf("remove slots error"),
+		}
+		return client, nil
+	}
+
+	mockClientFactoryReplicateError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		client := redis.MockRedisClient{
+			ClusterReplicateError: fmt.Errorf("replicate error"),
+		}
+		return client, nil
+	}
+
 	tests := []struct {
-		name           string
-		nodesToConvert []*redis.RedisNode
-		nodesToKeep    []*redis.RedisNode
-		clientFactory  func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
-		expectedError  error
-	}{}
+		name             string
+		nodesToConvert   []*redis.RedisNode
+		nodesToKeep      []*redis.RedisNode
+		clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+		operationFactory *OperationFactory
+		expectedError    error
+	}{
+		{
+			name: "RemoveSlotsError",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactoryRemoveSlotsError)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					node.Slots = []redis.RedisSlotRange{{Start: 0, End: 100}}
+					return node
+				}(),
+			},
+			nodesToKeep: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper1", mockClientFactory)
+					node.ID = "keeper1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			operationFactory: &OperationFactory{
+				NewRebalance: func(ctx context.Context, cluster Cluster, weights map[string]int) *RedisOperationRebalance {
+					mockCluster := NewMockRedKeyCluster(redkeyCluster)
+					mockCluster.EnsureNodesAreUpError = fmt.Errorf("nodes are not up")
+					return NewFakeRedisOperationRebalance(ctx, mockCluster, "Running", time.Time{})
+				},
+			},
+			expectedError: fmt.Errorf("error ensuring nodes are up: nodes are not up"),
+		},
+		{
+			name: "ReplicateNodeError",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactoryReplicateError)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			nodesToKeep: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper1", mockClientFactory)
+					node.ID = "keeper1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: fmt.Errorf("replicate error"),
+		},
+		{
+			name: "RefreshNodesError",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			nodesToKeep: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper1", mockClientFactory)
+					node.ID = "keeper1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactoryRefreshError,
+			expectedError: fmt.Errorf("error refreshing nodes info: %v", errRefresh),
+		},
+		{
+			name: "SuccessSkipReplicas",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave" // Already a replica, should be skipped
+					return node
+				}(),
+			},
+			nodesToKeep: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper1", mockClientFactory)
+					node.ID = "keeper1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessSingleConversion",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			nodesToKeep: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper1", mockClientFactory)
+					node.ID = "keeper1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessMultipleConversions",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			nodesToKeep: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper1", mockClientFactory)
+					node.ID = "keeper1-id"
+					node.Flags = "master"
+					return node
+				}(),
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper2", mockClientFactory)
+					node.ID = "keeper2-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessMixedNodes",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("replica1", mockClientFactory)
+					node.ID = "replica1-id"
+					node.Flags = "slave" // Already replica, should be skipped
+					return node
+				}(),
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("master1", mockClientFactory)
+					node.ID = "master1-id"
+					node.Flags = "master" // Should be converted
+					return node
+				}(),
+			},
+			nodesToKeep: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("keeper1", mockClientFactory)
+					node.ID = "keeper1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1489,7 +2379,7 @@ func TestRedKeyClusterConvertNodesToReplica(t *testing.T) {
 				map[string]*redis.RedisNode{},
 				make(map[string][]RedisOperation),
 				make(chan struct{}, 1),
-			).WithClientFactory(tt.clientFactory)
+			).WithClientFactory(tt.clientFactory).WithOperationFactory(tt.operationFactory)
 
 			err := cluster.convertNodesToReplica(context.Background(), tt.nodesToConvert, tt.nodesToKeep)
 
@@ -1504,13 +2394,172 @@ func TestRedKeyClusterConvertNodesToReplica(t *testing.T) {
 }
 
 func TestRedKeyClusterConvertNodesToMaster(t *testing.T) {
+	// Create mock client factories for different error scenarios
+	mockClientFactoryResetError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		client := redis.MockRedisClient{
+			ClusterResetError: fmt.Errorf("reset error"),
+		}
+		return client, nil
+	}
+
+	mockClientFactoryMeetError := func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+		client := redis.MockRedisClient{
+			ClusterMeetError: fmt.Errorf("meet error"),
+		}
+		return client, nil
+	}
+
 	tests := []struct {
 		name           string
 		nodesToConvert []*redis.RedisNode
 		nodes          map[string]*redis.RedisNode
 		clientFactory  func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
 		expectedError  error
-	}{}
+	}{
+		{
+			name: "ResetError",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactoryResetError)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			nodes: map[string]*redis.RedisNode{
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactoryResetError)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactoryResetError,
+			expectedError: fmt.Errorf("reset error"),
+		},
+		{
+			name: "MeetNodesError",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			nodes:         map[string]*redis.RedisNode{},
+			clientFactory: mockClientFactoryMeetError,
+			expectedError: fmt.Errorf("error meeting nodes: there are no nodes in the cluster"),
+		},
+		{
+			name: "SuccessSkipMasters",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			nodes: map[string]*redis.RedisNode{
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessConvertSingleNode",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			nodes: map[string]*redis.RedisNode{
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessConvertMultipleNodes",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			nodes: map[string]*redis.RedisNode{
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "slave"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+		{
+			name: "SuccessMixedNodes",
+			nodesToConvert: []*redis.RedisNode{
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+				func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			nodes: map[string]*redis.RedisNode{
+				"node1-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", mockClientFactory)
+					node.ID = "node1-id"
+					node.Flags = "slave"
+					return node
+				}(),
+				"node2-id": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", mockClientFactory)
+					node.ID = "node2-id"
+					node.Flags = "master"
+					return node
+				}(),
+			},
+			clientFactory: mockClientFactory,
+			expectedError: nil,
+		},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1519,9 +2568,13 @@ func TestRedKeyClusterConvertNodesToMaster(t *testing.T) {
 				&config.Configuration{
 					Redis: config.RedisConfig{
 						Cluster: config.RedKeyClusterConfig{
-							Name:       "test-cluster",
-							MaxRetries: 1,
-							BackOff:    time.Microsecond * 10,
+							Name:                       "test-cluster",
+							Replicas:                   3,
+							ReplicasPerMaster:          2,
+							ClusterMeetWaitTimeSeconds: 0,
+							NodeResetWaitTimeSeconds:   0,
+							MaxRetries:                 1,
+							BackOff:                    time.Microsecond * 10,
 						},
 					},
 				},
