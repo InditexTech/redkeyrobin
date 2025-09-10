@@ -226,7 +226,9 @@ func (m MockRedisClient) ClusterRebalance(ctx context.Context, weights map[strin
 		return cmd
 	}
 	// Return a successful command by default
-	return NewRedisCLICommand(ctx, "exit 0")
+	command := NewRedisCLICommand(ctx, "exit 0")
+	command.Start()
+	return command
 }
 
 // ReshardNode mocks the ReshardNode method
@@ -238,5 +240,7 @@ func (m MockRedisClient) ReshardNode(ctx context.Context, source, target RedisNo
 	}
 
 	// Return a successful command by default
-	return NewRedisCLICommand(ctx, "exit 0")
+	command := NewRedisCLICommand(ctx, "exit 0")
+	command.Start()
+	return command
 }

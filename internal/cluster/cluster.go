@@ -67,6 +67,8 @@ type clusterGetter interface {
 	GetClusterMaxRetries() int
 	// GetClusterBackOff returns the backoff duration for a RedKey Cluster check connection operation
 	GetClusterBackOff() time.Duration
+	// GetClusterMeetWaitTime returns the cluster meet wait time for a RedKey cluster
+	GetClusterMeetWaitTime() time.Duration
 	// GetMetricsRedisInfoKeys returns the Redis info keys to be collected
 	GetMetricsRedisInfoKeys() []string
 	// GetMetricsInterval returns the interval for collecting Redis metrics
@@ -245,6 +247,11 @@ func (rc *clusterBase) GetClusterHealingTime() int {
 // GetClusterHealthProbePeriod returns the health probe period for a RedKey cluster
 func (rc *clusterBase) GetClusterHealthProbePeriod() int {
 	return rc.conf.Redis.Cluster.HealthProbePeriodSeconds
+}
+
+// GetClusterMeetWaitTime returns the cluster meet wait time for a RedKey cluster
+func (rc *clusterBase) GetClusterMeetWaitTime() time.Duration {
+	return time.Duration(rc.conf.Redis.Cluster.ClusterMeetWaitTimeSeconds) * time.Second
 }
 
 // GetMetricsRedisInfoKeys returns the Redis info keys to be collected

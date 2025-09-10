@@ -28,8 +28,8 @@ type RedKeyCluster struct {
 	channel    chan struct{}
 	mux        sync.RWMutex
 
-	clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
-	operationFactory *OperationFactory 
+	clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+	operationFactory *OperationFactory
 }
 
 // Default client factory for RedKeyCluster (global, no closure)
@@ -50,11 +50,11 @@ func NewRedKeyCluster(ctx context.Context, conf *config.Configuration, channel c
 			conf:   conf,
 			status: Unknown,
 		},
-		nodes:         make(map[string]*redis.RedisNode),
-		operations:    make(map[string][]RedisOperation),
-		channel:       channel,
-		mux:           sync.RWMutex{},
-		clientFactory: defaultRedKeyClusterClientFactory,
+		nodes:            make(map[string]*redis.RedisNode),
+		operations:       make(map[string][]RedisOperation),
+		channel:          channel,
+		mux:              sync.RWMutex{},
+		clientFactory:    defaultRedKeyClusterClientFactory,
 		operationFactory: defaultOperationFactory(),
 	}
 }
@@ -68,11 +68,11 @@ func NewFakeRedKeyCluster(ctx context.Context, conf *config.Configuration, statu
 			conf:   conf,
 			status: status,
 		},
-		nodes:         nodes,
-		operations:    operations,
-		channel:       channel,
-		mux:           sync.RWMutex{},
-		clientFactory: defaultRedKeyClusterClientFactory,
+		nodes:            nodes,
+		operations:       operations,
+		channel:          channel,
+		mux:              sync.RWMutex{},
+		clientFactory:    defaultRedKeyClusterClientFactory,
 		operationFactory: defaultOperationFactory(),
 	}
 }
@@ -269,7 +269,7 @@ func (rc *RedKeyCluster) Rebalance(async bool, weights map[string]int, force boo
 	}
 
 	// Launch cluster rebalance operation
-    return rc.launchOperation(rc.operationFactory.NewRebalance(rc.ctx, rc, weights), Rebalancing, async)
+	return rc.launchOperation(rc.operationFactory.NewRebalance(rc.ctx, rc, weights), Rebalancing, async)
 }
 
 // MoveSlots moves slots from one Redis node to another.
@@ -937,7 +937,7 @@ func (rc *RedKeyCluster) removeSlotsFromNodes(nodes []*redis.RedisNode) error {
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return fmt.Errorf("error refreshing nodes info: %w", err)
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 	return nil
 }
@@ -957,7 +957,7 @@ func (rc *RedKeyCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*redi
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	return nil
 }
@@ -1010,11 +1010,11 @@ func (rc *RedKeyCluster) meetNodes(ctx context.Context) error {
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return fmt.Errorf("error refreshing nodes info: %w", err)
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	rc.logger.Info("Nodes met successfully")
@@ -1047,7 +1047,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 
 	// Update nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1162,13 +1162,13 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 		rc.logger.Info("Converting node to replica", "node", replicaNeedsMove[i].Name, "master", masterNeedsReplicas[i].Name)
 
 		if err := replicaNeedsMove[i].ReplicateNode(ctx, *masterNeedsReplicas[i]); err != nil {
-			return err
+			return fmt.Errorf("error promoting replica %s to master %s: %v", replicaNeedsMove[i].Name, masterNeedsReplicas[i].Name, err)
 		}
 	}
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1202,11 +1202,11 @@ func (rc *RedKeyCluster) convertNodesToReplica(ctx context.Context, nodesToConve
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1231,7 +1231,7 @@ func (rc *RedKeyCluster) convertNodesToMaster(ctx context.Context, nodes []*redi
 
 	// Meet the cluster to promote the nodes to masters
 	if err := rc.meetNodes(ctx); err != nil {
-		return err
+		return fmt.Errorf("error meeting nodes: %v", err)
 	}
 
 	return nil
@@ -1253,12 +1253,12 @@ func (rc *RedKeyCluster) promoteReplicaOfNode(ctx context.Context, node *redis.R
 	// Promote the first replica
 	rc.logger.Info("Promoting replica to master", "replica", replicas[0].Name, "master", node.Name)
 	if err := replicas[0].Failover(ctx); err != nil {
-		return err
+		return fmt.Errorf("error promoting replica %s to master %s: %v", replicas[0].Name, node.Name, err)
 	}
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1330,11 +1330,11 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %w", err)
 	}
 
 	rc.logger.Info("Missing slots assigned successfully")
