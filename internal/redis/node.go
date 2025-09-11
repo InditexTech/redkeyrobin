@@ -111,7 +111,12 @@ func (rn *RedisNode) SetIP(ip string) {
 
 // IsMaster returns true if the Redis node is a master.
 func (rn *RedisNode) IsMaster() bool {
-	return strings.Contains(rn.Flags, "master")
+	return rn.hasFlag("master")
+}
+
+// IsReplica returns true if the Redis node is a replica.
+func (rn *RedisNode) IsReplica() bool {
+	return rn.hasFlag("slave")
 }
 
 // IsConnected returns true if the Redis node is connected.
@@ -122,11 +127,6 @@ func (rn *RedisNode) IsConnected() bool {
 // IsDisconnected returns true if the Redis node is disconnected.
 func (rn *RedisNode) IsDisconnected() bool {
 	return rn.LinkStatus == "disconnected"
-}
-
-// IsReplica returns true if the Redis node is a replica.
-func (rn *RedisNode) IsReplica() bool {
-	return rn.hasFlag("slave")
 }
 
 // HasSlots returns true if the Redis node has slots.
