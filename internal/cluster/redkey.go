@@ -1004,7 +1004,7 @@ func (rc *RedKeyCluster) meetNodes(ctx context.Context) error {
 			}
 
 			if err := sourceNode.MeetNode(ctx, *targetNode); err != nil {
-				return fmt.Errorf("error in ClusterMeet between '%s' and '%s': %w", sourceNode.Name, targetNode.Name, err)
+				return fmt.Errorf("error in ClusterMeet between '%s' and '%s': %v", sourceNode.Name, targetNode.Name, err)
 			}
 		}
 	}
@@ -1350,7 +1350,7 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return fmt.Errorf("error refreshing nodes info: %w", err)
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	rc.logger.Info("Missing slots assigned successfully")

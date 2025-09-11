@@ -215,7 +215,9 @@ func (m MockRedisClient) ClusterFix(ctx context.Context) *RedisCLICommand {
 		return cmd
 	}
 	// Return a successful command by default
-	return NewRedisCLICommand(ctx, "exit 0")
+	command := NewRedisCLICommand(ctx, "exit 0")
+	command.Start()
+	return command
 }
 
 // ClusterRebalance mocks the ClusterRebalance method
