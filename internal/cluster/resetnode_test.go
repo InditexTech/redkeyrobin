@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -70,7 +70,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 	tests := []struct {
 		name          string
 		setupMock     func(*MockRedKeyCluster)
-		node *redis.RedisNode
+		node          *redis.RedisNode
 		expectedError error
 	}{
 		{
@@ -85,7 +85,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				// No setup needed - GetNode will return nil for non-existent node
 			},
-			node:      redis.NewFakeRedisNode("non-existent-node", mockClientFactory),
+			node:          redis.NewFakeRedisNode("non-existent-node", mockClientFactory),
 			expectedError: fmt.Errorf("node 'non-existent-node' not found"),
 		},
 		{
@@ -93,7 +93,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				// No setup needed - Reset will fail due to mock client
 			},
-			node:      redis.NewFakeRedisNode("test-1", mockClientFactoryError),
+			node:          redis.NewFakeRedisNode("test-1", mockClientFactoryError),
 			expectedError: fmt.Errorf("error creating client"),
 		},
 		{
@@ -104,7 +104,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 				// Make the cluster ephemeral
 				mock.SetEphemeral(true)
 			},
-			node:      redis.NewFakeRedisNode("test-0", mockClientFactory),
+			node:          redis.NewFakeRedisNode("test-0", mockClientFactory),
 			expectedError: fmt.Errorf("forget node failed"),
 		},
 		{
@@ -112,7 +112,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				mock.CheckNodesError = fmt.Errorf("check nodes failed")
 			},
-			node: 	redis.NewFakeRedisNode("test-0", mockClientFactory),
+			node:          redis.NewFakeRedisNode("test-0", mockClientFactory),
 			expectedError: fmt.Errorf("check nodes failed"),
 		},
 		{
@@ -120,7 +120,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				mock.RemoveOutdatedNodesError = fmt.Errorf("remove outdated nodes failed")
 			},
-			node: 	redis.NewFakeRedisNode("test-0", mockClientFactory),
+			node:          redis.NewFakeRedisNode("test-0", mockClientFactory),
 			expectedError: fmt.Errorf("remove outdated nodes failed"),
 		},
 		{
@@ -128,7 +128,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				mock.MeetNodesIfNeededError = fmt.Errorf("meet nodes failed")
 			},
-			node: 	redis.NewFakeRedisNode("test-0", mockClientFactory),
+			node:          redis.NewFakeRedisNode("test-0", mockClientFactory),
 			expectedError: fmt.Errorf("meet nodes failed"),
 		},
 		{
@@ -136,7 +136,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				mock.EnsureClusterRatioError = fmt.Errorf("cluster ratio failed")
 			},
-			node: 	redis.NewFakeRedisNode("test-0", mockClientFactory),
+			node:          redis.NewFakeRedisNode("test-0", mockClientFactory),
 			expectedError: fmt.Errorf("cluster ratio failed"),
 		},
 		{
@@ -144,7 +144,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				mock.RefreshNodesError = fmt.Errorf("refresh nodes failed")
 			},
-			node: 	redis.NewFakeRedisNode("test-0", mockClientFactory),
+			node:          redis.NewFakeRedisNode("test-0", mockClientFactory),
 			expectedError: fmt.Errorf("refresh nodes failed"),
 		},
 		{
@@ -152,7 +152,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 			setupMock: func(mock *MockRedKeyCluster) {
 				// All methods should succeed - no errors to set
 			},
-			node: 	redis.NewFakeRedisNode("test-0", mockClientFactory),
+			node:          redis.NewFakeRedisNode("test-0", mockClientFactory),
 			expectedError: nil,
 		},
 	}

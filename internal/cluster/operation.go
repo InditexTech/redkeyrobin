@@ -109,25 +109,25 @@ func (ro *RedisOperationBase) GetNodeTo() *redis.RedisNode {
 }
 
 type OperationFactory struct {
-    NewRebalance      func(ctx context.Context, cluster Cluster, weights map[string]int) *RedisOperationRebalance
-    NewMove           func(ctx context.Context, cluster Cluster, from, to *redis.RedisNode, slots int) *RedisOperationMove
-    NewFix            func(ctx context.Context, cluster Cluster) *RedisOperationFix
-    NewCheckIntegrity func(ctx context.Context, cluster Cluster) *RedisOperationCheckIntegrity
-    NewScaleUp        func(ctx context.Context, cluster Cluster) *RedisOperationScaleUp
-    NewScaleDown      func(ctx context.Context, cluster Cluster) *RedisOperationScaleDown
-    NewUpgrade        func(ctx context.Context, cluster Cluster) *RedisOperationUpgrade
-    NewResetNode      func(ctx context.Context, cluster Cluster, node *redis.RedisNode) *RedisOperationResetNode
+	NewRebalance      func(ctx context.Context, cluster Cluster, weights map[string]int) *RedisOperationRebalance
+	NewMove           func(ctx context.Context, cluster Cluster, from, to *redis.RedisNode, slots int) *RedisOperationMove
+	NewFix            func(ctx context.Context, cluster Cluster) *RedisOperationFix
+	NewCheckIntegrity func(ctx context.Context, cluster Cluster) *RedisOperationCheckIntegrity
+	NewScaleUp        func(ctx context.Context, cluster Cluster) *RedisOperationScaleUp
+	NewScaleDown      func(ctx context.Context, cluster Cluster) *RedisOperationScaleDown
+	NewUpgrade        func(ctx context.Context, cluster Cluster) *RedisOperationUpgrade
+	NewResetNode      func(ctx context.Context, cluster Cluster, node *redis.RedisNode) *RedisOperationResetNode
 }
 
 func defaultOperationFactory() *OperationFactory {
-    return &OperationFactory{
-        NewRebalance:      NewRedisOperationRebalance,
-        NewMove:           NewRedisOperationMove,
-        NewFix:            NewRedisOperationFix,
-        NewCheckIntegrity: NewRedisOperationCheckIntegrity,
-        NewScaleUp:        NewRedisOperationScaleUp,
-        NewScaleDown:      NewRedisOperationScaleDown,
-        NewUpgrade:        NewRedisOperationUpgrade,
-        NewResetNode:      NewRedisOperationResetNode,
-    }
+	return &OperationFactory{
+		NewRebalance:      NewRedisOperationRebalance,
+		NewMove:           NewRedisOperationMove,
+		NewFix:            NewRedisOperationFix,
+		NewCheckIntegrity: NewRedisOperationCheckIntegrity,
+		NewScaleUp:        NewRedisOperationScaleUp,
+		NewScaleDown:      NewRedisOperationScaleDown,
+		NewUpgrade:        NewRedisOperationUpgrade,
+		NewResetNode:      NewRedisOperationResetNode,
+	}
 }

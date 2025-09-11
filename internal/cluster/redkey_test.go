@@ -188,7 +188,7 @@ func TestRedKeyClusterGetOperation(t *testing.T) {
 		expectedResult  RedisOperation
 	}{
 		{
-			name: 		 "no operations",
+			name:           "no operations",
 			operationName:  "AntiOperation",
 			expectedResult: nil,
 		},
@@ -496,7 +496,6 @@ func TestRedKeyClusterGetNodeFromID(t *testing.T) {
 }
 
 func TestRedKeyClusterAskers(t *testing.T) {
-	assert.False(t, redkeyCluster.IsBalanced())
 	assert.True(t, redkeyCluster.IsRebalancing())
 
 	assert.False(t, redkeyCluster.IsReshardingNodes(*node1, *node2))
@@ -533,6 +532,76 @@ func TestRedKeyClusterAskers(t *testing.T) {
 
 	assert.False(t, redkeyCluster.needsUpscale())
 	assert.False(t, redkeyCluster.needsDownscale())
+}
+
+func TestRedKeyClusterIsBalanced(t *testing.T) {
+	tests := []struct {
+		name     string
+		nodes    map[string]*redis.RedisNode
+		expected bool
+	}{
+		{
+			name: "node without slots",
+			nodes: map[string]*redis.RedisNode{
+				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "id1"),
+			},
+			expected: false,
+		},
+		{
+			name: "node with more slots",
+			nodes: map[string]*redis.RedisNode{
+				"test-cluster-0": createNodeWithSlots("test-cluster-0", "id1", []redis.RedisSlotRange{
+					{Start: 0, End: 5000},
+					{Start: 10000, End: 16384},
+				}),
+			},
+			expected: false,
+		},
+		{
+			name:     "no nodes",
+			nodes:    map[string]*redis.RedisNode{},
+			expected: true,
+		},
+		{
+			name: "balanced nodes",
+			nodes: map[string]*redis.RedisNode{
+				"test-cluster-0": createNodeWithSlots("test-cluster-0", "id1", []redis.RedisSlotRange{
+					{Start: 0, End: 5460},
+				}),
+				"test-cluster-1": createNodeWithSlots("test-cluster-1", "id2", []redis.RedisSlotRange{
+					{Start: 5461, End: 10922},
+				}),
+				"test-cluster-2": createNodeWithSlots("test-cluster-2", "id3", []redis.RedisSlotRange{
+					{Start: 10923, End: 16384},
+				}),
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:       "test-cluster",
+							MaxRetries: 1,
+							BackOff:    time.Microsecond * 10,
+						},
+					},
+				},
+				"Ready",
+				tt.nodes,
+				make(map[string][]RedisOperation),
+				make(chan struct{}, 1),
+			)
+
+			ret := cluster.IsBalanced()
+			assert.Equal(t, tt.expected, ret)
+		})
+	}
 }
 
 func TestRedKeyClusterAddNode(t *testing.T) {
@@ -955,7 +1024,7 @@ func TestRedKeyClusterNeedsFix(t *testing.T) {
 		expectedError  error
 	}{
 		{
-			name:           "error getting redis client",
+			name: "error getting redis client",
 			cluster: NewFakeRedKeyCluster(
 				context.Background(),
 				&config.Configuration{
@@ -1083,7 +1152,7 @@ func TestRedKeyClusterMeetNodesIfNeeded(t *testing.T) {
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": redis.NewFakeRedisNode("test-cluster-0", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 					client := redis.MockRedisClient{
-						MockNodesInfo: []redis.RedisNode{}, // Empty list triggers needsMeet=true
+						MockNodesInfo:    []redis.RedisNode{}, // Empty list triggers needsMeet=true
 						ClusterMeetError: fmt.Errorf("meet failed"),
 					}
 					return client, nil
@@ -4070,11 +4139,11 @@ func TestRedKeyClusterSetRedKeyClusterStatus(t *testing.T) {
 
 func TestRedKeyClusterRebalance(t *testing.T) {
 	tests := []struct {
-		name          string
-		operations   map[string][]RedisOperation
+		name             string
+		operations       map[string][]RedisOperation
 		operationFactory *OperationFactory
-		force         bool
-		expectedError error
+		force            bool
+		expectedError    error
 	}{
 		{
 			name: "rebalancing",
@@ -4093,7 +4162,7 @@ func TestRedKeyClusterRebalance(t *testing.T) {
 		{
 			name: "operation failed with cancel",
 			operations: map[string][]RedisOperation{
-				Rebalancing: func () []RedisOperation {
+				Rebalancing: func() []RedisOperation {
 					op := NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{})
 					cmd := redis.NewRedisCLICommand(t.Context(), "exit 0")
 					cmd.Start()
@@ -4112,7 +4181,7 @@ func TestRedKeyClusterRebalance(t *testing.T) {
 			expectedError: fmt.Errorf("error rebalancing cluster: rebalance operation failed"),
 		},
 		{
-			name: "success",
+			name:       "success",
 			operations: map[string][]RedisOperation{},
 			operationFactory: &OperationFactory{
 				NewRebalance: func(ctx context.Context, cluster Cluster, weights map[string]int) *RedisOperationRebalance {
@@ -4157,14 +4226,14 @@ func TestRedKeyClusterRebalance(t *testing.T) {
 
 func TestRedKeyClusterMoveSlots(t *testing.T) {
 	tests := []struct {
-		name          string
-		prepareTest   func(cluster *RedKeyCluster)
+		name             string
+		prepareTest      func(cluster *RedKeyCluster)
 		operationFactory *OperationFactory
-		clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
-		operations 	map[string][]RedisOperation
-		from          *redis.RedisNode
-		to            *redis.RedisNode
-		expectedError error
+		clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+		operations       map[string][]RedisOperation
+		from             *redis.RedisNode
+		to               *redis.RedisNode
+		expectedError    error
 	}{
 		{
 			name: "moving",
@@ -4188,8 +4257,8 @@ func TestRedKeyClusterMoveSlots(t *testing.T) {
 			expectedError: &OperationCompletedError{Operation: "Resharding", Reason: "Origin node has no slots"},
 		},
 		{
-			name: "node is a replica",
-			operations: map[string][]RedisOperation{},
+			name:          "node is a replica",
+			operations:    map[string][]RedisOperation{},
 			from:          node3,
 			to:            node1,
 			expectedError: &OperationCompletedError{Operation: "Resharding", Reason: "Origin node is a replica"},
@@ -4356,7 +4425,6 @@ func TestRedKeyClusterCheck(t *testing.T) {
 				make(chan struct{}, 1),
 			).WithClientFactory(tt.clientFactory)
 
-
 			result, err := cluster.Check()
 
 			if tt.expectedError != nil {
@@ -4378,11 +4446,11 @@ func TestRedKeyClusterCheck(t *testing.T) {
 
 func TestRedKeyClusterFix(t *testing.T) {
 	tests := []struct {
-		name          string
+		name             string
 		operationFactory *OperationFactory
-		operations 	map[string][]RedisOperation
-		force         bool
-		expectedError error
+		operations       map[string][]RedisOperation
+		force            bool
+		expectedError    error
 	}{
 		{
 			name: "fixing",
@@ -4394,7 +4462,7 @@ func TestRedKeyClusterFix(t *testing.T) {
 		{
 			name: "cancel fixing with error",
 			operations: map[string][]RedisOperation{
-				Fixing: func () []RedisOperation {
+				Fixing: func() []RedisOperation {
 					op := NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Running")
 					cmd := redis.NewRedisCLICommand(t.Context(), "exit 0")
 					cmd.Start()
@@ -4446,7 +4514,6 @@ func TestRedKeyClusterFix(t *testing.T) {
 				make(chan struct{}, 1),
 			).WithOperationFactory(tt.operationFactory)
 
-
 			err := cluster.Fix(false, tt.force)
 
 			if tt.expectedError != nil {
@@ -4461,11 +4528,11 @@ func TestRedKeyClusterFix(t *testing.T) {
 
 func TestRedKeyClusterCheckIntegrity(t *testing.T) {
 	tests := []struct {
-		name          string
+		name             string
 		operationFactory *OperationFactory
-		operations 	map[string][]RedisOperation
-		force         bool
-		expectedError error
+		operations       map[string][]RedisOperation
+		force            bool
+		expectedError    error
 	}{
 		{
 			name: "checking integrity",
@@ -4477,7 +4544,7 @@ func TestRedKeyClusterCheckIntegrity(t *testing.T) {
 		{
 			name: "cancel checking integrity with error",
 			operations: map[string][]RedisOperation{
-				CheckingIntegrity: func () []RedisOperation {
+				CheckingIntegrity: func() []RedisOperation {
 					op := NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running")
 					cmd := redis.NewRedisCLICommand(t.Context(), "exit 0")
 					cmd.Start()
@@ -4529,7 +4596,6 @@ func TestRedKeyClusterCheckIntegrity(t *testing.T) {
 				make(chan struct{}, 1),
 			).WithOperationFactory(tt.operationFactory)
 
-
 			err := cluster.CheckIntegrity(false, tt.force)
 
 			if tt.expectedError != nil {
@@ -4544,11 +4610,11 @@ func TestRedKeyClusterCheckIntegrity(t *testing.T) {
 
 func TestRedKeyClusterScaleUp(t *testing.T) {
 	tests := []struct {
-		name          string
+		name             string
 		operationFactory *OperationFactory
-		operations 	map[string][]RedisOperation
-		force         bool
-		expectedError error
+		operations       map[string][]RedisOperation
+		force            bool
+		expectedError    error
 	}{
 		{
 			name: "scaling up",
@@ -4606,7 +4672,6 @@ func TestRedKeyClusterScaleUp(t *testing.T) {
 				make(chan struct{}, 1),
 			).WithOperationFactory(tt.operationFactory)
 
-
 			err := cluster.ScaleUp(tt.force)
 
 			if tt.expectedError != nil {
@@ -4621,11 +4686,11 @@ func TestRedKeyClusterScaleUp(t *testing.T) {
 
 func TestRedKeyClusterScaleDown(t *testing.T) {
 	tests := []struct {
-		name          string
+		name             string
 		operationFactory *OperationFactory
-		operations 	map[string][]RedisOperation
-		force         bool
-		expectedError error
+		operations       map[string][]RedisOperation
+		force            bool
+		expectedError    error
 	}{
 		{
 			name: "scaling down",
@@ -4689,7 +4754,6 @@ func TestRedKeyClusterScaleDown(t *testing.T) {
 				make(chan struct{}, 1),
 			).WithOperationFactory(tt.operationFactory)
 
-
 			err := cluster.ScaleDown(tt.force)
 
 			if tt.expectedError != nil {
@@ -4704,11 +4768,11 @@ func TestRedKeyClusterScaleDown(t *testing.T) {
 
 func TestRedKeyClusterUpgrade(t *testing.T) {
 	tests := []struct {
-		name          string
+		name             string
 		operationFactory *OperationFactory
-		operations 	map[string][]RedisOperation
-		force         bool
-		expectedError error
+		operations       map[string][]RedisOperation
+		force            bool
+		expectedError    error
 	}{
 		{
 			name: "upgrading",
@@ -4786,12 +4850,12 @@ func TestRedKeyClusterUpgrade(t *testing.T) {
 
 func TestRedKeyClusterResetNode(t *testing.T) {
 	tests := []struct {
-		name          string
+		name             string
 		operationFactory *OperationFactory
-		operations 	map[string][]RedisOperation
-		node 		*redis.RedisNode
-		force         bool
-		expectedError error
+		operations       map[string][]RedisOperation
+		node             *redis.RedisNode
+		force            bool
+		expectedError    error
 	}{
 		{
 			name: "resetting",
@@ -4828,7 +4892,7 @@ func TestRedKeyClusterResetNode(t *testing.T) {
 			operations: map[string][]RedisOperation{
 				Resetting: {},
 			},
-			node:		  redis.NewRedisNode("test-0", "id1", 0, time.Duration(0)).WithClientFactory(mockClientFactory),
+			node:          redis.NewRedisNode("test-0", "id1", 0, time.Duration(0)).WithClientFactory(mockClientFactory),
 			force:         true,
 			expectedError: nil,
 		},
