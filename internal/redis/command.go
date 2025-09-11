@@ -89,7 +89,9 @@ func (rcc *RedisCLICommand) Wait() {
 
 // Cancel cancels the Redis CLI command.
 func (rcc *RedisCLICommand) Cancel() {
-	rcc.Err = rcc.cmd.Cancel()
+	if rcc.cmd.Process != nil {
+		rcc.cmd.Cancel()
+	}
 }
 
 // GetStdout returns the standard output of the Redis CLI command.
