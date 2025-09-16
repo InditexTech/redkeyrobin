@@ -44,7 +44,7 @@ func NewFakeRedisOperationUpgrade(ctx context.Context, cluster Cluster, status s
 
 // Launch launches the upgrade operation.
 func (ro *RedisOperationUpgrade) Launch() error {
-	ro.logger.Info("Scaling down cluster")
+	ro.logger.Info("Upgrading cluster")
 
 	// Launch upgrade operation
 	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doUpgrade)
