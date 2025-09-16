@@ -8,6 +8,12 @@ import (
 	"math"
 )
 
+type contextKey string
+
+const (
+	nodeNameKey contextKey = "nodeName"
+)
+
 // calculateMaxSlotsPerMaster calculates the maximum number of slots per master.
 // It takes into account the number of slots and the number of masters.
 func calculateMaxSlotsPerMaster(slots int, masters int) int {

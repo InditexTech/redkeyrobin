@@ -68,6 +68,10 @@ type clusterGetter interface {
 	GetClusterMaxRetries() int
 	// GetClusterBackOff returns the backoff duration for a RedKey Cluster check connection operation
 	GetClusterBackOff() time.Duration
+	// GetClusterMeetWaitTime returns the cluster meet wait time for a RedKey cluster
+	GetClusterMeetWaitTime() time.Duration
+	// GetNodeResetWaitTime returns the node reset wait time for a RedKey cluster
+	GetNodeResetWaitTime() time.Duration
 	// GetMetricsRedisInfoKeys returns the Redis info keys to be collected
 	GetMetricsRedisInfoKeys() []string
 	// GetMetricsInterval returns the interval for collecting Redis metrics
@@ -79,6 +83,8 @@ type clusterSetter interface {
 	SetRedKeyClusterStatus(status string) error
 	// SetReplicas sets the number of replicas of the cluster.
 	SetReplicas(replicas int, replicasPerMaster *int) error
+	// SetStatus sets the status of the cluster.
+	SetStatus(status string) error
 }
 
 type clusterAsker interface {
@@ -90,8 +96,41 @@ type clusterAsker interface {
 	IsScaled() bool
 	// IsUpgraded returns true if the cluster is upgraded.
 	IsUpgraded() bool
+	// IsEphemeral returns true if the cluster is ephemeral.
+	IsEphemeral() bool
 	// CanBeUpgraded returns true if the cluster can be upgraded.
 	CanBeUpgraded() bool
+}
+
+type clusterPrivate interface {
+	// ensureNodesAreUp ensures that all nodes are up.
+	ensureNodesAreUp(ctx context.Context) error
+	// convertNodesToMaster converts the provided nodes to master.
+	convertNodesToMaster(ctx context.Context, nodes []*redis.RedisNode) error
+	// getAndCheckRedisClient returns a Redis client and checks the connection.
+	getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error)
+	// refreshNodes refreshes the nodes of the cluster.
+	refreshNodes() error
+	// checkNodes checks the nodes of the cluster.
+	checkNodes() error
+	// removeOutdatedNodes removes outdated nodes from the cluster.
+	removeOutdatedNodes(ctx context.Context) error
+	// meetNodesIfNeeded meets nodes if needed.
+	meetNodesIfNeeded(ctx context.Context) error
+	// ensureClusterRatio ensures the cluster ratio.
+	ensureClusterRatio(ctx context.Context) error
+	// assignMissingSlotsIfNeeded assigns missing slots if needed.
+	assignMissingSlotsIfNeeded(ctx context.Context) error
+	// fixClusterIfNeeded fixes the cluster if needed.
+	fixClusterIfNeeded(ctx context.Context) error
+	// balanceClusterIfNeeded balances the cluster if needed.
+	balanceClusterIfNeeded(weights map[string]int) error
+	// forgetNode forgets a node from the cluster.
+	forgetNode(ctx context.Context, node redis.RedisNode) error
+	// removeNodesIfNeeded removes nodes if needed.
+	removeNodesIfNeeded(ctx context.Context) error
+	// addNewNodesIfNeeded adds new nodes if needed.
+	addNewNodesIfNeeded() error
 }
 
 // Cluster represents a cluster, either standalone or Redis.
@@ -99,6 +138,7 @@ type Cluster interface {
 	clusterGetter
 	clusterSetter
 	clusterAsker
+	clusterPrivate
 	// Init initializes the cluster.
 	Init() error
 	// Check checks the cluster.
@@ -214,6 +254,16 @@ func (rc *clusterBase) GetClusterHealthProbePeriod() int {
 	return rc.conf.Redis.Cluster.HealthProbePeriodSeconds
 }
 
+// GetClusterMeetWaitTime returns the cluster meet wait time for a RedKey cluster
+func (rc *clusterBase) GetClusterMeetWaitTime() time.Duration {
+	return time.Duration(rc.conf.Redis.Cluster.ClusterMeetWaitTimeSeconds) * time.Second
+}
+
+// GetNodeResetWaitTime returns the node reset wait time for a RedKey cluster
+func (rc *clusterBase) GetNodeResetWaitTime() time.Duration {
+	return time.Duration(rc.conf.Redis.Cluster.NodeResetWaitTimeSeconds) * time.Second
+}
+
 // GetMetricsRedisInfoKeys returns the Redis info keys to be collected
 func (rc *clusterBase) GetMetricsRedisInfoKeys() []string {
 	return rc.conf.Redis.Metrics.RedisInfoKeys
@@ -227,6 +277,16 @@ func (rc *clusterBase) GetMetricsInterval() int {
 // GetMetadata returns the metadata of the RedKey cluster
 func (rc *clusterBase) GetMetadata() map[string]string {
 	return rc.conf.Metadata
+}
+
+// ----------------------------------------------------------------------------------------------------
+// ---------------------------------------------- SETTERS ---------------------------------------------
+// ----------------------------------------------------------------------------------------------------
+
+// SetStatus sets the status of the RedKey Cluster from Robin perspective
+func (rc *clusterBase) SetStatus(status string) error {
+	rc.status = status
+	return nil
 }
 
 // ----------------------------------------------------------------------------------------------------

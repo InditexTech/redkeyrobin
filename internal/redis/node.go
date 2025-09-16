@@ -35,6 +35,42 @@ type RedisNode struct {
 	LinkStatus string           `json:"linkStatus"`
 	MaxRetries int              `json:"-"`
 	Backoff    time.Duration    `json:"-"`
+
+	clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error)
+}
+
+// Default client factory (global, no closure)
+func defaultClientFactory(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error) {
+	redisClient := NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
+	if err := redisClient.CheckConnection(maxRetries, backoff); err != nil {
+		return nil, err
+	}
+	return redisClient, nil
+}
+
+// NewRedisNode creates a new RedisNode with default client factory
+func NewRedisNode(name, addr string, maxRetries int, backoff time.Duration) *RedisNode {
+	return &RedisNode{
+		Name:          name,
+		Addr:          addr,
+		MaxRetries:    maxRetries,
+		Backoff:       backoff,
+		clientFactory: defaultClientFactory,
+	}
+}
+
+// NewFakeRedisNode creates a new RedisNode with a custom client factory (for testing)
+func NewFakeRedisNode(name string, factory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error)) *RedisNode {
+	return &RedisNode{
+		Name:          name,
+		clientFactory: factory,
+	}
+}
+
+// WithClientFactory allows to configure a custom function to obtain clients (used for testing)
+func (rn *RedisNode) WithClientFactory(factory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error)) *RedisNode {
+	rn.clientFactory = factory
+	return rn
 }
 
 // String returns a formatted string of the Redis node.
@@ -75,7 +111,12 @@ func (rn *RedisNode) SetIP(ip string) {
 
 // IsMaster returns true if the Redis node is a master.
 func (rn *RedisNode) IsMaster() bool {
-	return strings.Contains(rn.Flags, "master")
+	return rn.hasFlag("master")
+}
+
+// IsReplica returns true if the Redis node is a replica.
+func (rn *RedisNode) IsReplica() bool {
+	return rn.hasFlag("slave")
 }
 
 // IsConnected returns true if the Redis node is connected.
@@ -86,11 +127,6 @@ func (rn *RedisNode) IsConnected() bool {
 // IsDisconnected returns true if the Redis node is disconnected.
 func (rn *RedisNode) IsDisconnected() bool {
 	return rn.LinkStatus == "disconnected"
-}
-
-// IsReplica returns true if the Redis node is a replica.
-func (rn *RedisNode) IsReplica() bool {
-	return rn.hasFlag("slave")
 }
 
 // HasSlots returns true if the Redis node has slots.
@@ -252,12 +288,8 @@ func (rn *RedisNode) Failover(ctx context.Context) error {
 // ----------------------------------------------------------------------------------------------------
 
 // GetClient returns a Redis client for the node.
-func (rn *RedisNode) getClient(ctx context.Context) (*RedisClient, error) {
-	redisClient := NewRedisClient(ctx, rn.Addr, os.Getenv("REDISAUTH"), 0)
-	if err := redisClient.CheckConnection(rn.MaxRetries, rn.Backoff); err != nil {
-		return nil, err
-	}
-	return redisClient, nil
+func (rn *RedisNode) getClient(ctx context.Context) (RedisClientInterface, error) {
+	return rn.clientFactory(ctx, rn.Addr, rn.MaxRetries, rn.Backoff)
 }
 
 // hasFlag checks if the Redis node has a specific flag.

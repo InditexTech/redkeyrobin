@@ -21,42 +21,55 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var node1 = &redis.RedisNode{
-	Name:     "node1",
-	ID:       "1234567890",
-	Addr:     "node1",
-	IP:       "1.1.1.1",
-	Flags:    "master",
-	Slots:    []redis.RedisSlotRange{},
-	MasterID: "",
+// mockClientFactory creates a mock client factory for testing
+var mockClientFactory = func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+	return &redis.MockRedisClient{}, nil
 }
-var node2 = &redis.RedisNode{
-	Name:  "test-1",
-	ID:    "0987654321",
-	Addr:  "node2",
-	IP:    "2.2.2.2",
-	Flags: "master",
-	Slots: []redis.RedisSlotRange{
+
+var node1 = redis.NewFakeRedisNode("node1", mockClientFactory)
+var node2 = redis.NewFakeRedisNode("test-1", mockClientFactory)
+var node3 = redis.NewFakeRedisNode("node3", mockClientFactory)
+
+func init() {
+	// Configure node1 properties
+	node1.Addr = "node1"
+	node1.MaxRetries = 1
+	node1.Backoff = time.Microsecond * 10
+	node1.ID = "1234567890"
+	node1.IP = "1.1.1.1"
+	node1.Flags = "master"
+	node1.Slots = []redis.RedisSlotRange{}
+	node1.MasterID = ""
+
+	// Configure node2 properties
+	node2.Addr = "node2"
+	node2.MaxRetries = 1
+	node2.Backoff = time.Microsecond * 10
+	node2.ID = "0987654321"
+	node2.IP = "2.2.2.2"
+	node2.Flags = "master"
+	node2.Slots = []redis.RedisSlotRange{
 		{
 			Start: 5,
 			End:   7,
 		},
-	},
-	MasterID: "",
-}
-var node3 = &redis.RedisNode{
-	Name:  "node3",
-	ID:    "0987654321",
-	Addr:  "node2",
-	IP:    "2.2.2.2",
-	Flags: "master",
-	Slots: []redis.RedisSlotRange{
+	}
+	node2.MasterID = ""
+
+	// Configure node3 properties
+	node3.Addr = "node2"
+	node3.MaxRetries = 1
+	node3.Backoff = time.Microsecond * 10
+	node3.ID = "0987654321"
+	node3.IP = "2.2.2.2"
+	node3.Flags = "master"
+	node3.Slots = []redis.RedisSlotRange{
 		{
 			Start: 7,
 			End:   10,
 		},
-	},
-	MasterID: "",
+	}
+	node3.MasterID = ""
 }
 
 var server = Server{

@@ -18,26 +18,26 @@ type RedisOperationScaleDown struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationScaleDown(ctx context.Context, redkeyCluster *RedKeyCluster) *RedisOperationScaleDown {
+func NewRedisOperationScaleDown(ctx context.Context, cluster Cluster) *RedisOperationScaleDown {
 	return &RedisOperationScaleDown{
 		RedisOperationBase: RedisOperationBase{
-			name:          "ScaleDown",
-			status:        "Pending",
-			logger:        util.GetLogger("operation.scaledown"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
+			name:    "ScaleDown",
+			status:  "Pending",
+			logger:  util.GetLogger("operation.scaledown"),
+			ctx:     ctx,
+			cluster: cluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationScaleDown(ctx context.Context, redkeyCluster *RedKeyCluster, status string) *RedisOperationScaleDown {
+func NewFakeRedisOperationScaleDown(ctx context.Context, cluster Cluster, status string) *RedisOperationScaleDown {
 	return &RedisOperationScaleDown{
 		RedisOperationBase: RedisOperationBase{
-			name:          "ScaleDown",
-			status:        status,
-			logger:        util.GetLogger("operation.scaledown"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
+			name:    "ScaleDown",
+			status:  status,
+			logger:  util.GetLogger("operation.scaledown"),
+			ctx:     ctx,
+			cluster: cluster,
 		},
 	}
 }
@@ -60,19 +60,19 @@ func (ro *RedisOperationScaleDown) Launch() error {
 
 // Wait waits for the scale down operation to finish.
 func (ro *RedisOperationScaleDown) Wait() error {
-	ro.redkeyCluster.status = ScalingDown
+	ro.cluster.SetStatus(ScalingDown)
 
 	// Wait for scale down to finish
 	err := ro.Run()
 
 	// Scale down failed
 	if err != nil {
-		ro.redkeyCluster.status = ScalingDownError
+		ro.cluster.SetStatus(ScalingDownError)
 		return fmt.Errorf("error scaling down cluster: %v", err)
 	}
 
 	// Scale down finished successfully
-	ro.redkeyCluster.status = Ready
+	ro.cluster.SetStatus(Ready)
 	ro.logger.Info("Cluster scaled down successfully")
 
 	return nil
@@ -81,52 +81,52 @@ func (ro *RedisOperationScaleDown) Wait() error {
 // doScaleDown scales down the RedKey cluster
 func (ro *RedisOperationScaleDown) doScaleDown(ctx context.Context) error {
 	// Check nodes info
-	if err := ro.redkeyCluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(); err != nil {
 		return err
 	}
 
 	// Remove nodes if needed
-	if err := ro.redkeyCluster.removeNodesIfNeeded(ctx); err != nil {
+	if err := ro.cluster.removeNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Check nodes info
-	if err := ro.redkeyCluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(); err != nil {
 		return err
 	}
 
 	// Forget outdated nodes
-	if err := ro.redkeyCluster.removeOutdatedNodes(ctx); err != nil {
+	if err := ro.cluster.removeOutdatedNodes(ctx); err != nil {
 		ro.logger.Error("Error removing outdated nodes", "error", err)
 	}
 
 	// Meet nodes if needed
-	if err := ro.redkeyCluster.meetNodesIfNeeded(ctx); err != nil {
+	if err := ro.cluster.meetNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Ensure cluster ratio
-	if err := ro.redkeyCluster.ensureClusterRatio(ctx); err != nil {
+	if err := ro.cluster.ensureClusterRatio(ctx); err != nil {
 		return err
 	}
 
 	// Assign missing slots if needed
-	if err := ro.redkeyCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
+	if err := ro.cluster.assignMissingSlotsIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Fix cluster if needed
-	if err := ro.redkeyCluster.fixClusterIfNeeded(ctx); err != nil {
+	if err := ro.cluster.fixClusterIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Balance cluster if needed
-	if err := ro.redkeyCluster.balanceClusterIfNeeded(nil); err != nil {
+	if err := ro.cluster.balanceClusterIfNeeded(nil); err != nil {
 		return err
 	}
 
 	// Update nodes info
-	if err := ro.redkeyCluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodes(); err != nil {
 		return err
 	}
 

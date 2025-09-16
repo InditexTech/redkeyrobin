@@ -22,16 +22,18 @@ type RedisReconcilerConfig struct {
 
 // RedKeyClusterConfig holds cluster-level Redis configuration.
 type RedKeyClusterConfig struct {
-	Namespace                string        `yaml:"namespace"`
-	Name                     string        `yaml:"name"`
-	Replicas                 int           `yaml:"replicas"`
-	ReplicasPerMaster        int           `yaml:"replicas_per_master"`
-	Status                   string        `yaml:"status"`
-	Ephemeral                bool          `yaml:"ephemeral"`
-	HealthProbePeriodSeconds int           `yaml:"health_probe_interval_seconds"`
-	HealingTimeSeconds       int           `yaml:"healing_time_seconds"`
-	MaxRetries               int           `yaml:"max_retries"`
-	BackOff                  time.Duration `yaml:"back_off"`
+	Namespace                  string        `yaml:"namespace"`
+	Name                       string        `yaml:"name"`
+	Replicas                   int           `yaml:"replicas"`
+	ReplicasPerMaster          int           `yaml:"replicas_per_master"`
+	Status                     string        `yaml:"status"`
+	Ephemeral                  bool          `yaml:"ephemeral"`
+	HealthProbePeriodSeconds   int           `yaml:"health_probe_interval_seconds"`
+	HealingTimeSeconds         int           `yaml:"healing_time_seconds"`
+	ClusterMeetWaitTimeSeconds int           `yaml:"cluster_meet_wait_time_seconds"`
+	NodeResetWaitTimeSeconds   int           `yaml:"node_reset_wait_time_seconds"`
+	MaxRetries                 int           `yaml:"max_retries"`
+	BackOff                    time.Duration `yaml:"back_off"`
 }
 
 // RedisMetricsConfig holds metrics-related Redis configuration.
@@ -104,6 +106,12 @@ func (cfg *Configuration) validate() []string {
 	}
 	if cfg.Redis.Reconciler.OperationCleanupIntervalSeconds == 0 {
 		cfg.Redis.Reconciler.OperationCleanupIntervalSeconds = 60
+	}
+	if cfg.Redis.Cluster.ClusterMeetWaitTimeSeconds == 0 {
+		cfg.Redis.Cluster.ClusterMeetWaitTimeSeconds = 5
+	}
+	if cfg.Redis.Cluster.NodeResetWaitTimeSeconds == 0 {
+		cfg.Redis.Cluster.NodeResetWaitTimeSeconds = 2
 	}
 	return missing
 }

@@ -18,26 +18,26 @@ type RedisOperationScaleUp struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationScaleUp(ctx context.Context, redkeyCluster *RedKeyCluster) *RedisOperationScaleUp {
+func NewRedisOperationScaleUp(ctx context.Context, cluster Cluster) *RedisOperationScaleUp {
 	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:          "ScaleUp",
-			status:        "Pending",
-			logger:        util.GetLogger("operation.scaleup"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
+			name:    "ScaleUp",
+			status:  "Pending",
+			logger:  util.GetLogger("operation.scaleup"),
+			ctx:     ctx,
+			cluster: cluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationScaleUp(ctx context.Context, redkeyCluster *RedKeyCluster, status string) *RedisOperationScaleUp {
+func NewFakeRedisOperationScaleUp(ctx context.Context, cluster Cluster, status string) *RedisOperationScaleUp {
 	return &RedisOperationScaleUp{
 		RedisOperationBase: RedisOperationBase{
-			name:          "ScaleUp",
-			status:        status,
-			logger:        util.GetLogger("operation.scaleup"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
+			name:    "ScaleUp",
+			status:  status,
+			logger:  util.GetLogger("operation.scaleup"),
+			ctx:     ctx,
+			cluster: cluster,
 		},
 	}
 }
@@ -60,19 +60,19 @@ func (ro *RedisOperationScaleUp) Launch() error {
 
 // Wait waits for the scale up operation to finish.
 func (ro *RedisOperationScaleUp) Wait() error {
-	ro.redkeyCluster.status = ScalingUp
+	ro.cluster.SetStatus(ScalingUp)
 
 	// Wait for scale up to finish
 	err := ro.Run()
 
 	// Scale up failed
 	if err != nil {
-		ro.redkeyCluster.status = ScalingUpError
+		ro.cluster.SetStatus(ScalingUpError)
 		return fmt.Errorf("error scaling up cluster: %v", err)
 	}
 
 	// Scale up finished successfully
-	ro.redkeyCluster.status = Ready
+	ro.cluster.SetStatus(Ready)
 	ro.logger.Info("Cluster scaled up successfully")
 
 	return nil
@@ -81,47 +81,47 @@ func (ro *RedisOperationScaleUp) Wait() error {
 // doScaleUp scales up the RedKey cluster
 func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 	// Add new nodes if needed
-	if err := ro.redkeyCluster.addNewNodesIfNeeded(); err != nil {
+	if err := ro.cluster.addNewNodesIfNeeded(); err != nil {
 		return err
 	}
 
 	// Check nodes info
-	if err := ro.redkeyCluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(); err != nil {
 		return err
 	}
 
 	// Forget outdated nodes
-	if err := ro.redkeyCluster.removeOutdatedNodes(ctx); err != nil {
+	if err := ro.cluster.removeOutdatedNodes(ctx); err != nil {
 		ro.logger.Error("Error removing outdated nodes", "error", err)
 	}
 
 	// Meet nodes if needed
-	if err := ro.redkeyCluster.meetNodesIfNeeded(ctx); err != nil {
+	if err := ro.cluster.meetNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Ensure cluster ratio
-	if err := ro.redkeyCluster.ensureClusterRatio(ctx); err != nil {
+	if err := ro.cluster.ensureClusterRatio(ctx); err != nil {
 		return err
 	}
 
 	// Assign missing slots if needed
-	if err := ro.redkeyCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
+	if err := ro.cluster.assignMissingSlotsIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Fix cluster if needed
-	if err := ro.redkeyCluster.fixClusterIfNeeded(ctx); err != nil {
+	if err := ro.cluster.fixClusterIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Balance cluster if needed
-	if err := ro.redkeyCluster.balanceClusterIfNeeded(nil); err != nil {
+	if err := ro.cluster.balanceClusterIfNeeded(nil); err != nil {
 		return err
 	}
 
 	// Update nodes info
-	if err := ro.redkeyCluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodes(); err != nil {
 		return err
 	}
 

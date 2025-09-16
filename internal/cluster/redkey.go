@@ -27,10 +27,22 @@ type RedKeyCluster struct {
 	operations map[string][]RedisOperation
 	channel    chan struct{}
 	mux        sync.RWMutex
+
+	clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+	operationFactory *OperationFactory
+}
+
+// Default client factory for RedKeyCluster (global, no closure)
+func defaultRedKeyClusterClientFactory(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+	redisClient := redis.NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
+	if err := redisClient.CheckConnection(maxRetries, backoff); err != nil {
+		return nil, err
+	}
+	return redisClient, nil
 }
 
 // NewRedKeyCluster creates a new RedKey cluster
-func NewRedKeyCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) *RedKeyCluster {
+func NewRedKeyCluster(ctx context.Context, conf *config.Configuration, channel chan struct{}) Cluster {
 	return &RedKeyCluster{
 		clusterBase: clusterBase{
 			ctx:    ctx,
@@ -38,10 +50,12 @@ func NewRedKeyCluster(ctx context.Context, conf *config.Configuration, channel c
 			conf:   conf,
 			status: Unknown,
 		},
-		nodes:      make(map[string]*redis.RedisNode),
-		operations: make(map[string][]RedisOperation),
-		channel:    channel,
-		mux:        sync.RWMutex{},
+		nodes:            make(map[string]*redis.RedisNode),
+		operations:       make(map[string][]RedisOperation),
+		channel:          channel,
+		mux:              sync.RWMutex{},
+		clientFactory:    defaultRedKeyClusterClientFactory,
+		operationFactory: defaultOperationFactory(),
 	}
 }
 
@@ -54,11 +68,25 @@ func NewFakeRedKeyCluster(ctx context.Context, conf *config.Configuration, statu
 			conf:   conf,
 			status: status,
 		},
-		nodes:      nodes,
-		operations: operations,
-		channel:    channel,
-		mux:        sync.RWMutex{},
+		nodes:            nodes,
+		operations:       operations,
+		channel:          channel,
+		mux:              sync.RWMutex{},
+		clientFactory:    defaultRedKeyClusterClientFactory,
+		operationFactory: defaultOperationFactory(),
 	}
+}
+
+// WithClientFactory allows to configure a custom function to obtain clients (used for testing)
+func (rc *RedKeyCluster) WithClientFactory(factory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)) *RedKeyCluster {
+	rc.clientFactory = factory
+	return rc
+}
+
+// WithOperationFactory allows to configure a custom operation factory (used for testing)
+func (rc *RedKeyCluster) WithOperationFactory(factory *OperationFactory) *RedKeyCluster {
+	rc.operationFactory = factory
+	return rc
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -241,7 +269,7 @@ func (rc *RedKeyCluster) Rebalance(async bool, weights map[string]int, force boo
 	}
 
 	// Launch cluster rebalance operation
-	return rc.launchOperation(NewRedisOperationRebalance(rc.ctx, rc, weights), Rebalancing, async)
+	return rc.launchOperation(rc.operationFactory.NewRebalance(rc.ctx, rc, weights), Rebalancing, async)
 }
 
 // MoveSlots moves slots from one Redis node to another.
@@ -274,7 +302,7 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	}
 
 	// Launch move operation
-	return rc.launchOperation(NewRedisOperationMove(rc.ctx, rc, from, to, slots), Resharding, true)
+	return rc.launchOperation(rc.operationFactory.NewMove(rc.ctx, rc, from, to, slots), Resharding, true)
 }
 
 // Check checks the RedKey cluster.
@@ -316,7 +344,7 @@ func (rc *RedKeyCluster) Fix(async bool, force bool) error {
 	}
 
 	// Launch cluster fix operation
-	return rc.launchOperation(NewRedisOperationFix(rc.ctx, rc), Fixing, async)
+	return rc.launchOperation(rc.operationFactory.NewFix(rc.ctx, rc), Fixing, async)
 }
 
 // CheckIntegrity checks the integrity of the RedKey cluster
@@ -339,7 +367,7 @@ func (rc *RedKeyCluster) CheckIntegrity(async, force bool) error {
 	}
 
 	// Launch cluster check integrity operation
-	return rc.launchOperation(NewRedisOperationCheckIntegrity(rc.ctx, rc), CheckingIntegrity, async)
+	return rc.launchOperation(rc.operationFactory.NewCheckIntegrity(rc.ctx, rc), CheckingIntegrity, async)
 }
 
 // ScaleUp scales up the RedKey cluster
@@ -354,7 +382,7 @@ func (rc *RedKeyCluster) ScaleUp(force bool) error {
 	}
 
 	// Launch cluster scaling up operation
-	return rc.launchOperation(NewRedisOperationScaleUp(rc.ctx, rc), ScalingUp, false)
+	return rc.launchOperation(rc.operationFactory.NewScaleUp(rc.ctx, rc), ScalingUp, false)
 }
 
 // ScaleDown scales down the RedKey cluster
@@ -369,7 +397,7 @@ func (rc *RedKeyCluster) ScaleDown(force bool) error {
 	}
 
 	// Launch cluster scaling down operation
-	return rc.launchOperation(NewRedisOperationScaleDown(rc.ctx, rc), ScalingDown, false)
+	return rc.launchOperation(rc.operationFactory.NewScaleDown(rc.ctx, rc), ScalingDown, false)
 }
 
 // Upgrade upgrades the RedKey cluster
@@ -384,7 +412,7 @@ func (rc *RedKeyCluster) Upgrade(force bool) error {
 	}
 
 	// Launch cluster upgrade operation
-	return rc.launchOperation(NewRedisOperationUpgrade(rc.ctx, rc), Upgrading, false)
+	return rc.launchOperation(rc.operationFactory.NewUpgrade(rc.ctx, rc), Upgrading, false)
 }
 
 // Check reset a Redis node in the cluster
@@ -399,7 +427,7 @@ func (rc *RedKeyCluster) ResetNode(node *redis.RedisNode) error {
 	}
 
 	// Launch reset node operation
-	return rc.launchOperation(NewRedisOperationResetNode(rc.ctx, rc, node), Upgrading, false)
+	return rc.launchOperation(rc.operationFactory.NewResetNode(rc.ctx, rc, node), Upgrading, false)
 }
 
 // Clears the stored nodes creating a new map.
@@ -577,12 +605,7 @@ func (rc *RedKeyCluster) addNode(name, addr string) *redis.RedisNode {
 	rc.mux.RLock()
 	defer rc.mux.RUnlock()
 
-	node := &redis.RedisNode{
-		Name:       name,
-		Addr:       addr,
-		MaxRetries: rc.GetClusterMaxRetries(),
-		Backoff:    rc.GetClusterBackOff(),
-	}
+	node := redis.NewRedisNode(name, addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 
 	rc.logger.Info("Initializing node", "node", node.Name)
 	if err := node.Init(rc.ctx); err != nil {
@@ -665,12 +688,7 @@ func (rc *RedKeyCluster) checkNodes() error {
 		}
 
 		// Init a fresh node to check if IP or ID have changed. This can happen if the node has been restarted
-		freshNode := redis.RedisNode{
-			Name:       nodeName,
-			Addr:       node.Addr,
-			MaxRetries: rc.GetClusterMaxRetries(),
-			Backoff:    rc.GetClusterBackOff(),
-		}
+		freshNode := redis.NewRedisNode(nodeName, node.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 		if err := freshNode.Init(rc.ctx); err != nil {
 			rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
 			continue
@@ -925,7 +943,7 @@ func (rc *RedKeyCluster) removeSlotsFromNodes(nodes []*redis.RedisNode) error {
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return fmt.Errorf("error refreshing nodes info: %w", err)
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 	return nil
 }
@@ -945,7 +963,7 @@ func (rc *RedKeyCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*redi
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	return nil
 }
@@ -992,17 +1010,17 @@ func (rc *RedKeyCluster) meetNodes(ctx context.Context) error {
 			}
 
 			if err := sourceNode.MeetNode(ctx, *targetNode); err != nil {
-				return fmt.Errorf("error in ClusterMeet between '%s' and '%s': %w", sourceNode.Name, targetNode.Name, err)
+				return fmt.Errorf("error in ClusterMeet between '%s' and '%s': %v", sourceNode.Name, targetNode.Name, err)
 			}
 		}
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return fmt.Errorf("error refreshing nodes info: %w", err)
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	rc.logger.Info("Nodes met successfully")
@@ -1015,7 +1033,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 	for _, node := range rc.nodes {
 		clusterNodes, err := node.GetClusterNodes(ctx)
 		if err != nil {
-			return fmt.Errorf("error getting cluster nodes from node %s: %w", node.Name, err)
+			return fmt.Errorf("error getting cluster nodes from node %s: %v", node.Name, err)
 		}
 
 		for _, clusterNode := range clusterNodes {
@@ -1026,7 +1044,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 
 			// Forget the node
 			if err := node.ForgetNode(ctx, clusterNode); err != nil {
-				return fmt.Errorf("error forgetting node %s from node %s: %w", clusterNode.ID, node.Name, err)
+				return fmt.Errorf("error forgetting node %s from node %s: %v", clusterNode.ID, node.Name, err)
 			}
 
 			rc.logger.Info("Node forgotten successfully", "node", clusterNode.ID, "from", node.Name)
@@ -1035,7 +1053,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 
 	// Update nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1116,7 +1134,7 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 		} else if len(replicas) < int(replicasPerMaster) { // Too few replicas
 			masterNeedsReplicas = append(masterNeedsReplicas, master)
 		} else if len(replicas) > int(replicasPerMaster) { // Too much replicas
-			replicaNeedsMove = append(replicaNeedsMove, replicas[:replicasPerMaster]...)
+			replicaNeedsMove = append(replicaNeedsMove, replicas[replicasPerMaster:]...)
 		}
 	}
 
@@ -1133,6 +1151,22 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 		for _, master := range masters {
 			if master.Name == replica.MasterID {
 				pointedAtMaster = true
+				// Update the replica's MasterID to use the master's ID instead of name
+				replica.MasterID = master.ID
+
+				// Check if this master now has the right number of replicas and can be removed from masterNeedsReplicas
+				currentReplicas := rc.GetReplicasOfNode(master)
+				replicasPerMaster := rc.GetReplicasPerMaster()
+				if len(currentReplicas)+1 >= int(replicasPerMaster) { // +1 because we just assigned this replica
+					// Remove this master from masterNeedsReplicas
+					for i, needsReplicasMaster := range masterNeedsReplicas {
+						if needsReplicasMaster.ID == master.ID {
+							masterNeedsReplicas = append(masterNeedsReplicas[:i], masterNeedsReplicas[i+1:]...)
+							break
+						}
+					}
+				}
+				break
 			}
 		}
 		if !pointedAtMaster {
@@ -1150,13 +1184,13 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 		rc.logger.Info("Converting node to replica", "node", replicaNeedsMove[i].Name, "master", masterNeedsReplicas[i].Name)
 
 		if err := replicaNeedsMove[i].ReplicateNode(ctx, *masterNeedsReplicas[i]); err != nil {
-			return err
+			return fmt.Errorf("error promoting replica %s to master %s: %v", replicaNeedsMove[i].Name, masterNeedsReplicas[i].Name, err)
 		}
 	}
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1190,11 +1224,11 @@ func (rc *RedKeyCluster) convertNodesToReplica(ctx context.Context, nodesToConve
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1214,12 +1248,12 @@ func (rc *RedKeyCluster) convertNodesToMaster(ctx context.Context, nodes []*redi
 		if err := node.Reset(ctx); err != nil {
 			return err
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(rc.GetNodeResetWaitTime())
 	}
 
 	// Meet the cluster to promote the nodes to masters
 	if err := rc.meetNodes(ctx); err != nil {
-		return err
+		return fmt.Errorf("error meeting nodes: %v", err)
 	}
 
 	return nil
@@ -1241,12 +1275,12 @@ func (rc *RedKeyCluster) promoteReplicaOfNode(ctx context.Context, node *redis.R
 	// Promote the first replica
 	rc.logger.Info("Promoting replica to master", "replica", replicas[0].Name, "master", node.Name)
 	if err := replicas[0].Failover(ctx); err != nil {
-		return err
+		return fmt.Errorf("error promoting replica %s to master %s: %v", replicas[0].Name, node.Name, err)
 	}
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	return nil
@@ -1318,28 +1352,32 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 	}
 
 	// Wait for cluster meet so nodes can agree on configuration
-	time.Sleep(5 * time.Second)
+	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
 	if err := rc.refreshNodes(); err != nil {
-		return err
+		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
 	rc.logger.Info("Missing slots assigned successfully")
 	return nil
 }
 
+// getClient returns a Redis client using the configured client factory
+func (rc *RedKeyCluster) getClient() (redis.RedisClientInterface, error) {
+	return rc.clientFactory(rc.ctx, rc.GetAddress(), rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+}
+
 // getAndCheckRedisClient creates a Redis client and checks the connection
-func (rc *RedKeyCluster) getAndCheckRedisClient(close bool) (*redis.RedisClient, error) {
-	// Create Redis client
-	redisClient := redis.NewRedisClient(rc.ctx, rc.GetAddress(), os.Getenv("REDISAUTH"), 0)
-	if close {
-		defer redisClient.Close()
+func (rc *RedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
+	// Create Redis client using the client factory
+	redisClient, err := rc.getClient()
+	if err != nil {
+		return nil, err
 	}
 
-	// Check connection
-	if err := redisClient.CheckConnection(rc.GetClusterMaxRetries(), rc.GetClusterBackOff()); err != nil {
-		return nil, err
+	if close {
+		defer redisClient.Close()
 	}
 
 	return redisClient, nil

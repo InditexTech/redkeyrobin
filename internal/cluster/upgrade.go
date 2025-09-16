@@ -18,33 +18,33 @@ type RedisOperationUpgrade struct {
 	RedisOperationBase
 }
 
-func NewRedisOperationUpgrade(ctx context.Context, redkeyCluster *RedKeyCluster) *RedisOperationUpgrade {
+func NewRedisOperationUpgrade(ctx context.Context, cluster Cluster) *RedisOperationUpgrade {
 	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
-			name:          "Upgrade",
-			status:        "Pending",
-			logger:        util.GetLogger("operation.ugrade"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
+			name:    "Upgrade",
+			status:  "Pending",
+			logger:  util.GetLogger("operation.upgrade"),
+			ctx:     ctx,
+			cluster: cluster,
 		},
 	}
 }
 
-func NewFakeRedisOperationUpgrade(ctx context.Context, redkeyCluster *RedKeyCluster, status string) *RedisOperationUpgrade {
+func NewFakeRedisOperationUpgrade(ctx context.Context, cluster Cluster, status string) *RedisOperationUpgrade {
 	return &RedisOperationUpgrade{
 		RedisOperationBase: RedisOperationBase{
-			name:          "Upgrade",
-			status:        status,
-			logger:        util.GetLogger("operation.upgrade"),
-			ctx:           ctx,
-			redkeyCluster: redkeyCluster,
+			name:    "Upgrade",
+			status:  status,
+			logger:  util.GetLogger("operation.upgrade"),
+			ctx:     ctx,
+			cluster: cluster,
 		},
 	}
 }
 
 // Launch launches the upgrade operation.
 func (ro *RedisOperationUpgrade) Launch() error {
-	ro.logger.Info("Scaling down cluster")
+	ro.logger.Info("Upgrading cluster")
 
 	// Launch upgrade operation
 	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doUpgrade)
@@ -60,19 +60,19 @@ func (ro *RedisOperationUpgrade) Launch() error {
 
 // Wait waits for the upgrade operation to finish.
 func (ro *RedisOperationUpgrade) Wait() error {
-	ro.redkeyCluster.status = Upgrading
+	ro.cluster.SetStatus(Upgrading)
 
 	// Wait for upgrade to finish
 	err := ro.Run()
 
 	// Upgrade failed
 	if err != nil {
-		ro.redkeyCluster.status = UpgradingError
+		ro.cluster.SetStatus(UpgradingError)
 		return fmt.Errorf("error upgrading cluster: %v", err)
 	}
 
 	// Upgrade finished successfully
-	ro.redkeyCluster.status = Ready
+	ro.cluster.SetStatus(Ready)
 	ro.logger.Info("Cluster upgraded successfully")
 
 	return nil
@@ -81,42 +81,42 @@ func (ro *RedisOperationUpgrade) Wait() error {
 // doUpgrade upgrades the RedKey cluster
 func (ro *RedisOperationUpgrade) doUpgrade(ctx context.Context) error {
 	// Add new nodes if needed
-	if err := ro.redkeyCluster.addNewNodesIfNeeded(); err != nil {
+	if err := ro.cluster.addNewNodesIfNeeded(); err != nil {
 		return err
 	}
 
 	// Check nodes info
-	if err := ro.redkeyCluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(); err != nil {
 		return err
 	}
 
 	// Forget outdated nodes
-	if err := ro.redkeyCluster.removeOutdatedNodes(ctx); err != nil {
+	if err := ro.cluster.removeOutdatedNodes(ctx); err != nil {
 		return err
 	}
 
 	// Remove nodes if needed
-	if err := ro.redkeyCluster.removeNodesIfNeeded(ctx); err != nil {
+	if err := ro.cluster.removeNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Meet nodes if needed
-	if err := ro.redkeyCluster.meetNodesIfNeeded(ctx); err != nil {
+	if err := ro.cluster.meetNodesIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Ensure cluster ratio
-	if err := ro.redkeyCluster.ensureClusterRatio(ctx); err != nil {
+	if err := ro.cluster.ensureClusterRatio(ctx); err != nil {
 		return nil
 	}
 
 	// Assign missing slots if needed
-	if err := ro.redkeyCluster.assignMissingSlotsIfNeeded(ctx); err != nil {
+	if err := ro.cluster.assignMissingSlotsIfNeeded(ctx); err != nil {
 		return err
 	}
 
 	// Update nodes info
-	if err := ro.redkeyCluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodes(); err != nil {
 		return err
 	}
 
