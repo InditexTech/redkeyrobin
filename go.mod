@@ -4,7 +4,7 @@
 
 module github.com/inditextech/redkeyrobin
 
-go 1.24.2
+go 1.24.6
 
 require (
 	github.com/go-redis/redismock/v9 v9.2.0
