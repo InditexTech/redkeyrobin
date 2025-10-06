@@ -262,6 +262,12 @@ func (rc *RedKeyStandalone) forgetNode(ctx context.Context, node redis.RedisNode
 	return nil
 }
 
+// removeNode removes a node from the cluster.
+func (rc *RedKeyStandalone) removeNode(ctx context.Context, node redis.RedisNode) error {
+	// For standalone, this is a no-op
+	return nil
+}
+
 // removeNodesIfNeeded removes nodes if needed.
 func (rc *RedKeyStandalone) removeNodesIfNeeded(ctx context.Context) error {
 	// For standalone, this is a no-op

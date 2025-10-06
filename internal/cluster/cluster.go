@@ -127,6 +127,8 @@ type clusterPrivate interface {
 	balanceClusterIfNeeded(weights map[string]int) error
 	// forgetNode forgets a node from the cluster.
 	forgetNode(ctx context.Context, node redis.RedisNode) error
+	// removeNode removes a node from the cluster.
+	removeNode(ctx context.Context, node redis.RedisNode) error
 	// removeNodesIfNeeded removes nodes if needed.
 	removeNodesIfNeeded(ctx context.Context) error
 	// addNewNodesIfNeeded adds new nodes if needed.

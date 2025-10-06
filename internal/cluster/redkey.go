@@ -619,16 +619,16 @@ func (rc *RedKeyCluster) addNode(name, addr string) *redis.RedisNode {
 }
 
 // removeNode removes a Redis node from the cluster
-func (rc *RedKeyCluster) removeNode(name string) error {
+func (rc *RedKeyCluster) removeNode(ctx context.Context, nodeToForget redis.RedisNode) error {
 	rc.mux.RLock()
 	defer rc.mux.RUnlock()
 
-	_, ok := rc.nodes[name]
+	_, ok := rc.nodes[nodeToForget.Name]
 	if !ok {
-		return fmt.Errorf("node %s not found", name)
+		return fmt.Errorf("node %s not found", nodeToForget.Name)
 	}
 
-	delete(rc.nodes, name)
+	delete(rc.nodes, nodeToForget.Name)
 	return nil
 }
 
@@ -683,25 +683,33 @@ func (rc *RedKeyCluster) checkNodes() error {
 		// Check if the node exists
 		node := rc.GetNode(nodeName)
 		if node == nil {
-			rc.logger.Error("Node not found", "node", nodeName)
-			continue
-		}
+			rc.logger.Info("Node not found (probably been forgotten), creating...", "node", nodeName)
+			nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
+			nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
+			freshNode := redis.NewRedisNode(nodeName, nodeAddr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+			if err := freshNode.Init(rc.ctx); err != nil {
+				rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
+				continue
+			}
+			rc.nodes[nodeName] = freshNode
+		} else {
 
-		// Init a fresh node to check if IP or ID have changed. This can happen if the node has been restarted
-		freshNode := redis.NewRedisNode(nodeName, node.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
-		if err := freshNode.Init(rc.ctx); err != nil {
-			rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
-			continue
-		}
+			// Init a fresh node to check if IP or ID have changed. This can happen if the node has been restarted
+			freshNode := redis.NewRedisNode(nodeName, node.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+			if err := freshNode.Init(rc.ctx); err != nil {
+				rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
+				continue
+			}
 
-		// Update ID and IP
-		if node.ID != freshNode.ID {
-			rc.logger.Info("Node ID has changed", "node", nodeName, "oldID", node.ID, "newID", freshNode.ID)
-			node.SetID(freshNode.ID)
-		}
-		if node.IP != freshNode.IP {
-			rc.logger.Info("Node IP has changed", "node", nodeName, "oldIP", node.IP, "newIP", freshNode.IP)
-			node.SetIP(freshNode.IP)
+			// Update ID and IP
+			if node.ID != freshNode.ID {
+				rc.logger.Info("Node ID has changed", "node", nodeName, "oldID", node.ID, "newID", freshNode.ID)
+				node.SetID(freshNode.ID)
+			}
+			if node.IP != freshNode.IP {
+				rc.logger.Info("Node IP has changed", "node", nodeName, "oldIP", node.IP, "newIP", freshNode.IP)
+				node.SetIP(freshNode.IP)
+			}
 		}
 	}
 
@@ -957,7 +965,7 @@ func (rc *RedKeyCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*redi
 		}
 
 		// Remove the node
-		if err := rc.removeNode(node.Name); err != nil {
+		if err := rc.removeNode(ctx, *node); err != nil {
 			return err
 		}
 	}

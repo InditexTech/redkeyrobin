@@ -102,6 +102,9 @@ func (ro *RedisOperationResetNode) doResetNode(ctx context.Context) error {
 		if err := ro.cluster.forgetNode(ctx, *node); err != nil {
 			return err
 		}
+		if err := ro.cluster.removeNode(ctx, *node); err != nil {
+			return err
+		}
 	}
 
 	// Check nodes info

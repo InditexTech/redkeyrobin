@@ -642,11 +642,13 @@ func TestRedKeyClusterRemoveNode(t *testing.T) {
 		nodeName      string
 		expectedNodes int
 		expectedError error
+		node          *redis.RedisNode
 	}{
 		{
 			name:          "remove node",
 			nodeName:      "node4",
 			expectedNodes: 3,
+			node:         redis.NewFakeRedisNode("node4", mockClientFactory),
 		},
 		{
 			name:          "remove non-existing node",
@@ -657,7 +659,7 @@ func TestRedKeyClusterRemoveNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redkeyCluster.removeNode(tt.nodeName)
+			err := redkeyCluster.removeNode(t.Context(), *tt.node)
 			assert.Len(t, redkeyCluster.nodes, tt.expectedNodes)
 			if tt.expectedError != nil {
 				assert.Error(t, err)
