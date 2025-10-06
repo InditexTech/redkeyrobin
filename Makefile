@@ -235,8 +235,8 @@ debug: ##		Build a new robin binary, copy the file to the pod and run it in debu
 	kubectl cp ./bin/robin $(REDKEY_ROBIN):/robin -n ${NAMESPACE}
 	kubectl exec -it po/$(REDKEY_ROBIN) -n ${NAMESPACE} -- dlv --listen=:40000 --headless=true --api-version=2 --accept-multiclient exec /robin --continue
 
-port-forward: ##		Port forwarding of port 40000 for debugging robin with Delve.
-	kubectl port-forward pod/$(REDKEY_ROBIN) 40000:40000 -n ${NAMESPACE}
+port-forward: ##		Port forwarding of port 40000 to port 40002 for debugging robin with Delve.
+	kubectl port-forward pod/$(REDKEY_ROBIN) 40002:40000 -n ${NAMESPACE}
 
 port-forward-metrics: ##		Port forwarding of port 8080 for debugging the manager with Delve.
 	kubectl port-forward pod/$(REDKEY_ROBIN) 8080:8080 -n ${NAMESPACE}

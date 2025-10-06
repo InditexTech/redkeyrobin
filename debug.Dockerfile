@@ -2,9 +2,12 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-FROM golang:1.23
+FROM golang:1.24.6
 
-RUN go install github.com/go-delve/delve/cmd/dlv@v1.23.1
+RUN go install github.com/go-delve/delve/cmd/dlv@v1.25
+
+# Install redis-cli by adding the redis package
+RUN apt update -y && apt install -y redis-tools curl procps
 
 WORKDIR /
 EXPOSE 40000
