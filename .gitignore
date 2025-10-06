@@ -30,7 +30,7 @@ coverage.html
 *.swp
 *.swo
 *~
-
+.vscode
 
 # OSS Review Toolkit (ORT) temporary files
 ort/
