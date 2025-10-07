@@ -76,6 +76,8 @@ type clusterGetter interface {
 	GetMetricsRedisInfoKeys() []string
 	// GetMetricsInterval returns the interval for collecting Redis metrics
 	GetMetricsInterval() int
+	// GetOpenSlots returns the open slots of the RedKey Cluster
+	GetOpenSlots() map[int]int
 }
 
 type clusterSetter interface {
@@ -85,6 +87,8 @@ type clusterSetter interface {
 	SetReplicas(replicas int, replicasPerMaster *int) error
 	// SetStatus sets the status of the cluster.
 	SetStatus(status string) error
+	// SetOpenSlots sets the open slots of the cluster.
+	SetOpenSlots(openSlots map[int]int)
 }
 
 type clusterAsker interface {
@@ -133,6 +137,8 @@ type clusterPrivate interface {
 	removeNodesIfNeeded(ctx context.Context) error
 	// addNewNodesIfNeeded adds new nodes if needed.
 	addNewNodesIfNeeded() error
+	// stabilizeOpenSlots stabilizes open slots if needed.
+	stabilizeOpenSlots(ctx context.Context, counter map[int]int, threshold int) (map[int]int, error)
 }
 
 // Cluster represents a cluster, either standalone or Redis.
@@ -176,10 +182,11 @@ func NewCluster(ctx context.Context, conf *config.Configuration, channel chan st
 
 // clusterBase represents the base of a cluster.
 type clusterBase struct {
-	ctx    context.Context
-	logger *slog.Logger
-	conf   *config.Configuration
-	status string
+	ctx       context.Context
+	logger    *slog.Logger
+	conf      *config.Configuration
+	status    string
+	openSlots map[int]int
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -281,6 +288,11 @@ func (rc *clusterBase) GetMetadata() map[string]string {
 	return rc.conf.Metadata
 }
 
+// GetOpenSlots returns the open slots of the RedKey Cluster
+func (rc *clusterBase) GetOpenSlots() map[int]int {
+	return rc.openSlots
+}
+
 // ----------------------------------------------------------------------------------------------------
 // ---------------------------------------------- SETTERS ---------------------------------------------
 // ----------------------------------------------------------------------------------------------------
@@ -289,6 +301,11 @@ func (rc *clusterBase) GetMetadata() map[string]string {
 func (rc *clusterBase) SetStatus(status string) error {
 	rc.status = status
 	return nil
+}
+
+// SetOpenSlots sets the open slots of the RedKey Cluster
+func (rc *clusterBase) SetOpenSlots(openSlots map[int]int) {
+	rc.openSlots = openSlots
 }
 
 // ----------------------------------------------------------------------------------------------------

@@ -106,6 +106,8 @@ type RedisClientInterface interface {
 	ReshardNode(ctx context.Context, source, target RedisNode, slots int) *RedisCLICommand
 	// ClusterRebalance executes "redis-cli --cluster rebalance <addr> --cluster-weight <weight> --cluster-yes" asynchronously and returns the command reference.
 	ClusterRebalance(ctx context.Context, weights map[string]int) *RedisCLICommand
+	// StabilizeSlot executes "redis-cli -h <nodeIP> cluster setslot <slot> stable" asynchronously and returns the command reference.
+	StabilizeSlot(ctx context.Context, nodeIp string, slot int) *RedisCLICommand
 }
 
 // RedisClient encapsulates a connection to Redis.
@@ -321,6 +323,20 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 			failures = int(failureStr)
 		}
 
+		importing := make(map[int]string)
+		migrating := make(map[int]string)
+		if strings.Contains(line, "myself") && len(fields) > 9 {
+			if strings.Contains(fields[9], "<") {
+				slotStr := strings.Split(fields[9], "-<-")
+				slotId, _ := strconv.Atoi(slotStr[0][1:])
+				importing[slotId] = slotStr[1][0 : len(slotStr[1])-1]
+			} else if strings.Contains(fields[9], ">") {
+				slotStr := strings.Split(fields[9], "->-")
+				slotId, _ := strconv.Atoi(slotStr[0][1:])
+				migrating[slotId] = slotStr[1][0 : len(slotStr[1])-1]
+			}
+		}
+
 		// Construct Node struct
 		node := RedisNode{
 			ID:         nodeID,
@@ -332,6 +348,8 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 			Sent:       sent,
 			Recv:       recv,
 			LinkStatus: linkStatus,
+			Migrating:  migrating,
+			Importing:  importing,
 		}
 
 		nodes = append(nodes, node)

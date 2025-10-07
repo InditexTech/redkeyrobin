@@ -648,7 +648,7 @@ func TestRedKeyClusterRemoveNode(t *testing.T) {
 			name:          "remove node",
 			nodeName:      "node4",
 			expectedNodes: 3,
-			node:         redis.NewFakeRedisNode("node4", mockClientFactory),
+			node:          redis.NewFakeRedisNode("node4", mockClientFactory),
 		},
 		{
 			name:          "remove non-existing node",

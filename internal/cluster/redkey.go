@@ -32,6 +32,13 @@ type RedKeyCluster struct {
 	operationFactory *OperationFactory
 }
 
+// MigratingSlot represents a slot being migrated from one node to another
+type MigratingSlot struct {
+	Slot int
+	From string
+	To   string
+}
+
 // Default client factory for RedKeyCluster (global, no closure)
 func defaultRedKeyClusterClientFactory(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 	redisClient := redis.NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
@@ -1531,4 +1538,52 @@ func (rc *RedKeyCluster) doRemoveOutdatedNodes() {
 			}
 		}
 	}
+}
+
+// stabilizeOpenSlots sets open slots as stable if the check counter threshold is reached
+func (rc *RedKeyCluster) stabilizeOpenSlots(ctx context.Context, counter map[int]int, threshold int) (map[int]int, error) {
+	var slotsToStabilize []MigratingSlot
+	updatedCounter := make(map[int]int)
+	for _, node := range rc.nodes {
+		clusterNodes, err := node.GetClusterNodes(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error getting cluster nodes from node %s: %v", node.Name, err)
+		}
+
+		for _, clusterNode := range clusterNodes {
+			if clusterNode.ID == node.ID && len(clusterNode.Migrating) > 0 {
+				for slot := range clusterNode.Migrating {
+					if count, ok := counter[slot]; ok {
+						if count+1 > threshold {
+							slotsToStabilize = append(slotsToStabilize, MigratingSlot{Slot: slot, From: clusterNode.ID, To: clusterNode.Migrating[slot]})
+						} else {
+							updatedCounter[slot] = count + 1
+						}
+					} else {
+						updatedCounter[slot] = 1
+					}
+				}
+			}
+		}
+	}
+
+	if len(slotsToStabilize) > 0 {
+		for _, slot := range slotsToStabilize {
+			rc.logger.Info("Slot needs to be stabilized", "slot", slot.Slot, "from", slot.From, "to", slot.To, "checks", threshold)
+			for _, node := range rc.nodes {
+				if node.ID == slot.From {
+					node.StabilizeSlot(ctx, node.IP, slot.Slot)
+					break
+				}
+			}
+			for _, node := range rc.nodes {
+				if node.ID == slot.To {
+					node.StabilizeSlot(ctx, node.IP, slot.Slot)
+					break
+				}
+			}
+		}
+	}
+
+	return updatedCounter, nil
 }

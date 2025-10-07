@@ -294,3 +294,9 @@ func (rc *RedKeyStandalone) createNode(name, addr string) *redis.RedisNode {
 	rc.node = node
 	return node
 }
+
+// stabilizeOpenSlots stabilizes open slots in the cluster.
+func (rc *RedKeyStandalone) stabilizeOpenSlots(ctx context.Context, counter map[int]int, threshold int) (map[int]int, error) {
+	// For standalone, this is a no-op
+	return nil, nil
+}

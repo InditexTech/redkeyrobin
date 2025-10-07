@@ -35,6 +35,8 @@ type RedisNode struct {
 	LinkStatus string           `json:"linkStatus"`
 	MaxRetries int              `json:"-"`
 	Backoff    time.Duration    `json:"-"`
+	Migrating  map[int]string   `json:"migrating,omitempty"`
+	Importing  map[int]string   `json:"importing,omitempty"`
 
 	clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error)
 }
@@ -281,6 +283,21 @@ func (rn *RedisNode) Failover(ctx context.Context) error {
 	defer redisClient.Close()
 
 	return redisClient.ClusterFailover()
+}
+
+// StabilizeSlot sets a slot as stable in the Redis node.
+func (rn *RedisNode) StabilizeSlot(ctx context.Context, nodeIP string, slot int) error{
+	redisClient, err := rn.getClient(ctx)
+	if err != nil {
+		return nil
+	}
+	defer redisClient.Close()
+
+	cmd := redisClient.StabilizeSlot(ctx, nodeIP, slot)
+	if cmd.Err != nil {
+		return fmt.Errorf("error stabilizing slot: %v", cmd.Err)
+	}
+	return nil
 }
 
 // ----------------------------------------------------------------------------------------------------
