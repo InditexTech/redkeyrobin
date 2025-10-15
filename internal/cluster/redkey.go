@@ -125,6 +125,16 @@ func (rc *RedKeyCluster) GetNode(name string) *redis.RedisNode {
 	return rc.nodes[name]
 }
 
+// GetNodeById returns the Redis node with the specified ID or nil if it doesn't exist
+func (rc *RedKeyCluster) GetNodeById(id string) *redis.RedisNode {
+	for _, node := range rc.nodes {
+		if node.ID == id {
+			return node
+		}
+	}
+	return nil
+}
+
 // GetNodeFromID returns the Redis node with the specified ID or nil if it doesn't exist
 func (rc *RedKeyCluster) GetNodeFromID(nodeID string) *redis.RedisNode {
 	rc.mux.RLock()
@@ -1570,17 +1580,13 @@ func (rc *RedKeyCluster) stabilizeOpenSlots(ctx context.Context, counter map[int
 	if len(slotsToStabilize) > 0 {
 		for _, slot := range slotsToStabilize {
 			rc.logger.Info("Slot needs to be stabilized", "slot", slot.Slot, "from", slot.From, "to", slot.To, "checks", threshold)
-			for _, node := range rc.nodes {
-				if node.ID == slot.From {
-					node.StabilizeSlot(ctx, node.IP, slot.Slot)
-					break
-				}
+			if fromNode := rc.GetNodeById(slot.From); fromNode != nil {
+				fromNode.StabilizeSlot(ctx, fromNode.IP, slot.Slot)
+				break
 			}
-			for _, node := range rc.nodes {
-				if node.ID == slot.To {
-					node.StabilizeSlot(ctx, node.IP, slot.Slot)
-					break
-				}
+			if toNode := rc.GetNodeById(slot.To); toNode != nil {
+				toNode.StabilizeSlot(ctx, toNode.IP, slot.Slot)
+				break
 			}
 		}
 	}
