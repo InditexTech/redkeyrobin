@@ -121,7 +121,7 @@ func (ro *RedisOperationUpgrade) doUpgrade(ctx context.Context) error {
 	}
 
 	// Check for open slots and fix stabilize if needed
-	updatedCounter, err := ro.cluster.stabilizeOpenSlots(ctx, ro.cluster.GetOpenSlots(), 5)
+	updatedCounter, err := ro.cluster.stabilizeOpenSlots(ctx, ro.cluster.GetOpenSlots(), ro.cluster.GetReconcilerStabilizeSlotsReconciliationThreshold())
 	if err != nil {
 		return err
 	}

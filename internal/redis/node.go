@@ -286,7 +286,7 @@ func (rn *RedisNode) Failover(ctx context.Context) error {
 }
 
 // StabilizeSlot sets a slot as stable in the Redis node.
-func (rn *RedisNode) StabilizeSlot(ctx context.Context, nodeIP string, slot int) error{
+func (rn *RedisNode) StabilizeSlot(ctx context.Context, nodeIP string, slot int) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
 		return nil

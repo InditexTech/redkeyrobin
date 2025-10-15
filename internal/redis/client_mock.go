@@ -254,7 +254,7 @@ func (m MockRedisClient) ReshardNode(ctx context.Context, source, target RedisNo
 
 // StabilizeSlot mocks the StabilizeSlot method
 func (m MockRedisClient) StabilizeSlot(ctx context.Context, nodeIP string, slot int) *RedisCLICommand {
-		if m.StabilizeSlotError != nil {
+	if m.StabilizeSlotError != nil {
 		cmd := &RedisCLICommand{}
 		cmd.Err = m.StabilizeSlotError
 		return cmd

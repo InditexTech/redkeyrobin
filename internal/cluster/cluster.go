@@ -56,6 +56,8 @@ type clusterGetter interface {
 	GetStatus() string
 	// GetReconcilerInterval returns the interval of the cluster reconciler.
 	GetReconcilerInterval() int
+	// GetReconcilerOperationCleanupInterval returns the interval for stabilizing slots.
+	GetReconcilerStabilizeSlotsReconciliationThreshold() int
 	// GetName returns the name of the cluster.
 	GetName() string
 	// GetAddress returns the address of the cluster.
@@ -241,6 +243,11 @@ func (rc *clusterBase) GetReconcilerInterval() int {
 // GetReconcilerOperationCleanupInterval returns the interval for cleaning up old operations
 func (rc *clusterBase) GetReconcilerOperationCleanupInterval() int {
 	return rc.conf.Redis.Reconciler.OperationCleanupIntervalSeconds
+}
+
+// GetReconcilerStabilizeSlotsReconciliationThreshold returns the threshold for stabilizing slots
+func (rc *clusterBase) GetReconcilerStabilizeSlotsReconciliationThreshold() int {
+	return rc.conf.Redis.Reconciler.StabilizeSlotsReconciliationThreshold
 }
 
 // GetClusterMaxRetries returns the maximum number of retries for a RedKey Cluster check connection operation
