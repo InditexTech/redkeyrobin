@@ -1581,10 +1581,16 @@ func (rc *RedKeyCluster) stabilizeOpenSlots(ctx context.Context, counter map[int
 		for _, slot := range slotsToStabilize {
 			rc.logger.Info("Slot needs to be stabilized", "slot", slot.Slot, "from", slot.From, "to", slot.To, "checks", threshold)
 			if fromNode := rc.GetNodeById(slot.From); fromNode != nil {
-				fromNode.StabilizeSlot(ctx, fromNode.IP, slot.Slot)
+				if err := fromNode.StabilizeSlot(ctx, fromNode.IP, slot.Slot); err != nil {
+					rc.logger.Error("Error stabilizing slot", "slot", slot.Slot, "from", slot.From, "error", err)
+				}
+				rc.logger.Info("Slot stabilized on from node", "slot", slot.Slot, "from", slot.From)
 			}
 			if toNode := rc.GetNodeById(slot.To); toNode != nil {
-				toNode.StabilizeSlot(ctx, toNode.IP, slot.Slot)
+				if err := toNode.StabilizeSlot(ctx, toNode.IP, slot.Slot); err != nil {
+					rc.logger.Error("Error stabilizing slot", "slot", slot.Slot, "to", slot.To, "error", err)
+				}
+				rc.logger.Info("Slot stabilized on to node", "slot", slot.Slot, "to", slot.To)
 			}
 		}
 	}
