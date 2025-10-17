@@ -1582,11 +1582,9 @@ func (rc *RedKeyCluster) stabilizeOpenSlots(ctx context.Context, counter map[int
 			rc.logger.Info("Slot needs to be stabilized", "slot", slot.Slot, "from", slot.From, "to", slot.To, "checks", threshold)
 			if fromNode := rc.GetNodeById(slot.From); fromNode != nil {
 				fromNode.StabilizeSlot(ctx, fromNode.IP, slot.Slot)
-				break
 			}
 			if toNode := rc.GetNodeById(slot.To); toNode != nil {
 				toNode.StabilizeSlot(ctx, toNode.IP, slot.Slot)
-				break
 			}
 		}
 	}
