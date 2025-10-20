@@ -655,6 +655,7 @@ func TestRedKeyClusterRemoveNode(t *testing.T) {
 			nodeName:      "node4",
 			expectedNodes: 3,
 			expectedError: fmt.Errorf("node node4 not found"),
+			node:          redis.NewFakeRedisNode("node4", mockClientFactory),
 		},
 	}
 	for _, tt := range tests {
