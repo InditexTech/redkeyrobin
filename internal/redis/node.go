@@ -201,6 +201,8 @@ func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	rn.Sent = nodeInfo.Sent
 	rn.Recv = nodeInfo.Recv
 	rn.LinkStatus = nodeInfo.LinkStatus
+	rn.Migrating = nodeInfo.Migrating
+	rn.Importing = nodeInfo.Importing
 }
 
 // ResetSlots resets the Redis node slots.

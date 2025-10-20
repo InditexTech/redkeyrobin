@@ -325,14 +325,14 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 
 		importing := make(map[int]string)
 		migrating := make(map[int]string)
-		if strings.Contains(line, "myself") && len(fields) > 9 {
-			if strings.Contains(fields[9], "<") {
-				slotStr := strings.Split(fields[9], "-<-")
-				slotId, _ := strconv.Atoi(slotStr[0][1:])
+		if strings.Contains(line, "myself") && (strings.Contains(line, "-<-") || strings.Contains(line, "->-")) {
+			if strings.Contains(line, "<") {
+				slotStr := strings.Split(line, "-<-")
+				slotId, _ := strconv.Atoi(strings.Split(slotStr[0], "[")[1])
 				importing[slotId] = slotStr[1][0 : len(slotStr[1])-1]
-			} else if strings.Contains(fields[9], ">") {
-				slotStr := strings.Split(fields[9], "->-")
-				slotId, _ := strconv.Atoi(slotStr[0][1:])
+			} else if strings.Contains(line, ">") {
+				slotStr := strings.Split(line, "->-")
+				slotId, _ := strconv.Atoi(strings.Split(slotStr[0], "[")[1])
 				migrating[slotId] = slotStr[1][0 : len(slotStr[1])-1]
 			}
 		}
