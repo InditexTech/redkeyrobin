@@ -62,7 +62,7 @@ func TestDefaultValuesInitialization(t *testing.T) {
 	cfg.validate()
 	
 	assert.Equal(t, 60, cfg.Redis.Reconciler.OperationCleanupIntervalSeconds)
-	assert.Equal(t, 5, cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold)
+	assert.Equal(t, 3, cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold)
 	assert.Equal(t, []string{"used_memory", "connected_clients", "total_commands_processed", "instantaneous_ops_per_sec"}, cfg.Redis.Metrics.RedisInfoKeys)
 	assert.Equal(t, 5, cfg.Redis.Cluster.ClusterMeetWaitTimeSeconds)
 }

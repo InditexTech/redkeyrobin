@@ -109,7 +109,7 @@ func (cfg *Configuration) validate() []string {
 		cfg.Redis.Reconciler.OperationCleanupIntervalSeconds = 60
 	}
 	if cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold == 0 {
-		cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold = 5
+		cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold = 3
 	}
 	if len(cfg.Redis.Metrics.RedisInfoKeys) == 0 {
 		cfg.Redis.Metrics.RedisInfoKeys = []string{"used_memory", "connected_clients", "total_commands_processed", "instantaneous_ops_per_sec"}
