@@ -90,6 +90,11 @@ func (ro *RedisOperationCheckIntegrity) doCheckIntegrity(ctx context.Context) er
 		ro.logger.Error("Error removing outdated nodes", "error", err)
 	}
 
+	// Remove nodes if needed
+	if err := ro.cluster.removeNodesIfNeeded(ctx); err != nil {
+		return err
+	}
+
 	// Meet nodes if needed
 	if err := ro.cluster.meetNodesIfNeeded(ctx); err != nil {
 		return err

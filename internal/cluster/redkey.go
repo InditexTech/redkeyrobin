@@ -689,11 +689,13 @@ func (rc *RedKeyCluster) refreshNodes() error {
 
 	// Update nodes info
 	rc.updateNodesInfo(nodesInfo)
+
 	return nil
 }
 
 // checkNodes checks the nodes of the RedKey cluster
 func (rc *RedKeyCluster) checkNodes() error {
+	refresedNodes := make(map[string]*redis.RedisNode)
 	for i := range rc.GetDesiredReplicas() {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
 
@@ -728,7 +730,9 @@ func (rc *RedKeyCluster) checkNodes() error {
 				node.SetIP(freshNode.IP)
 			}
 		}
+		refresedNodes[nodeName] = rc.nodes[nodeName]
 	}
+	rc.nodes = refresedNodes
 
 	// Update nodes info
 	if err := rc.refreshNodes(); err != nil {
@@ -1072,7 +1076,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 				return fmt.Errorf("error forgetting node %s from node %s: %v", clusterNode.ID, node.Name, err)
 			}
 
-			rc.logger.Info("Node forgotten successfully", "node", clusterNode.ID, "from", node.Name)
+			rc.logger.Info("Outdated node forgotten successfully", "node", clusterNode.ID, "from", node.Name)
 		}
 	}
 
