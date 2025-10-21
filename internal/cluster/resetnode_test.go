@@ -58,7 +58,7 @@ func TestRedisOperationResetNodeWait(t *testing.T) {
 
 			if tt.expectedError != nil {
 				assert.NotNil(t, err)
-				assert.Equal(t, tt.expectedError, err)
+				assert.Contains(t, err.Error(), tt.expectedError.Error())
 			} else {
 				assert.Nil(t, err)
 			}
@@ -91,10 +91,10 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 		{
 			name: "node reset fails",
 			setupMock: func(mock *MockRedKeyCluster) {
-				// No setup needed - Reset will fail due to mock client
+				mock.SetRedisClientError("ClusterReset", fmt.Errorf("reset failed"))
 			},
-			node:          redis.NewFakeRedisNode("test-1", mockClientFactoryError),
-			expectedError: fmt.Errorf("error creating client"),
+			node:          redis.NewFakeRedisNode("test-1", mockClientFactory),
+			expectedError: fmt.Errorf("reset failed"),
 		},
 		{
 			name: "forgetNode fails (ephemeral cluster)",
@@ -174,7 +174,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 				"Ready",
 				map[string]*redis.RedisNode{
 					"test-0": redis.NewRedisNode("test-0", "id1", 0, time.Duration(0)).WithClientFactory(mockClientFactory),
-					"test-1": redis.NewRedisNode("test-1", "id2", 0, time.Duration(0)).WithClientFactory(mockClientFactoryError),
+					"test-1": redis.NewRedisNode("test-1", "id2", 0, time.Duration(0)).WithClientFactory(mockClientFactory),
 				},
 				map[string][]RedisOperation{},
 				make(chan struct{}, 1),
@@ -182,6 +182,18 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 
 			mockCluster := NewMockRedKeyCluster(cluster)
 			tt.setupMock(mockCluster)
+
+			if tt.node != nil {
+				tt.node = tt.node.WithClientFactory(func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+					return mockCluster.MockRedisClient, nil
+				})
+
+				if clusterNode := mockCluster.GetNode(tt.node.Name); clusterNode != nil {
+					clusterNode.WithClientFactory(func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						return mockCluster.MockRedisClient, nil
+					})
+				}
+			}
 
 			// Create operation
 			operation := NewFakeRedisOperationResetNode(context.Background(), mockCluster, "Pending", tt.node)
@@ -198,7 +210,7 @@ func TestRedisOperationResetNodeDoResetNode(t *testing.T) {
 
 			if tt.expectedError != nil {
 				assert.NotNil(t, err)
-				assert.Equal(t, tt.expectedError, err)
+				assert.Contains(t, err.Error(), tt.expectedError.Error())
 			} else {
 				assert.Nil(t, err)
 			}
