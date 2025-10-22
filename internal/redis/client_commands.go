@@ -80,3 +80,12 @@ func (rc *RedisClient) ClusterRebalance(ctx context.Context, weights map[string]
 	// Execute the command and return command reference
 	return runRedisCLICommandAsync(ctx, command)
 }
+
+// StabilizeSlot executes "redis-cli -h <nodeIP> cluster setslot <slot> stable" asynchronously and returns the command reference.
+func (rc *RedisClient) StabilizeSlot(ctx context.Context, nodeIP string, slot int) *RedisCLICommand {
+
+	command := fmt.Sprintf("redis-cli -h %s cluster setslot %v stable", nodeIP, slot)
+
+	// Execute the command and return command reference
+	return runRedisCLICommandAsync(ctx, command)
+}

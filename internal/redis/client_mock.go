@@ -47,6 +47,7 @@ type MockRedisClient struct {
 	ClusterFixError        error
 	ClusterRebalanceError  error
 	ReshardNodeError       error
+	StabilizeSlotError     error
 
 	// Mock data to return when no error
 	MockRedisInfo    *RedisInfo
@@ -242,6 +243,20 @@ func (m MockRedisClient) ReshardNode(ctx context.Context, source, target RedisNo
 	if m.ReshardNodeError != nil {
 		cmd := &RedisCLICommand{}
 		cmd.Err = m.ReshardNodeError
+		return cmd
+	}
+
+	// Return a successful command by default
+	command := NewRedisCLICommand(ctx, "exit 0")
+	command.Start()
+	return command
+}
+
+// StabilizeSlot mocks the StabilizeSlot method
+func (m MockRedisClient) StabilizeSlot(ctx context.Context, nodeIP string, slot int) *RedisCLICommand {
+	if m.StabilizeSlotError != nil {
+		cmd := &RedisCLICommand{}
+		cmd.Err = m.StabilizeSlotError
 		return cmd
 	}
 

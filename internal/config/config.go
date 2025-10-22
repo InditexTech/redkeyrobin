@@ -16,8 +16,9 @@ import (
 
 // RedisReconcilerConfig holds operator-level Redis configuration.
 type RedisReconcilerConfig struct {
-	IntervalSeconds                 int `yaml:"interval_seconds"`
-	OperationCleanupIntervalSeconds int `yaml:"operation_cleanup_interval_seconds"`
+	IntervalSeconds                       int `yaml:"interval_seconds"`
+	OperationCleanupIntervalSeconds       int `yaml:"operation_cleanup_interval_seconds"`
+	StabilizeSlotsReconciliationThreshold int `yaml:"stabilize_slots_reconciliation_threshold"`
 }
 
 // RedKeyClusterConfig holds cluster-level Redis configuration.
@@ -106,6 +107,12 @@ func (cfg *Configuration) validate() []string {
 	}
 	if cfg.Redis.Reconciler.OperationCleanupIntervalSeconds == 0 {
 		cfg.Redis.Reconciler.OperationCleanupIntervalSeconds = 60
+	}
+	if cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold == 0 {
+		cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold = 3
+	}
+	if len(cfg.Redis.Metrics.RedisInfoKeys) == 0 {
+		cfg.Redis.Metrics.RedisInfoKeys = []string{"used_memory", "connected_clients", "total_commands_processed", "instantaneous_ops_per_sec"}
 	}
 	if cfg.Redis.Cluster.ClusterMeetWaitTimeSeconds == 0 {
 		cfg.Redis.Cluster.ClusterMeetWaitTimeSeconds = 5

@@ -642,22 +642,25 @@ func TestRedKeyClusterRemoveNode(t *testing.T) {
 		nodeName      string
 		expectedNodes int
 		expectedError error
+		node          *redis.RedisNode
 	}{
 		{
 			name:          "remove node",
 			nodeName:      "node4",
 			expectedNodes: 3,
+			node:          redis.NewFakeRedisNode("node4", mockClientFactory),
 		},
 		{
 			name:          "remove non-existing node",
 			nodeName:      "node4",
 			expectedNodes: 3,
 			expectedError: fmt.Errorf("node node4 not found"),
+			node:          redis.NewFakeRedisNode("node4", mockClientFactory),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redkeyCluster.removeNode(tt.nodeName)
+			err := redkeyCluster.removeNode(t.Context(), *tt.node)
 			assert.Len(t, redkeyCluster.nodes, tt.expectedNodes)
 			if tt.expectedError != nil {
 				assert.Error(t, err)
@@ -4926,6 +4929,206 @@ func TestRedKeyClusterResetNode(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestRedKeyClusterStabilizeOpenSlots(t *testing.T) {
+	tests := []struct {
+		name         string
+		nodes        map[string]*redis.RedisNode
+		initialCount map[int]int
+		threshold    int
+		expected     map[int]int
+		expectError  bool
+	}{
+		{
+			name: "no open slots",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "1.1.1.1", Migrating: map[int]string{} }},
+						}
+						return client, nil
+					})
+					node.ID = "nodeId1"
+					return node
+				}(),
+			},
+			initialCount: map[int]int{},
+			threshold:    2,
+			expected:     map[int]int{},
+			expectError:  false,
+		},
+		{
+			name: "increment counter for open slot",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "1.1.1.1", Migrating: map[int]string{5: "nodeId2"} }},
+						}
+						return client, nil
+					})
+					node.ID = "nodeId1"
+					return node
+				}(),
+				// include destination node so GetNodeById can find it (not strictly required when not stabilizing)
+				"node2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", mockClientFactory)
+					node.ID = "nodeId2"
+					return node
+				}(),
+			},
+			initialCount: map[int]int{},
+			threshold:    1,
+			expected:     map[int]int{5: 1},
+			expectError:  false,
+		},
+		{
+			name: "stabilize when threshold reached",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "10.0.0.1", Migrating: map[int]string{7: "nodeId2"}}},
+						}
+						return client, nil
+					})
+					node.ID = "nodeId1"
+					node.IP = "10.0.0.1"
+					return node
+				}(),
+				"node2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{},
+						}
+						return client, nil
+					})
+					node.ID = "nodeId2"
+					node.IP = "10.0.0.2"
+					return node
+				}(),
+			},
+			initialCount: map[int]int{7: 1},
+			threshold:    1,
+			expected:     map[int]int{},
+			expectError:  false,
+		},
+		{
+			name: "error getting cluster nodes",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{GetNodesInfoError: fmt.Errorf("Error getting cluster nodes")}
+						return client, nil
+					})
+					node.ID = "nodeId1"
+					return node
+				}(),
+			},
+			initialCount: map[int]int{},
+			threshold:    1,
+			expected:     nil,
+			expectError:  true,
+		},
+		{
+			name: "multiple open slots across nodes",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						// node1 is migrating slots 1 and 2 to node2 and node3 respectively
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "10.0.0.1", Migrating: map[int]string{1: "nodeId2", 2: "nodeId3"}}},
+						}
+						return client, nil
+					})
+					node.ID = "nodeId1"
+					node.IP = "10.0.0.1"
+					return node
+				}(),
+				"node2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{MockNodesInfo: []redis.RedisNode{{ID: "nodeId2", IP: "10.0.0.2"}}}
+						return client, nil
+					})
+					node.ID = "nodeId2"
+					node.IP = "10.0.0.2"
+					return node
+				}(),
+				"node3": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node3", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						client := redis.MockRedisClient{MockNodesInfo: []redis.RedisNode{{ID: "nodeId3", IP: "10.0.0.3"}}}
+						return client, nil
+					})
+					node.ID = "nodeId3"
+					node.IP = "10.0.0.3"
+					return node
+				}(),
+			},
+			initialCount: map[int]int{1: 1, 2: 0},
+			threshold:    1,
+			// slot 1 already had count 1 -> threshold reached -> stabilized; slot 2 will be incremented to 1
+			expected:     map[int]int{2: 1},
+			expectError:  false,
+		},
+		{
+			name: "partial stabilize slot error",
+			nodes: map[string]*redis.RedisNode{
+				"node1": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						// node1 has a migrating slot to node2
+						client := redis.MockRedisClient{
+							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "10.1.0.1", Migrating: map[int]string{11: "nodeId2"}}},
+							// StabilizeSlot will fail on the node1
+							StabilizeSlotError: fmt.Errorf("stabilize from failed"),
+						}
+						return client, nil
+					})
+					node.ID = "nodeId1"
+					node.IP = "10.1.0.1"
+					return node
+				}(),
+				"node2": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("node2", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+						// node2 returns success for StabilizeSlot
+						client := redis.MockRedisClient{MockNodesInfo: []redis.RedisNode{{ID: "nodeId2", IP: "10.1.0.2"}}}
+						return client, nil
+					})
+					node.ID = "nodeId2"
+					node.IP = "10.1.0.2"
+					return node
+				}(),
+			},
+			initialCount: map[int]int{11: 1},
+			threshold:    1,
+			// Even though from.StabilizeSlot will error, stabilizeOpenSlots should log the error and continue.
+			expected:    map[int]int{},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{Redis: config.RedisConfig{Cluster: config.RedKeyClusterConfig{MaxRetries: 1, BackOff: time.Microsecond * 10}}},
+				"Ready",
+				tt.nodes,
+				make(map[string][]RedisOperation),
+				make(chan struct{}, 1),
+			)
+
+			updated, err := cluster.stabilizeOpenSlots(context.Background(), tt.initialCount, tt.threshold)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, updated)
 		})
 	}
 }

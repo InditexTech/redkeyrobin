@@ -44,7 +44,7 @@ func NewFakeRedisOperationUpgrade(ctx context.Context, cluster Cluster, status s
 
 // Launch launches the upgrade operation.
 func (ro *RedisOperationUpgrade) Launch() error {
-	ro.logger.Info("Upgrading cluster")
+	ro.logger.Info("Reconciling cluster in Upgrading status")
 
 	// Launch upgrade operation
 	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doUpgrade)
@@ -73,7 +73,7 @@ func (ro *RedisOperationUpgrade) Wait() error {
 
 	// Upgrade finished successfully
 	ro.cluster.SetStatus(Ready)
-	ro.logger.Info("Cluster upgraded successfully")
+	ro.logger.Info("Reconciling cluster in Upgrading status ended")
 
 	return nil
 }
@@ -119,6 +119,13 @@ func (ro *RedisOperationUpgrade) doUpgrade(ctx context.Context) error {
 	if err := ro.cluster.refreshNodes(); err != nil {
 		return err
 	}
+
+	// Check for open slots and fix stabilize if needed
+	updatedCounter, err := ro.cluster.stabilizeOpenSlots(ctx, ro.cluster.GetOpenSlots(), ro.cluster.GetReconcilerStabilizeSlotsReconciliationThreshold())
+	if err != nil {
+		return err
+	}
+	ro.cluster.SetOpenSlots(updatedCounter)
 
 	return nil
 }

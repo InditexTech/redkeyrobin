@@ -29,6 +29,7 @@ type MockRedKeyCluster struct {
 	RemoveNodesIfNeededError        error
 	AddNewNodesIfNeededError        error
 	ForgetNodeError                 error
+	StabilizeOpenSlotsError         error
 
 	// Behavior control fields
 	IsEphemeralValue bool
@@ -122,6 +123,11 @@ func (m *MockRedKeyCluster) balanceClusterIfNeeded(weights map[string]int) error
 	return m.BalanceClusterIfNeededError
 }
 
+// stabilizeOpenSlots mocks the stabilizeOpenSlots method
+func (m *MockRedKeyCluster) stabilizeOpenSlots(ctx context.Context, counter map[int]int, threshold int) (map[int]int, error) {
+	return nil, m.StabilizeOpenSlotsError
+}
+
 // SetRedisClientError configures an error for a specific Redis client method
 func (m *MockRedKeyCluster) SetRedisClientError(method string, err error) {
 	switch method {
@@ -159,6 +165,8 @@ func (m *MockRedKeyCluster) SetRedisClientError(method string, err error) {
 		m.MockRedisClient.ClusterRebalanceError = err
 	case "ReshardNode":
 		m.MockRedisClient.ReshardNodeError = err
+	case "StabilizeSlot":
+		m.MockRedisClient.StabilizeSlotError = err
 	}
 }
 

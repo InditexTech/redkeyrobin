@@ -5,10 +5,13 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
 
+	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/config"
 	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
@@ -440,6 +443,27 @@ func TestGetNodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Recreate server cluster for each test to avoid shared state between tests
+			server.cluster = cluster.NewFakeRedKeyCluster(
+				context.TODO(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:   "test",
+							Status: "Ready",
+						},
+					},
+				},
+				"Unknown",
+				map[string]*redis.RedisNode{
+					"test-0": node1,
+					"test-1": node2,
+					"test-2": node3,
+				},
+				map[string][]cluster.RedisOperation{},
+				make(chan struct{}, 1),
+			)
+			
 			body := testRequest(t, "PUT", "/cluster/nodes", tt.request, "", nil, server.GetNodes, tt.expectedStatusCode, nil)
 
 			var response ClusterNodesResponse

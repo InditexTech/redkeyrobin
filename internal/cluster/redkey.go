@@ -32,6 +32,13 @@ type RedKeyCluster struct {
 	operationFactory *OperationFactory
 }
 
+// MigratingSlot represents a slot being migrated from one node to another
+type MigratingSlot struct {
+	Slot int
+	From string
+	To   string
+}
+
 // Default client factory for RedKeyCluster (global, no closure)
 func defaultRedKeyClusterClientFactory(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 	redisClient := redis.NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
@@ -116,6 +123,16 @@ func (rc *RedKeyCluster) GetNode(name string) *redis.RedisNode {
 		name = fmt.Sprintf("%s-%s", rc.GetName(), name)
 	}
 	return rc.nodes[name]
+}
+
+// GetNodeById returns the Redis node with the specified ID or nil if it doesn't exist
+func (rc *RedKeyCluster) GetNodeById(id string) *redis.RedisNode {
+	for _, node := range rc.nodes {
+		if node.ID == id {
+			return node
+		}
+	}
+	return nil
 }
 
 // GetNodeFromID returns the Redis node with the specified ID or nil if it doesn't exist
@@ -619,16 +636,16 @@ func (rc *RedKeyCluster) addNode(name, addr string) *redis.RedisNode {
 }
 
 // removeNode removes a Redis node from the cluster
-func (rc *RedKeyCluster) removeNode(name string) error {
+func (rc *RedKeyCluster) removeNode(ctx context.Context, nodeToForget redis.RedisNode) error {
 	rc.mux.RLock()
 	defer rc.mux.RUnlock()
 
-	_, ok := rc.nodes[name]
+	_, ok := rc.nodes[nodeToForget.Name]
 	if !ok {
-		return fmt.Errorf("node %s not found", name)
+		return fmt.Errorf("node %s not found", nodeToForget.Name)
 	}
 
-	delete(rc.nodes, name)
+	delete(rc.nodes, nodeToForget.Name)
 	return nil
 }
 
@@ -672,38 +689,50 @@ func (rc *RedKeyCluster) refreshNodes() error {
 
 	// Update nodes info
 	rc.updateNodesInfo(nodesInfo)
+
 	return nil
 }
 
 // checkNodes checks the nodes of the RedKey cluster
 func (rc *RedKeyCluster) checkNodes() error {
+	refresedNodes := make(map[string]*redis.RedisNode)
 	for i := range rc.GetDesiredReplicas() {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
 
 		// Check if the node exists
 		node := rc.GetNode(nodeName)
 		if node == nil {
-			rc.logger.Error("Node not found", "node", nodeName)
-			continue
-		}
+			rc.logger.Info("Node not found (probably been forgotten), creating...", "node", nodeName)
+			nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
+			nodeAddr := fmt.Sprintf("%s.%s", nodeName, rc.GetAddress())
+			freshNode := redis.NewRedisNode(nodeName, nodeAddr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+			if err := freshNode.Init(rc.ctx); err != nil {
+				rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
+				continue
+			}
+			rc.nodes[nodeName] = freshNode
+		} else {
 
-		// Init a fresh node to check if IP or ID have changed. This can happen if the node has been restarted
-		freshNode := redis.NewRedisNode(nodeName, node.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
-		if err := freshNode.Init(rc.ctx); err != nil {
-			rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
-			continue
-		}
+			// Init a fresh node to check if IP or ID have changed. This can happen if the node has been restarted
+			freshNode := redis.NewRedisNode(nodeName, node.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+			if err := freshNode.Init(rc.ctx); err != nil {
+				rc.logger.Info("Error initializing node", "error", err, "node", nodeName)
+				continue
+			}
 
-		// Update ID and IP
-		if node.ID != freshNode.ID {
-			rc.logger.Info("Node ID has changed", "node", nodeName, "oldID", node.ID, "newID", freshNode.ID)
-			node.SetID(freshNode.ID)
+			// Update ID and IP
+			if node.ID != freshNode.ID {
+				rc.logger.Info("Node ID has changed", "node", nodeName, "oldID", node.ID, "newID", freshNode.ID)
+				node.SetID(freshNode.ID)
+			}
+			if node.IP != freshNode.IP {
+				rc.logger.Info("Node IP has changed", "node", nodeName, "oldIP", node.IP, "newIP", freshNode.IP)
+				node.SetIP(freshNode.IP)
+			}
 		}
-		if node.IP != freshNode.IP {
-			rc.logger.Info("Node IP has changed", "node", nodeName, "oldIP", node.IP, "newIP", freshNode.IP)
-			node.SetIP(freshNode.IP)
-		}
+		refresedNodes[nodeName] = rc.nodes[nodeName]
 	}
+	rc.nodes = refresedNodes
 
 	// Update nodes info
 	if err := rc.refreshNodes(); err != nil {
@@ -957,7 +986,7 @@ func (rc *RedKeyCluster) forgetAndRemoveNodes(ctx context.Context, nodes []*redi
 		}
 
 		// Remove the node
-		if err := rc.removeNode(node.Name); err != nil {
+		if err := rc.removeNode(ctx, *node); err != nil {
 			return err
 		}
 	}
@@ -1047,7 +1076,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 				return fmt.Errorf("error forgetting node %s from node %s: %v", clusterNode.ID, node.Name, err)
 			}
 
-			rc.logger.Info("Node forgotten successfully", "node", clusterNode.ID, "from", node.Name)
+			rc.logger.Info("Outdated node forgotten successfully", "node", clusterNode.ID, "from", node.Name)
 		}
 	}
 
@@ -1523,4 +1552,52 @@ func (rc *RedKeyCluster) doRemoveOutdatedNodes() {
 			}
 		}
 	}
+}
+
+// stabilizeOpenSlots sets open slots as stable if the check counter threshold is reached
+func (rc *RedKeyCluster) stabilizeOpenSlots(ctx context.Context, counter map[int]int, threshold int) (map[int]int, error) {
+	var slotsToStabilize []MigratingSlot
+	updatedCounter := make(map[int]int)
+	for _, node := range rc.nodes {
+		clusterNodes, err := node.GetClusterNodes(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error getting cluster nodes from node %s: %v", node.Name, err)
+		}
+
+		for _, clusterNode := range clusterNodes {
+			if clusterNode.ID == node.ID && len(clusterNode.Migrating) > 0 {
+				for slot := range clusterNode.Migrating {
+					if count, ok := counter[slot]; ok {
+						if count+1 > threshold {
+							slotsToStabilize = append(slotsToStabilize, MigratingSlot{Slot: slot, From: clusterNode.ID, To: clusterNode.Migrating[slot]})
+						} else {
+							updatedCounter[slot] = count + 1
+						}
+					} else {
+						updatedCounter[slot] = 1
+					}
+				}
+			}
+		}
+	}
+
+	if len(slotsToStabilize) > 0 {
+		for _, slot := range slotsToStabilize {
+			rc.logger.Info("Slot needs to be stabilized", "slot", slot.Slot, "from", slot.From, "to", slot.To, "checks", threshold)
+			if fromNode := rc.GetNodeById(slot.From); fromNode != nil {
+				if err := fromNode.StabilizeSlot(ctx, fromNode.IP, slot.Slot); err != nil {
+					rc.logger.Error("Error stabilizing slot", "slot", slot.Slot, "from", slot.From, "error", err)
+				}
+				rc.logger.Info("Slot stabilized on from node", "slot", slot.Slot, "from", slot.From)
+			}
+			if toNode := rc.GetNodeById(slot.To); toNode != nil {
+				if err := toNode.StabilizeSlot(ctx, toNode.IP, slot.Slot); err != nil {
+					rc.logger.Error("Error stabilizing slot", "slot", slot.Slot, "to", slot.To, "error", err)
+				}
+				rc.logger.Info("Slot stabilized on to node", "slot", slot.Slot, "to", slot.To)
+			}
+		}
+	}
+
+	return updatedCounter, nil
 }

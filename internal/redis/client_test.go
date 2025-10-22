@@ -324,6 +324,8 @@ malformed-line
 					Sent:       0,
 					Recv:       1740670560026,
 					LinkStatus: "connected",
+					Migrating : map[int]string{},
+					Importing : map[int]string{},
 				},
 				{
 					ID:    "77e5805a3550270e5cf23ed42bc2d0577426d876",
@@ -356,6 +358,8 @@ malformed-line
 					Sent:       0,
 					Recv:       1740670560000,
 					LinkStatus: "disconnected",
+					Migrating : map[int]string{},
+					Importing : map[int]string{},
 				},
 				{
 					ID:    "bb1704c223955cf9a533142e4569f7aba510b1ea",
@@ -388,6 +392,8 @@ malformed-line
 					Sent:       0,
 					Recv:       1740670561031,
 					LinkStatus: "connected",
+					Migrating : map[int]string{},
+					Importing : map[int]string{},
 				},
 				{
 					ID:    "e420256dda2dbfb8db95658397ca8af3c3889b31",
@@ -416,6 +422,8 @@ malformed-line
 					Sent:       0,
 					Recv:       1740670562035,
 					LinkStatus: "connected",
+					Migrating : map[int]string{},
+					Importing : map[int]string{},
 				},
 				{
 					ID:         "0d691cdfe68b44134f8cdbca0d81563754a5aa6f",
@@ -427,6 +435,8 @@ malformed-line
 					Sent:       0,
 					Recv:       1740670559023,
 					LinkStatus: "connected",
+					Migrating : map[int]string{},
+					Importing : map[int]string{},
 				},
 			},
 		},

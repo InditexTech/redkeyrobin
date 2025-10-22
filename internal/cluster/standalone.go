@@ -262,6 +262,12 @@ func (rc *RedKeyStandalone) forgetNode(ctx context.Context, node redis.RedisNode
 	return nil
 }
 
+// removeNode removes a node from the cluster.
+func (rc *RedKeyStandalone) removeNode(ctx context.Context, node redis.RedisNode) error {
+	// For standalone, this is a no-op
+	return nil
+}
+
 // removeNodesIfNeeded removes nodes if needed.
 func (rc *RedKeyStandalone) removeNodesIfNeeded(ctx context.Context) error {
 	// For standalone, this is a no-op
@@ -287,4 +293,10 @@ func (rc *RedKeyStandalone) createNode(name, addr string) *redis.RedisNode {
 
 	rc.node = node
 	return node
+}
+
+// stabilizeOpenSlots stabilizes open slots in the cluster.
+func (rc *RedKeyStandalone) stabilizeOpenSlots(ctx context.Context, counter map[int]int, threshold int) (map[int]int, error) {
+	// For standalone, this is a no-op
+	return nil, nil
 }

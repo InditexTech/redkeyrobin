@@ -114,6 +114,11 @@ func (ro *RedisOperationResetNode) doResetNode(ctx context.Context) error {
 		return err
 	}
 
+	// Remove nodes if needed
+	if err := ro.cluster.removeNodesIfNeeded(ctx); err != nil {
+		return err
+	}
+
 	// Meet nodes if needed
 	if err := ro.cluster.meetNodesIfNeeded(ctx); err != nil {
 		return err
