@@ -59,7 +59,13 @@ func NewRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
 
 // Run executes the Redis CLI command synchronously and captures the exit code.
 func (rcc *RedisCLICommand) Run() {
-	rcc.Err = rcc.cmd.Run()
+	if err := rcc.cmd.Run(); err != nil {
+		// preserve original error while attaching command output
+		rcc.Err = fmt.Errorf("%w: %s", err, rcc.GetCombinedOutput())
+	} else {
+		rcc.Err = nil
+	}
+
 	rcc.checkStatusCode()
 }
 
@@ -80,10 +86,12 @@ func (rcc *RedisCLICommand) checkStatusCode() {
 
 // Wait waits for the Redis CLI command to finish and captures any errors.
 func (rcc *RedisCLICommand) Wait() {
-	rcc.Err = nil
+	if err := rcc.cmd.Wait(); err != nil {
+		rcc.Err = fmt.Errorf("%w: %s", err, rcc.GetCombinedOutput())
+	} else {
+		rcc.Err = nil
+	}
 
-	// Wait for command to finish
-	rcc.Err = rcc.cmd.Wait()
 	rcc.checkStatusCode()
 }
 
