@@ -60,7 +60,7 @@ func TestConfigurationValidate(t *testing.T) {
 func TestDefaultValuesInitialization(t *testing.T) {
 	cfg := &Configuration{}
 	cfg.validate()
-	
+
 	assert.Equal(t, 60, cfg.Redis.Reconciler.OperationCleanupIntervalSeconds)
 	assert.Equal(t, 3, cfg.Redis.Reconciler.StabilizeSlotsReconciliationThreshold)
 	assert.Equal(t, []string{"used_memory", "connected_clients", "total_commands_processed", "instantaneous_ops_per_sec"}, cfg.Redis.Metrics.RedisInfoKeys)
