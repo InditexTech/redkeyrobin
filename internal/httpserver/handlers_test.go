@@ -463,7 +463,7 @@ func TestGetNodes(t *testing.T) {
 				map[string][]cluster.RedisOperation{},
 				make(chan struct{}, 1),
 			)
-			
+
 			body := testRequest(t, "PUT", "/cluster/nodes", tt.request, "", nil, server.GetNodes, tt.expectedStatusCode, nil)
 
 			var response ClusterNodesResponse

@@ -4948,7 +4948,7 @@ func TestRedKeyClusterStabilizeOpenSlots(t *testing.T) {
 				"node1": func() *redis.RedisNode {
 					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 						client := redis.MockRedisClient{
-							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "1.1.1.1", Migrating: map[int]string{} }},
+							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "1.1.1.1", Migrating: map[int]string{}}},
 						}
 						return client, nil
 					})
@@ -4967,7 +4967,7 @@ func TestRedKeyClusterStabilizeOpenSlots(t *testing.T) {
 				"node1": func() *redis.RedisNode {
 					node := redis.NewFakeRedisNode("node1", func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 						client := redis.MockRedisClient{
-							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "1.1.1.1", Migrating: map[int]string{5: "nodeId2"} }},
+							MockNodesInfo: []redis.RedisNode{{ID: "nodeId1", IP: "1.1.1.1", Migrating: map[int]string{5: "nodeId2"}}},
 						}
 						return client, nil
 					})
@@ -5071,8 +5071,8 @@ func TestRedKeyClusterStabilizeOpenSlots(t *testing.T) {
 			initialCount: map[int]int{1: 1, 2: 0},
 			threshold:    1,
 			// slot 1 already had count 1 -> threshold reached -> stabilized; slot 2 will be incremented to 1
-			expected:     map[int]int{2: 1},
-			expectError:  false,
+			expected:    map[int]int{2: 1},
+			expectError: false,
 		},
 		{
 			name: "partial stabilize slot error",
