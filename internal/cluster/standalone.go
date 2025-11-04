@@ -202,8 +202,8 @@ func (rc *RedKeyStandalone) convertNodesToMaster(ctx context.Context, nodes []*r
 	return nil
 }
 
-// getAndCheckRedisClient returns a Redis client and checks the connection.
-func (rc *RedKeyStandalone) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
+// getRedisClient returns a Redis client and checks the connection.
+func (rc *RedKeyStandalone) getRedisClient(close bool) (redis.RedisClientInterface, error) {
 	// For standalone, return a simple implementation or nil
 	return nil, nil
 }

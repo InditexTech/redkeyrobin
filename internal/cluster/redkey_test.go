@@ -4002,7 +4002,7 @@ func TestRedKeyClusterGetAndCheckRedisClient(t *testing.T) {
 				make(chan struct{}, 1),
 			).WithClientFactory(tt.clientFactory)
 
-			client, err := cluster.getAndCheckRedisClient(tt.close)
+			client, err := cluster.getRedisClient(tt.close)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

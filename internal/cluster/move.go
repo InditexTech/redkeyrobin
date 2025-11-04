@@ -68,7 +68,7 @@ func (ro *RedisOperationMove) Launch() error {
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.cluster.getAndCheckRedisClient(true)
+	redisClient, err := ro.cluster.getRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}

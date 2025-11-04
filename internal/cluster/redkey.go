@@ -327,7 +327,7 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 // It returns a ClusterCheckResult with the results of the check.
 func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(true)
+	redisClient, err := rc.getRedisClient(true)
 	if err != nil {
 		return nil, fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -675,7 +675,7 @@ func (rc *RedKeyCluster) forgetNode(ctx context.Context, nodeToForget redis.Redi
 // refreshNodesInfo refreshes the nodes info of the RedKey cluster
 func (rc *RedKeyCluster) refreshNodesInfo() error {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(false)
+	redisClient, err := rc.getRedisClient(false)
 	if err != nil {
 		return err
 	}
@@ -793,7 +793,7 @@ func (rc *RedKeyCluster) needsMeet(ctx context.Context) (bool, error) {
 // needsFix checks if the RedKey cluster needs to be fixed
 func (rc *RedKeyCluster) needsFix(ctx context.Context) (bool, error) {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(false)
+	redisClient, err := rc.getRedisClient(false)
 	if err != nil {
 		return false, fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -1397,8 +1397,8 @@ func (rc *RedKeyCluster) getClient() (redis.RedisClientInterface, error) {
 	return rc.clientFactory(rc.ctx, rc.GetAddress(), rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 }
 
-// getAndCheckRedisClient creates a Redis client and checks the connection
-func (rc *RedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
+// getRedisClient creates a Redis client
+func (rc *RedKeyCluster) getRedisClient(close bool) (redis.RedisClientInterface, error) {
 	// Create Redis client using the client factory
 	redisClient, err := rc.getClient()
 	if err != nil {
