@@ -83,8 +83,8 @@ func (m *MockRedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClien
 	return m.MockRedisClient, nil
 }
 
-// refreshNodes mocks the refreshNodes method
-func (m *MockRedKeyCluster) refreshNodes() error {
+// refreshNodesInfo mocks the refreshNodesInfo method
+func (m *MockRedKeyCluster) refreshNodesInfo() error {
 	return m.RefreshNodesError
 }
 

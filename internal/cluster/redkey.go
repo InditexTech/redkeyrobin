@@ -248,7 +248,7 @@ func (rc *RedKeyCluster) Init() error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("Error refreshing nodes info: %v", err)
 	}
 
@@ -672,8 +672,8 @@ func (rc *RedKeyCluster) forgetNode(ctx context.Context, nodeToForget redis.Redi
 	return nil
 }
 
-// refreshNodes refreshes the nodes info of the RedKey cluster
-func (rc *RedKeyCluster) refreshNodes() error {
+// refreshNodesInfo refreshes the nodes info of the RedKey cluster
+func (rc *RedKeyCluster) refreshNodesInfo() error {
 	// Get Redis client and check connection
 	redisClient, err := rc.getAndCheckRedisClient(false)
 	if err != nil {
@@ -735,7 +735,7 @@ func (rc *RedKeyCluster) checkNodes() error {
 	rc.nodes = refresedNodes
 
 	// Update nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return err
 	}
 
@@ -971,7 +971,7 @@ func (rc *RedKeyCluster) removeSlotsFromNodes(nodes []*redis.RedisNode) error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 	return nil
@@ -1048,7 +1048,7 @@ func (rc *RedKeyCluster) meetNodes(ctx context.Context) error {
 	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1081,7 +1081,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1218,7 +1218,7 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1256,7 +1256,7 @@ func (rc *RedKeyCluster) convertNodesToReplica(ctx context.Context, nodesToConve
 	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1308,7 +1308,7 @@ func (rc *RedKeyCluster) promoteReplicaOfNode(ctx context.Context, node *redis.R
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1384,7 +1384,7 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 

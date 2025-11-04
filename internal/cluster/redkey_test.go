@@ -731,7 +731,7 @@ func TestRedKeyClusterRefreshNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := redkeyCluster.WithClientFactory(tt.clientFactory).refreshNodes()
+			err := redkeyCluster.WithClientFactory(tt.clientFactory).refreshNodesInfo()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

@@ -208,8 +208,8 @@ func (rc *RedKeyStandalone) getAndCheckRedisClient(close bool) (redis.RedisClien
 	return nil, nil
 }
 
-// refreshNodes refreshes the nodes of the cluster.
-func (rc *RedKeyStandalone) refreshNodes() error {
+// refreshNodesInfo refreshes the nodes of the cluster.
+func (rc *RedKeyStandalone) refreshNodesInfo() error {
 	// For standalone, this is a no-op
 	return nil
 }

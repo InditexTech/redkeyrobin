@@ -84,7 +84,7 @@ func (ro *RedisOperationFix) Wait() error {
 	ro.logger.Info("Cluster fixed successfully")
 
 	// Update nodes info
-	if err := ro.cluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodesInfo(); err != nil {
 		return err
 	}
 	return nil

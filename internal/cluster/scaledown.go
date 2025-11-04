@@ -126,7 +126,7 @@ func (ro *RedisOperationScaleDown) doScaleDown(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := ro.cluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodesInfo(); err != nil {
 		return err
 	}
 

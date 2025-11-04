@@ -105,7 +105,7 @@ func (ro *RedisOperationMove) Wait() error {
 	ro.logger.Info("Slots moved successfully between nodes", "from", ro.nodeFrom.Name, "to", ro.nodeTo.Name)
 
 	// Update nodes info
-	if err := ro.cluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodesInfo(); err != nil {
 		return err
 	}
 	return nil

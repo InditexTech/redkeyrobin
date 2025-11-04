@@ -87,7 +87,7 @@ func (ro *RedisOperationRebalance) Wait() error {
 	ro.logger.Info("Cluster rebalanced successfully")
 
 	// Update nodes info
-	if err := ro.cluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodesInfo(); err != nil {
 		return err
 	}
 	return nil
