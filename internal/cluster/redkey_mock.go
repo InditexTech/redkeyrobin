@@ -89,7 +89,8 @@ func (m *MockRedKeyCluster) refreshNodesInfo() error {
 }
 
 // checkNodes mocks the checkNodes method
-func (m *MockRedKeyCluster) checkNodes() error {
+// refreshNodesList indicates whether to refresh the internal nodes list or not
+func (m *MockRedKeyCluster) checkNodes(refreshNodesList bool) error {
 	return m.CheckNodesError
 }
 

@@ -215,7 +215,8 @@ func (rc *RedKeyStandalone) refreshNodesInfo() error {
 }
 
 // checkNodes checks the nodes of the cluster.
-func (rc *RedKeyStandalone) checkNodes() error {
+// refreshNodesList indicates whether to refresh the internal nodes list or not
+func (rc *RedKeyStandalone) checkNodes(refreshNodesList bool) error {
 	// For standalone, this is a no-op
 	return nil
 }

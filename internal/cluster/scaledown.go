@@ -81,7 +81,7 @@ func (ro *RedisOperationScaleDown) Wait() error {
 // doScaleDown scales down the RedKey cluster
 func (ro *RedisOperationScaleDown) doScaleDown(ctx context.Context) error {
 	// Check nodes info
-	if err := ro.cluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(false); err != nil {
 		return err
 	}
 
@@ -91,7 +91,7 @@ func (ro *RedisOperationScaleDown) doScaleDown(ctx context.Context) error {
 	}
 
 	// Check nodes info
-	if err := ro.cluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(false); err != nil {
 		return err
 	}
 

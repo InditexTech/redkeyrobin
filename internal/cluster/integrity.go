@@ -81,7 +81,7 @@ func (ro *RedisOperationCheckIntegrity) Wait() error {
 // doCheckIntegrity checks the integrity of the RedKey cluster
 func (ro *RedisOperationCheckIntegrity) doCheckIntegrity(ctx context.Context) error {
 	// Check nodes info
-	if err := ro.cluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(true); err != nil {
 		return err
 	}
 

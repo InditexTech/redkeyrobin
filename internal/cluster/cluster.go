@@ -117,8 +117,8 @@ type clusterPrivate interface {
 	getRedisClient(close bool) (redis.RedisClientInterface, error)
 	// refreshNodesInfo refreshes the nodes info.
 	refreshNodesInfo() error
-	// checkNodes checks the nodes of the cluster.
-	checkNodes() error
+	// checkNodes checks the nodes of the cluster (refreshing the internal nodes list if needed).
+	checkNodes(refreshNodesList bool) error
 	// removeOutdatedNodes removes outdated nodes from the cluster.
 	removeOutdatedNodes(ctx context.Context) error
 	// meetNodesIfNeeded meets nodes if needed.

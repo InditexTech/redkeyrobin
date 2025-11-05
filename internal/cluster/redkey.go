@@ -694,7 +694,8 @@ func (rc *RedKeyCluster) refreshNodesInfo() error {
 }
 
 // checkNodes checks the nodes of the RedKey cluster
-func (rc *RedKeyCluster) checkNodes() error {
+// refreshNodesList indicates whether to refresh the internal nodes list or not
+func (rc *RedKeyCluster) checkNodes(refreshNodesList bool) error {
 	refresedNodes := make(map[string]*redis.RedisNode)
 	for i := range rc.GetDesiredReplicas() {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
@@ -732,7 +733,9 @@ func (rc *RedKeyCluster) checkNodes() error {
 		}
 		refresedNodes[nodeName] = rc.nodes[nodeName]
 	}
-	rc.nodes = refresedNodes
+	if refreshNodesList {
+		rc.nodes = refresedNodes
+	}
 
 	// Update nodes info
 	if err := rc.refreshNodesInfo(); err != nil {
