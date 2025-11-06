@@ -918,14 +918,21 @@ func (rc *RedKeyCluster) removeNodesIfNeeded(ctx context.Context) error {
 		return err
 	}
 
-	// Remove the slots from the nodes to remove
-	if err := rc.removeSlotsFromNodes(nodesToRemove); err != nil {
-		return err
-	}
+	for _, node := range nodesToRemove {
+		nodes := []*redis.RedisNode{node}
 
-	// Forget and remove nodes
-	if err := rc.forgetAndRemoveNodes(ctx, nodesToRemove); err != nil {
-		return err
+		rc.logger.Info("Moving slots away from node before being removed", "node", node.Name)
+
+		// Remove the slots from the nodes to remove
+		if err := rc.removeSlotsFromNodes(nodes); err != nil {
+			return err
+		}
+
+		// Forget and remove nodes
+		if err := rc.forgetAndRemoveNodes(ctx, nodes); err != nil {
+			return err
+		}
+		rc.logger.Info("Node removed from cluster", "node", node.Name)
 	}
 
 	return nil
