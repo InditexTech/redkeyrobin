@@ -54,6 +54,7 @@ func (s *Server) Init(opts *util.Options) error {
 		mux.HandleFunc("PUT /v1/redkeycluster/replicas", s.UpdateRedKeyClusterReplicas)
 
 		// Cluster endpoints
+		mux.HandleFunc("GET /v1/cluster/status", s.GetClusterStatus)
 		mux.HandleFunc("PUT /v1/cluster/move", s.MoveNodeSlots)
 		mux.HandleFunc("GET /v1/cluster/check", s.CheckCluster)
 		mux.HandleFunc("PUT /v1/cluster/fix", s.FixCluster)
