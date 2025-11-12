@@ -918,21 +918,14 @@ func (rc *RedKeyCluster) removeNodesIfNeeded(ctx context.Context) error {
 		return err
 	}
 
-	for _, node := range nodesToRemove {
-		nodes := []*redis.RedisNode{node}
-
-		rc.logger.Info("Moving slots away from node before being removed", "node", node.Name)
-
 		// Remove the slots from the nodes to remove
-		if err := rc.removeSlotsFromNodes(nodes); err != nil {
-			return err
-		}
+	if err := rc.removeSlotsFromNodes(nodesToRemove); err != nil {
+		return err
+	}
 
-		// Forget and remove nodes
-		if err := rc.forgetAndRemoveNodes(ctx, nodes); err != nil {
-			return err
-		}
-		rc.logger.Info("Node removed from cluster", "node", node.Name)
+	// Forget and remove nodes
+	if err := rc.forgetAndRemoveNodes(ctx, nodesToRemove); err != nil {
+		return err
 	}
 
 	return nil
@@ -1404,7 +1397,11 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 
 // getClient returns a Redis client using the configured client factory
 func (rc *RedKeyCluster) getClient() (redis.RedisClientInterface, error) {
-	return rc.clientFactory(rc.ctx, rc.GetAddress(), rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+	if len(rc.nodes) == 0 {
+		return nil, fmt.Errorf("no nodes available in the cluster to create a client")
+	}
+
+	return rc.clientFactory(rc.ctx, rc.nodes[rc.GetAddress()+"-0"].Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 }
 
 // getRedisClient creates a Redis client
