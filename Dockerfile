@@ -59,7 +59,7 @@ RUN apt update && apt upgrade -y && apt install -y curl procps
 
 # Create a non-root user
 # RUN addgroup -S robin && adduser -S -u 10000 -G robin robin
-RUN addgroup robin && adduser --uid 10000 --ingroup robin robin
+RUN groupadd --gid 10000 robin && useradd --uid 10000 -g robin robin
 
 # Copy the Go binary from the builder stage
 COPY --from=builder /app/robin /robin
