@@ -14,7 +14,7 @@ FROM golang:${GOLANG_VERSION}-trixie AS builder
 WORKDIR /redis-client
 
 # Install git to be able to clone the repository
-RUN apt update -y && apt install -y git
+RUN apt update && apt upgrade -y && apt install -y git
 
 # Define the desired Redis client version
 ARG REDIS_CLIENT_VERSION=8.2.3
@@ -40,8 +40,8 @@ ARG DELVE_VERSION=1.25
 # Install Delve debugger
 RUN go install "github.com/go-delve/delve/cmd/dlv@v${DELVE_VERSION}"
 
-# Install redis-cli by adding the redis package
-RUN apt update -y && apt install -y curl procps
+# Install some useful tools
+RUN apt update && apt upgrade -y && apt install -y curl procps
 
 # Copy the redis-cli binary from the redis-client stage
 COPY --from=builder /redis-client/redis/src/redis-cli /usr/local/bin/redis-cli

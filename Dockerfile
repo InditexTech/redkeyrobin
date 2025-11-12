@@ -37,7 +37,7 @@ RUN go build -ldflags "-X main.version=2.0.0" -o robin ./cmd/
 WORKDIR /redis-client
 
 # Install git to be able to clone the repository
-RUN apt update -y && apt install -y git
+RUN apt update && apt upgrade -y && apt install -y git
 
 # Define the desired Redis client version
 ARG REDIS_CLIENT_VERSION=8.2.3
@@ -54,8 +54,8 @@ RUN git clone https://github.com/redis/redis.git && \
 # Use a smaller base image for the final stage
 FROM debian:trixie-slim AS final
 
-# Install redis-cli by adding the redis package
-RUN apt update -y && apt install -y redis-tools curl procps
+# Install some useful tools
+RUN apt update && apt upgrade -y && apt install -y curl procps
 
 # Create a non-root user
 # RUN addgroup -S robin && adduser -S -u 10000 -G robin robin
