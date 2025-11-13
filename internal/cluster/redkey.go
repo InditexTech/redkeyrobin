@@ -1397,11 +1397,27 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 
 // getClient returns a Redis client using the configured client factory
 func (rc *RedKeyCluster) getClient() (redis.RedisClientInterface, error) {
-	if len(rc.nodes) == 0 {
-		return nil, fmt.Errorf("no nodes available in the cluster to create a client")
+		
+	if len(rc.nodes) > 0 {
+
+		// Prefer the canonical node with ordinal 0 ("<clusterName>-0") when available and
+		// it has an Addr set.
+		if n, ok := rc.nodes[rc.GetAddress()+"-0"]; ok && n != nil && n.Addr != "" {
+			return rc.clientFactory(rc.ctx, n.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+		}
+
+		// Otherwise try to use any node that has an Addr set.
+		for _, n := range rc.nodes {
+			if n != nil && n.Addr != "" {
+				return rc.clientFactory(rc.ctx, n.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+			}
+		}
 	}
 
-	return rc.clientFactory(rc.ctx, rc.nodes[rc.GetAddress()+"-0"].Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+	// If we don't have any nodes stored, fall back to using the cluster address so
+	// client factories that expect an address string still receive a value and can
+	// return the expected errors.
+	return rc.clientFactory(rc.ctx, rc.GetAddress(), rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 }
 
 // getRedisClient creates a Redis client
