@@ -67,7 +67,7 @@ func (r *RedKeyClusterReconciler) reconcileReadyStatus() error {
 func (r *RedKeyClusterReconciler) reconcileScalingUpStatus() error {
 	// Check if the cluster needs to be scaled up
 	if r.cluster.IsScaled() {
-		return nil
+		return r.reconcileReadyStatus()
 	}
 
 	// Scale up the cluster
