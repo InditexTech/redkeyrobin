@@ -5123,12 +5123,100 @@ func TestRedKeyClusterStabilizeOpenSlots(t *testing.T) {
 
 			updated, err := cluster.stabilizeOpenSlots(context.Background(), tt.initialCount, tt.threshold)
 
-			if tt.expectError {
+		if tt.expectError {
+			assert.Error(t, err)
+			return
+		}
+		assert.NoError(t, err)
+		assert.Equal(t, tt.expected, updated)
+	})
+	}
+}
+
+func TestRedKeyClusterGetClient(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodes         map[string]*redis.RedisNode
+		clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
+		expectedError error
+	}{
+		{
+			name:  "empty nodes falls back to cluster address",
+			nodes: map[string]*redis.RedisNode{},
+			clientFactory: func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+				// Verify that we receive the cluster address when no nodes exist
+				assert.Equal(t, "test-cluster", addr)
+				return &redis.MockRedisClient{}, nil
+			},
+			expectedError: nil,
+		},
+		{
+			name: "error from client factory when nodes empty",
+			nodes: map[string]*redis.RedisNode{},
+			clientFactory: func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+				return nil, fmt.Errorf("connection failed")
+			},
+			expectedError: fmt.Errorf("connection failed"),
+		},
+		{
+			name: "uses node with addr when available",
+			nodes: map[string]*redis.RedisNode{
+				"test-cluster-0": func() *redis.RedisNode {
+					node := redis.NewFakeRedisNode("test-cluster-0", mockClientFactory)
+					node.Addr = "redis-node-0.example.com:6379"
+					return node
+				}(),
+			},
+			clientFactory: func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+				// Should receive the node's address, not the cluster address
+				assert.Equal(t, "redis-node-0.example.com:6379", addr)
+				return &redis.MockRedisClient{}, nil
+			},
+			expectedError: nil,
+		},
+		{
+			name: "falls back to cluster address when nodes have no addr",
+			nodes: map[string]*redis.RedisNode{
+				"test-cluster-0": redis.NewFakeRedisNode("test-cluster-0", mockClientFactory),
+			},
+			clientFactory: func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
+				// Should fall back to cluster address
+				assert.Equal(t, "test-cluster", addr)
+				return &redis.MockRedisClient{}, nil
+			},
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:       "test-cluster",
+							MaxRetries: 1,
+							BackOff:    time.Microsecond * 10,
+						},
+					},
+				},
+				"Ready",
+				tt.nodes,
+				make(map[string][]RedisOperation),
+				make(chan struct{}, 1),
+			).WithClientFactory(tt.clientFactory)
+
+			client, err := cluster.getClient()
+
+			if tt.expectedError != nil {
 				assert.Error(t, err)
-				return
+				assert.Equal(t, tt.expectedError, err)
+				assert.Nil(t, client)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, client)
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, updated)
 		})
 	}
 }
