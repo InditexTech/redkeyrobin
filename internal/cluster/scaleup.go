@@ -112,7 +112,6 @@ func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 
 	// Fix cluster if needed
 	if err := ro.cluster.fixClusterIfNeeded(ctx); err != nil {
-		ro.logger.Error("Error fixing cluster", "error", err)
 		return err
 	}
 
