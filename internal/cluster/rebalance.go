@@ -54,7 +54,7 @@ func (ro *RedisOperationRebalance) Launch() error {
 	}
 
 	// Get Redis client and check connection
-	redisClient, err := ro.cluster.getAndCheckRedisClient(true)
+	redisClient, err := ro.cluster.getRedisClient(true)
 	if err != nil {
 		return fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -87,7 +87,7 @@ func (ro *RedisOperationRebalance) Wait() error {
 	ro.logger.Info("Cluster rebalanced successfully")
 
 	// Update nodes info
-	if err := ro.cluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodesInfo(); err != nil {
 		return err
 	}
 	return nil

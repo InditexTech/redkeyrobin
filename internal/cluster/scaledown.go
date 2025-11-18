@@ -81,17 +81,23 @@ func (ro *RedisOperationScaleDown) Wait() error {
 // doScaleDown scales down the RedKey cluster
 func (ro *RedisOperationScaleDown) doScaleDown(ctx context.Context) error {
 	// Check nodes info
-	if err := ro.cluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(false); err != nil {
 		return err
 	}
 
-	// Remove nodes if needed
+	// Remove exceeding nodes if any, moving away their slots first (effective scaling down of the cluster)
 	if err := ro.cluster.removeNodesIfNeeded(ctx); err != nil {
+		ro.logger.Info("Error removing exceeding nodes. Trying to fix cluster", "error", err)
+		if err := ro.cluster.fixClusterIfNeeded(ctx); err != nil {
+			ro.logger.Error("Error fixing cluster", "error", err)
+			return err
+		}
+		ro.logger.Info("Cluster fixed. Scaling down will continue in the next reconciliation")
 		return err
 	}
 
 	// Check nodes info
-	if err := ro.cluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(true); err != nil {
 		return err
 	}
 
@@ -126,7 +132,7 @@ func (ro *RedisOperationScaleDown) doScaleDown(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := ro.cluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodesInfo(); err != nil {
 		return err
 	}
 

@@ -86,7 +86,7 @@ func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 	}
 
 	// Check nodes info
-	if err := ro.cluster.checkNodes(); err != nil {
+	if err := ro.cluster.checkNodes(false); err != nil {
 		return err
 	}
 
@@ -121,7 +121,7 @@ func (ro *RedisOperationScaleUp) doScaleUp(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := ro.cluster.refreshNodes(); err != nil {
+	if err := ro.cluster.refreshNodesInfo(); err != nil {
 		return err
 	}
 

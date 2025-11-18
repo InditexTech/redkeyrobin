@@ -202,20 +202,21 @@ func (rc *RedKeyStandalone) convertNodesToMaster(ctx context.Context, nodes []*r
 	return nil
 }
 
-// getAndCheckRedisClient returns a Redis client and checks the connection.
-func (rc *RedKeyStandalone) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
+// getRedisClient returns a Redis client and checks the connection.
+func (rc *RedKeyStandalone) getRedisClient(close bool) (redis.RedisClientInterface, error) {
 	// For standalone, return a simple implementation or nil
 	return nil, nil
 }
 
-// refreshNodes refreshes the nodes of the cluster.
-func (rc *RedKeyStandalone) refreshNodes() error {
+// refreshNodesInfo refreshes the nodes of the cluster.
+func (rc *RedKeyStandalone) refreshNodesInfo() error {
 	// For standalone, this is a no-op
 	return nil
 }
 
 // checkNodes checks the nodes of the cluster.
-func (rc *RedKeyStandalone) checkNodes() error {
+// refreshNodesList indicates whether to refresh the internal nodes list or not
+func (rc *RedKeyStandalone) checkNodes(refreshNodesList bool) error {
 	// For standalone, this is a no-op
 	return nil
 }

@@ -73,8 +73,8 @@ func (m *MockRedKeyCluster) convertNodesToMaster(ctx context.Context, nodes []*r
 	return m.ConvertNodesToMasterError
 }
 
-// getAndCheckRedisClient mocks the getAndCheckRedisClient method and returns our configured mock client
-func (m *MockRedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
+// getRedisClient mocks the getRedisClient method and returns our configured mock client
+func (m *MockRedKeyCluster) getRedisClient(close bool) (redis.RedisClientInterface, error) {
 	if m.GetAndCheckRedisClientError != nil {
 		return nil, m.GetAndCheckRedisClientError
 	}
@@ -83,13 +83,14 @@ func (m *MockRedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClien
 	return m.MockRedisClient, nil
 }
 
-// refreshNodes mocks the refreshNodes method
-func (m *MockRedKeyCluster) refreshNodes() error {
+// refreshNodesInfo mocks the refreshNodesInfo method
+func (m *MockRedKeyCluster) refreshNodesInfo() error {
 	return m.RefreshNodesError
 }
 
 // checkNodes mocks the checkNodes method
-func (m *MockRedKeyCluster) checkNodes() error {
+// refreshNodesList indicates whether to refresh the internal nodes list or not
+func (m *MockRedKeyCluster) checkNodes(refreshNodesList bool) error {
 	return m.CheckNodesError
 }
 

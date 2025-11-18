@@ -248,7 +248,7 @@ func (rc *RedKeyCluster) Init() error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("Error refreshing nodes info: %v", err)
 	}
 
@@ -327,7 +327,7 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 // It returns a ClusterCheckResult with the results of the check.
 func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(true)
+	redisClient, err := rc.getRedisClient(true)
 	if err != nil {
 		return nil, fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -672,10 +672,10 @@ func (rc *RedKeyCluster) forgetNode(ctx context.Context, nodeToForget redis.Redi
 	return nil
 }
 
-// refreshNodes refreshes the nodes info of the RedKey cluster
-func (rc *RedKeyCluster) refreshNodes() error {
+// refreshNodesInfo refreshes the nodes info of the RedKey cluster
+func (rc *RedKeyCluster) refreshNodesInfo() error {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(false)
+	redisClient, err := rc.getRedisClient(false)
 	if err != nil {
 		return err
 	}
@@ -694,7 +694,8 @@ func (rc *RedKeyCluster) refreshNodes() error {
 }
 
 // checkNodes checks the nodes of the RedKey cluster
-func (rc *RedKeyCluster) checkNodes() error {
+// refreshNodesList indicates whether to refresh the internal nodes list or not
+func (rc *RedKeyCluster) checkNodes(refreshNodesList bool) error {
 	refresedNodes := make(map[string]*redis.RedisNode)
 	for i := range rc.GetDesiredReplicas() {
 		nodeName := fmt.Sprintf("%s-%d", rc.GetName(), i)
@@ -732,10 +733,12 @@ func (rc *RedKeyCluster) checkNodes() error {
 		}
 		refresedNodes[nodeName] = rc.nodes[nodeName]
 	}
-	rc.nodes = refresedNodes
+	if refreshNodesList {
+		rc.nodes = refresedNodes
+	}
 
 	// Update nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return err
 	}
 
@@ -793,7 +796,7 @@ func (rc *RedKeyCluster) needsMeet(ctx context.Context) (bool, error) {
 // needsFix checks if the RedKey cluster needs to be fixed
 func (rc *RedKeyCluster) needsFix(ctx context.Context) (bool, error) {
 	// Get Redis client and check connection
-	redisClient, err := rc.getAndCheckRedisClient(false)
+	redisClient, err := rc.getRedisClient(false)
 	if err != nil {
 		return false, fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
@@ -915,7 +918,7 @@ func (rc *RedKeyCluster) removeNodesIfNeeded(ctx context.Context) error {
 		return err
 	}
 
-	// Remove the slots from the nodes to remove
+		// Remove the slots from the nodes to remove
 	if err := rc.removeSlotsFromNodes(nodesToRemove); err != nil {
 		return err
 	}
@@ -971,7 +974,7 @@ func (rc *RedKeyCluster) removeSlotsFromNodes(nodes []*redis.RedisNode) error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 	return nil
@@ -1048,7 +1051,7 @@ func (rc *RedKeyCluster) meetNodes(ctx context.Context) error {
 	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1081,7 +1084,7 @@ func (rc *RedKeyCluster) removeOutdatedNodes(ctx context.Context) error {
 	}
 
 	// Update nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1218,7 +1221,7 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1256,7 +1259,7 @@ func (rc *RedKeyCluster) convertNodesToReplica(ctx context.Context, nodesToConve
 	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1308,7 +1311,7 @@ func (rc *RedKeyCluster) promoteReplicaOfNode(ctx context.Context, node *redis.R
 	}
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1384,7 +1387,7 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 	time.Sleep(rc.GetClusterMeetWaitTime())
 
 	// Refresh nodes info
-	if err := rc.refreshNodes(); err != nil {
+	if err := rc.refreshNodesInfo(); err != nil {
 		return fmt.Errorf("error refreshing nodes info: %v", err)
 	}
 
@@ -1394,11 +1397,31 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 
 // getClient returns a Redis client using the configured client factory
 func (rc *RedKeyCluster) getClient() (redis.RedisClientInterface, error) {
+		
+	if len(rc.nodes) > 0 {
+
+		// Prefer the canonical node with ordinal 0 ("<clusterName>-0") when available and
+		// it has an Addr set.
+		if n, ok := rc.nodes[rc.GetAddress()+"-0"]; ok && n != nil && n.Addr != "" {
+			return rc.clientFactory(rc.ctx, n.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+		}
+
+		// Otherwise try to use any node that has an Addr set.
+		for _, n := range rc.nodes {
+			if n != nil && n.Addr != "" {
+				return rc.clientFactory(rc.ctx, n.Addr, rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
+			}
+		}
+	}
+
+	// If we don't have any nodes stored, fall back to using the cluster address so
+	// client factories that expect an address string still receive a value and can
+	// return the expected errors.
 	return rc.clientFactory(rc.ctx, rc.GetAddress(), rc.GetClusterMaxRetries(), rc.GetClusterBackOff())
 }
 
-// getAndCheckRedisClient creates a Redis client and checks the connection
-func (rc *RedKeyCluster) getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error) {
+// getRedisClient creates a Redis client
+func (rc *RedKeyCluster) getRedisClient(close bool) (redis.RedisClientInterface, error) {
 	// Create Redis client using the client factory
 	redisClient, err := rc.getClient()
 	if err != nil {

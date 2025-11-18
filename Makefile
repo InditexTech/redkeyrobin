@@ -5,9 +5,13 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-name      := redkeyrobin
-VERSION   := 1.0.0
-package   := github.com/inditextech/$(name)
+name                 := redkeyrobin
+version              := 1.0.0
+redis_client_version := 8.2.3
+golang_version       := 1.24.6
+delve_version        := 1.25
+package              := github.com/inditextech/$(name)
+
 # Image URL to use for building/pushing image targets when using `pro` deployment profile.
 IMG ?= redkey-robin:$(VERSION)
 
@@ -203,19 +207,19 @@ dev-build: ##	Build robin binary.
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -o bin/robin ./cmd/main.go
 
 docker-build: ##	Build docker image with the manager (uses `${IMG}` image name).
-	docker build -t ${IMG} .
+	docker build -t ${IMG} --build-arg REDIS_CLIENT_VERSION=${redis_client_version} --build-arg GOLANG_VERSION=${golang_version} .
 
 docker-push: ##	Push docker image with the manager (uses `${IMG}` image name).
 	docker push ${IMG}
 
 dev-docker-build:  ##	Build docker image with the manager for development (uses `${IMG_DEV}` image name).
-	docker build -t ${IMG_DEV} .
+	docker build -t ${IMG_DEV} --build-arg REDIS_CLIENT_VERSION=${redis_client_version} --build-arg GOLANG_VERSION=${golang_version} .
 
 dev-docker-push: ##	Push docker image with the manager for development (uses `${IMG_DEV}` image name).
 	docker push ${IMG_DEV}
 
 debug-docker-build: ##	Build docker image for debugging from debug.Dockerfile (uses `${IMG_DEBUG}` image name).
-	docker build -t ${IMG_DEBUG} -f debug.Dockerfile .
+	docker build -t ${IMG_DEBUG} -f debug.Dockerfile --build-arg REDIS_CLIENT_VERSION=${redis_client_version} --build-arg GOLANG_VERSION=${golang_version} --build-arg DELVE_VERSION=${delve_version} .
 
 debug-docker-push: ##	Push docker image for debugging from debug.Dockerfile (uses `${IMG_DEBUG}` image name).
 	docker push ${IMG_DEBUG}

@@ -113,12 +113,12 @@ type clusterPrivate interface {
 	ensureNodesAreUp(ctx context.Context) error
 	// convertNodesToMaster converts the provided nodes to master.
 	convertNodesToMaster(ctx context.Context, nodes []*redis.RedisNode) error
-	// getAndCheckRedisClient returns a Redis client and checks the connection.
-	getAndCheckRedisClient(close bool) (redis.RedisClientInterface, error)
-	// refreshNodes refreshes the nodes of the cluster.
-	refreshNodes() error
-	// checkNodes checks the nodes of the cluster.
-	checkNodes() error
+	// getRedisClient returns a Redis client.
+	getRedisClient(close bool) (redis.RedisClientInterface, error)
+	// refreshNodesInfo refreshes the nodes info.
+	refreshNodesInfo() error
+	// checkNodes checks the nodes of the cluster (refreshing the internal nodes list if needed).
+	checkNodes(refreshNodesList bool) error
 	// removeOutdatedNodes removes outdated nodes from the cluster.
 	removeOutdatedNodes(ctx context.Context) error
 	// meetNodesIfNeeded meets nodes if needed.
