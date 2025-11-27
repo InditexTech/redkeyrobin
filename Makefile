@@ -12,7 +12,7 @@ golang_version       := 1.24.6
 delve_version        := 1.25
 package              := github.com/inditextech/$(name)
 
-# Image URL to use for building/pushing image targets when using `pro` deployment profile.
+# Image URL to use for building/pushing image.
 IMG ?= redkey-robin:$(version)
 
 
