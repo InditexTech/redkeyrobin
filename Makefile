@@ -13,7 +13,7 @@ delve_version        := 1.25
 package              := github.com/inditextech/$(name)
 
 # Image URL to use for building/pushing image targets when using `pro` deployment profile.
-IMG ?= redkey-robin:$(VERSION)
+IMG ?= redkey-robin:$(version)
 
 
 # .............................................................................
