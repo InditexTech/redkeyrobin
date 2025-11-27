@@ -15,7 +15,6 @@ package              := github.com/inditextech/$(name)
 # Image URL to use for building/pushing image.
 IMG ?= redkey-robin:$(version)
 
-
 # .............................................................................
 # DONT TOUCH THIS SECTION
 # .............................................................................
