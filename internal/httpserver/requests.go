@@ -46,15 +46,15 @@ func (r *RedKeyClusterStatusRequest) Validate() error {
 }
 
 type ClusterReplicasRequest struct {
-	Replicas          int  `json:"replicas"`
-	ReplicasPerMaster *int `json:"replicas_per_master"`
+	Primaries          int  `json:"replicas"`
+	ReplicasPerPrimary *int `json:"replicas_per_master"`
 }
 
 func (r *ClusterReplicasRequest) Validate() error {
-	if r.Replicas < 0 {
+	if r.Primaries < 0 {
 		return fmt.Errorf("'replicas' must be positive")
 	}
-	if r.ReplicasPerMaster != nil && *r.ReplicasPerMaster < 0 {
+	if r.ReplicasPerPrimary != nil && *r.ReplicasPerPrimary < 0 {
 		return fmt.Errorf("'replicas_per_master' must be positive")
 	}
 	return nil

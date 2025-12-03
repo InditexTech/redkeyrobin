@@ -4049,49 +4049,49 @@ func TestRedKeyClusterInit(t *testing.T) {
 
 func TestRedKeyClusterSetReplicas(t *testing.T) {
 	tests := []struct {
-		name              string
+		name               string
 		primaries          int
 		replicasPerPrimary *int
-		expectedError     error
+		expectedError      error
 	}{
 		{
 			name:          "same replicas",
-			primaries:      3,
+			primaries:     3,
 			expectedError: &OperationCompletedError{Operation: "SetReplicas"},
 		},
 		{
-			name:              "same replicas per primary",
+			name:               "same replicas per primary",
 			primaries:          3,
 			replicasPerPrimary: getIntPointer(0),
-			expectedError:     &OperationCompletedError{Operation: "SetReplicas"},
+			expectedError:      &OperationCompletedError{Operation: "SetReplicas"},
 		},
 		{
 			name:          "less replicas",
-			primaries:      2,
+			primaries:     2,
 			expectedError: nil,
 		},
 		{
-			name:              "more replicas per primary",
+			name:               "more replicas per primary",
 			primaries:          2,
 			replicasPerPrimary: getIntPointer(1),
-			expectedError:     nil,
+			expectedError:      nil,
 		},
 		{
 			name:          "more replicas",
-			primaries:      4,
+			primaries:     4,
 			expectedError: nil,
 		},
 		{
-			name:              "less replicas per primary",
+			name:               "less replicas per primary",
 			primaries:          4,
 			replicasPerPrimary: getIntPointer(0),
-			expectedError:     nil,
+			expectedError:      nil,
 		},
 		{
-			name:              "both replicas and replicas per primary",
+			name:               "both replicas and replicas per primary",
 			primaries:          3,
 			replicasPerPrimary: getIntPointer(1),
-			expectedError:     nil,
+			expectedError:      nil,
 		},
 	}
 	for _, tt := range tests {

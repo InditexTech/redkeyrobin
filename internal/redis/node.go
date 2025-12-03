@@ -222,14 +222,14 @@ func (rn *RedisNode) GetClusterNodes(ctx context.Context) ([]RedisNode, error) {
 }
 
 // ReplicateNode replicates the Redis node.
-func (rn *RedisNode) ReplicateNode(ctx context.Context, master RedisNode) error {
+func (rn *RedisNode) ReplicateNode(ctx context.Context, primary RedisNode) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
 		return err
 	}
 	defer redisClient.Close()
 
-	return redisClient.ClusterReplicate(master.ID)
+	return redisClient.ClusterReplicate(primary.ID)
 }
 
 // Reset resets the Redis node.

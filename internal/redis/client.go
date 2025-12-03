@@ -305,7 +305,7 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 		nodeID := fields[0]
 		ipPort := fields[1]
 		flags := fields[2]
-		masterID := fields[3] // "-" if master, otherwise Master ID
+		primaryID := fields[3] // "-" if primary, otherwise Primary ID
 		sent := util.ParseInt(fields[4])
 		recv := util.ParseInt(fields[5])
 		linkStatus := fields[7]
@@ -343,7 +343,7 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 			IP:         strings.Split(ipPort, ":")[0], // Extract only IP
 			Flags:      flags,
 			Slots:      slots,
-			PrimaryID:  masterID,
+			PrimaryID:  primaryID,
 			Failures:   failures,
 			Sent:       sent,
 			Recv:       recv,
@@ -386,7 +386,7 @@ func (rc *RedisClient) ClusterMeet(ip string, port int) error {
 	return nil
 }
 
-// ClusterReplicate instructs the current node to replicate the specified master.
+// ClusterReplicate instructs the current node to replicate the specified primary.
 func (rc *RedisClient) ClusterReplicate(nodeID string) error {
 	_, err := rc.client.ClusterReplicate(rc.ctx, nodeID).Result()
 	if err != nil {

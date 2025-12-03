@@ -85,8 +85,8 @@ func (r RedKeyClusterStatusResponse) GetKeys() []string {
 }
 
 type ClusterReplicasResponse struct {
-	Replicas          int `json:"replicas"`
-	ReplicasPerMaster int `json:"replicas_per_master"`
+	Primaries          int `json:"replicas"`
+	ReplicasPerPrimary int `json:"replicas_per_master"`
 }
 
 func (r ClusterReplicasResponse) GetKeys() []string {

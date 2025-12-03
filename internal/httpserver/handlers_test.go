@@ -86,8 +86,8 @@ func TestGetRedKeyClusterReplicas(t *testing.T) {
 		{
 			name: "good request",
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          0,
-				ReplicasPerMaster: 0,
+				Primaries:          0,
+				ReplicasPerPrimary: 0,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -115,7 +115,7 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:    "invalid request replicas per master",
+			name:    "invalid request replicas per primary",
 			request: `{"replicas": 0, "replicas_per_master": -1}`,
 			expectedBody: ErrorResponse{
 				Error: "Invalid request: 'replicas_per_master' must be positive",
@@ -126,8 +126,8 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 			name:    "same replicas",
 			request: `{"replicas": 0}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          0,
-				ReplicasPerMaster: 0,
+				Primaries:          0,
+				ReplicasPerPrimary: 0,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -135,26 +135,26 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 			name:    "good request",
 			request: `{"replicas": 3}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          3,
-				ReplicasPerMaster: 0,
+				Primaries:          3,
+				ReplicasPerPrimary: 0,
 			},
 			expectedStatusCode: http.StatusCreated,
 		},
 		{
-			name:    "good request with replicas per master",
+			name:    "good request with replicas per primary",
 			request: `{"replicas": 3, "replicas_per_master": 2}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          3,
-				ReplicasPerMaster: 2,
+				Primaries:          3,
+				ReplicasPerPrimary: 2,
 			},
 			expectedStatusCode: http.StatusCreated,
 		},
 		{
-			name:    "same replicas and replicas per master",
+			name:    "same replicas and replicas per primary",
 			request: `{"replicas": 3, "replicas_per_master": 2}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          3,
-				ReplicasPerMaster: 2,
+				Primaries:          3,
+				ReplicasPerPrimary: 2,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
