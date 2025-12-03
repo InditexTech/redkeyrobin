@@ -39,7 +39,7 @@ func init() {
 	node1.IP = "1.1.1.1"
 	node1.Flags = "master"
 	node1.Slots = []redis.RedisSlotRange{}
-	node1.MasterID = ""
+	node1.PrimaryID = ""
 
 	// Configure node2 properties
 	node2.Addr = "node2"
@@ -54,7 +54,7 @@ func init() {
 			End:   7,
 		},
 	}
-	node2.MasterID = ""
+	node2.PrimaryID = ""
 
 	// Configure node3 properties
 	node3.Addr = "node2"
@@ -69,7 +69,7 @@ func init() {
 			End:   10,
 		},
 	}
-	node3.MasterID = ""
+	node3.PrimaryID = ""
 }
 
 var server = Server{

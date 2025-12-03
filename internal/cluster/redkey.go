@@ -148,18 +148,18 @@ func (rc *RedKeyCluster) GetNodeFromID(nodeID string) *redis.RedisNode {
 	return nil
 }
 
-// GetMasterNodes returns the masters in the RedKey cluster
-func (rc *RedKeyCluster) GetMasterNodes() []*redis.RedisNode {
+// GetPrimaryNodes returns the primaries in the RedKey cluster
+func (rc *RedKeyCluster) GetPrimaryNodes() []*redis.RedisNode {
 	rc.mux.RLock()
 	defer rc.mux.RUnlock()
 
-	masters := make([]*redis.RedisNode, 0)
+	primaries := make([]*redis.RedisNode, 0)
 	for _, node := range rc.nodes {
-		if node.IsMaster() {
-			masters = append(masters, node)
+		if node.IsPrimary() {
+			primaries = append(primaries, node)
 		}
 	}
-	return masters
+	return primaries
 }
 
 // GetReplicaNodes returns the replicas in the RedKey cluster
@@ -187,7 +187,7 @@ func (rc *RedKeyCluster) GetReplicasOfNode(node *redis.RedisNode) []*redis.Redis
 
 	replicas := make([]*redis.RedisNode, 0)
 	for _, other := range rc.nodes {
-		if other.IsReplica() && other.MasterID == node.ID {
+		if other.IsReplica() && other.PrimaryID == node.ID {
 			replicas = append(replicas, other)
 		}
 	}
@@ -201,13 +201,13 @@ func (rc *RedKeyCluster) GetReplicasOfNode(node *redis.RedisNode) []*redis.Redis
 // SetReplicas sets the number of replicas in the RedKey cluster.
 // It returns an OperationAlreadyDoneError if the current number of replicas is equal to the desired number of replicas.
 func (rc *RedKeyCluster) SetReplicas(replicas int, replicasPerMaster *int) error {
-	currentReplicas := rc.GetReplicas()
-	currentReplicasPerMaster := rc.GetReplicasPerMaster()
+	currentReplicas := rc.GetPrimaries()
+	currentReplicasPerMaster := rc.GetReplicasPerPrimary()
 	rc.logger.Info("Changing RedKey Cluster replicas", "current", currentReplicas, "desired", replicas)
 
 	if replicasPerMaster != nil && currentReplicasPerMaster != *replicasPerMaster {
 		rc.logger.Info("Changing RedKey Cluster replicas per master", "current", currentReplicasPerMaster, "desired", replicasPerMaster)
-		rc.conf.Redis.Cluster.ReplicasPerMaster = *replicasPerMaster
+		rc.conf.Redis.Cluster.ReplicasPerPrimary = *replicasPerMaster
 	}
 
 	// Check if the current number of replicas is equal to the desired number of replicas
@@ -218,7 +218,7 @@ func (rc *RedKeyCluster) SetReplicas(replicas int, replicasPerMaster *int) error
 	}
 
 	// Set the desired replicas
-	rc.conf.Redis.Cluster.Replicas = replicas
+	rc.conf.Redis.Cluster.Primaries = replicas
 
 	// Write in the channel to trigger the reconciler
 	rc.channel <- struct{}{}
@@ -464,7 +464,7 @@ func (rc *RedKeyCluster) IsStandalone() bool {
 
 // IsBalanced returns true if the RedKey cluster is balanced
 func (rc *RedKeyCluster) IsBalanced() bool {
-	masters := rc.GetMasterNodes()
+	masters := rc.GetPrimaryNodes()
 	slotsPerMaster := int(math.Ceil(float64(RedKeyClusterTotalSlots) / float64(len(masters))))
 	maximumSlots := slotsPerMaster + (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
 	minimumSlots := slotsPerMaster - (slotsPerMaster * RedisNodesUnbalancedThreshold / 100)
@@ -573,7 +573,7 @@ func (rc *RedKeyCluster) HasMissingSlots() bool {
 
 // HasDesiredReplicas returns true if the RedKey cluster has the desired number of replicas
 func (rc *RedKeyCluster) HasDesiredReplicas() bool {
-	return rc.GetDesiredReplicas() == len(rc.GetNodes()) && rc.GetReplicas() == len(rc.GetMasterNodes()) && rc.GetReplicasPerMaster()*rc.GetReplicas() == len(rc.GetReplicaNodes())
+	return rc.GetDesiredReplicas() == len(rc.GetNodes()) && rc.GetPrimaries() == len(rc.GetPrimaryNodes()) && rc.GetReplicasPerPrimary()*rc.GetPrimaries() == len(rc.GetReplicaNodes())
 }
 
 // HasBeenRebalanced returns true if the cluster has been rebalanced recently
@@ -605,7 +605,7 @@ func (rc *RedKeyCluster) NodeHasReplicas(node *redis.RedisNode) bool {
 	}
 
 	for _, n := range rc.GetNodes() {
-		if n.IsReplica() && n.MasterID == node.ID {
+		if n.IsReplica() && n.PrimaryID == node.ID {
 			return true
 		}
 	}
@@ -918,7 +918,7 @@ func (rc *RedKeyCluster) removeNodesIfNeeded(ctx context.Context) error {
 		return err
 	}
 
-		// Remove the slots from the nodes to remove
+	// Remove the slots from the nodes to remove
 	if err := rc.removeSlotsFromNodes(nodesToRemove); err != nil {
 		return err
 	}
@@ -1019,7 +1019,7 @@ func (rc *RedKeyCluster) getNodesToRemove(ctx context.Context) ([]*redis.RedisNo
 	})
 
 	// Assure all nodes to keep are masters, converting them to master if needed
-	if err := rc.convertNodesToMaster(ctx, nodes[:desiredReplicas]); err != nil {
+	if err := rc.convertNodesToPrimary(ctx, nodes[:desiredReplicas]); err != nil {
 		return nil, err
 	}
 
@@ -1098,10 +1098,10 @@ func (rc *RedKeyCluster) ensureClusterRatio(ctx context.Context) error {
 	//
 	// If there are too few replicas, we need to reset and add as a
 	// replica of a master with the least amount of replicas attached
-	activeMasters := rc.GetMasterNodes()
+	activeMasters := rc.GetPrimaryNodes()
 	activeReplicas := rc.GetReplicaNodes()
-	desiredMasters := rc.GetReplicas()
-	desiredReplicas := rc.GetReplicasPerMaster()
+	desiredMasters := rc.GetPrimaries()
+	desiredReplicas := rc.GetReplicasPerPrimary()
 
 	// We have the right amount of masters and replicas: ensure replica spread
 	if len(activeMasters) == desiredMasters {
@@ -1130,7 +1130,7 @@ func (rc *RedKeyCluster) ensureClusterRatio(ctx context.Context) error {
 		rc.logger.Info("Promoting replicas to masters", "masters", len(activeMasters), "desiredMasters", desiredMasters, "replicas", len(activeReplicas), "desiredReplicas", desiredReplicas)
 		needsReplicas := desiredMasters - len(activeMasters)
 		convertableReplicas := activeReplicas[:needsReplicas]
-		if err := rc.convertNodesToMaster(ctx, convertableReplicas); err != nil {
+		if err := rc.convertNodesToPrimary(ctx, convertableReplicas); err != nil {
 			return err
 		}
 		return rc.ensureReplicaSpread(ctx)
@@ -1139,7 +1139,7 @@ func (rc *RedKeyCluster) ensureClusterRatio(ctx context.Context) error {
 	// We have replicas but we don't want any: promote all to masters
 	if len(activeReplicas) > 0 && desiredReplicas == 0 {
 		rc.logger.Info("Promoting all replicas to masters", "replicas", len(activeReplicas))
-		if err := rc.convertNodesToMaster(ctx, activeReplicas); err != nil {
+		if err := rc.convertNodesToPrimary(ctx, activeReplicas); err != nil {
 			return err
 		}
 		return rc.ensureReplicaSpread(ctx)
@@ -1148,52 +1148,52 @@ func (rc *RedKeyCluster) ensureClusterRatio(ctx context.Context) error {
 	return nil
 }
 
-// ensureReplicaSpread ensures that the number of replicas is spread across the masters
+// ensureReplicaSpread ensures that the number of replicas is spread across the primaries
 func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
-	var masterNeedsReplicas []*redis.RedisNode
+	var primaryNeedsReplicas []*redis.RedisNode
 	var replicaNeedsMove []*redis.RedisNode
 
-	masters := rc.GetMasterNodes()
+	primaries := rc.GetPrimaryNodes()
 	replicas := rc.GetReplicaNodes()
 
-	// Find masters that need replicas
-	for _, master := range masters {
-		replicas := rc.GetReplicasOfNode(master)
-		replicasPerMaster := rc.GetReplicasPerMaster()
+	// Find primaries that need replicas
+	for _, primary := range primaries {
+		replicas := rc.GetReplicasOfNode(primary)
+		replicasPerPrimary := rc.GetReplicasPerPrimary()
 
-		if len(replicas) == int(replicasPerMaster) { // Master has the right number of replicas
+		if len(replicas) == int(replicasPerPrimary) { // Primary has the right number of replicas
 			continue
-		} else if len(replicas) < int(replicasPerMaster) { // Too few replicas
-			masterNeedsReplicas = append(masterNeedsReplicas, master)
-		} else if len(replicas) > int(replicasPerMaster) { // Too much replicas
-			replicaNeedsMove = append(replicaNeedsMove, replicas[replicasPerMaster:]...)
+		} else if len(replicas) < int(replicasPerPrimary) { // Too few replicas
+			primaryNeedsReplicas = append(primaryNeedsReplicas, primary)
+		} else if len(replicas) > int(replicasPerPrimary) { // Too much replicas
+			replicaNeedsMove = append(replicaNeedsMove, replicas[replicasPerPrimary:]...)
 		}
 	}
 
-	// There might be replicas which are replicating replicas. We want to change these to point at masters
+	// There might be replicas which are replicating replicas. We want to change these to point at primaries
 	for _, replica := range replicas {
 		replicasPointedAtReplicas := rc.GetReplicasOfNode(replica)
 		replicaNeedsMove = append(replicaNeedsMove, replicasPointedAtReplicas...)
 	}
 
-	// There might be replicas which are replicating masters which we cannot see.
+	// There might be replicas which are replicating primaries which we cannot see.
 	for _, replica := range replicas {
-		// Is the replica pointing at one of the masters ?
-		pointedAtMaster := false
-		for _, master := range masters {
-			if master.Name == replica.MasterID {
-				pointedAtMaster = true
-				// Update the replica's MasterID to use the master's ID instead of name
-				replica.MasterID = master.ID
+		// Is the replica pointing at one of the primaries ?
+		pointedAtPrimary := false
+		for _, primary := range primaries {
+			if primary.Name == replica.PrimaryID {
+				pointedAtPrimary = true
+				// Update the replica's PrimaryID to use the primary's ID instead of name
+				replica.PrimaryID = primary.ID
 
-				// Check if this master now has the right number of replicas and can be removed from masterNeedsReplicas
-				currentReplicas := rc.GetReplicasOfNode(master)
-				replicasPerMaster := rc.GetReplicasPerMaster()
-				if len(currentReplicas)+1 >= int(replicasPerMaster) { // +1 because we just assigned this replica
-					// Remove this master from masterNeedsReplicas
-					for i, needsReplicasMaster := range masterNeedsReplicas {
-						if needsReplicasMaster.ID == master.ID {
-							masterNeedsReplicas = append(masterNeedsReplicas[:i], masterNeedsReplicas[i+1:]...)
+				// Check if this primary now has the right number of replicas and can be removed from primaryNeedsReplicas
+				currentReplicas := rc.GetReplicasOfNode(primary)
+				replicasPerPrimary := rc.GetReplicasPerPrimary()
+				if len(currentReplicas)+1 >= int(replicasPerPrimary) { // +1 because we just assigned this replica
+					// Remove this primary from primaryNeedsReplicas
+					for i, needsReplicasPrimary := range primaryNeedsReplicas {
+						if needsReplicasPrimary.ID == primary.ID {
+							primaryNeedsReplicas = append(primaryNeedsReplicas[:i], primaryNeedsReplicas[i+1:]...)
 							break
 						}
 					}
@@ -1201,22 +1201,22 @@ func (rc *RedKeyCluster) ensureReplicaSpread(ctx context.Context) error {
 				break
 			}
 		}
-		if !pointedAtMaster {
+		if !pointedAtPrimary {
 			replicaNeedsMove = append(replicaNeedsMove, replica)
 		}
 	}
 
-	// We have more masters that need replicas than available replicas
-	if len(replicaNeedsMove) < len(masterNeedsReplicas) {
-		return fmt.Errorf("there are not enough replicas to convert. masters=%d replicas=%d", len(masterNeedsReplicas), len(replicaNeedsMove))
+	// We have more primaries that need replicas than available replicas
+	if len(replicaNeedsMove) < len(primaryNeedsReplicas) {
+		return fmt.Errorf("there are not enough replicas to convert. primaries=%d replicas=%d", len(primaryNeedsReplicas), len(replicaNeedsMove))
 	}
 
-	// Replicas that need to be converted to masters
-	for i := 0; i < len(masterNeedsReplicas); i++ {
-		rc.logger.Info("Converting node to replica", "node", replicaNeedsMove[i].Name, "master", masterNeedsReplicas[i].Name)
+	// Replicas that need to be converted to primaries
+	for i := 0; i < len(primaryNeedsReplicas); i++ {
+		rc.logger.Info("Converting node to replica", "node", replicaNeedsMove[i].Name, "primary", primaryNeedsReplicas[i].Name)
 
-		if err := replicaNeedsMove[i].ReplicateNode(ctx, *masterNeedsReplicas[i]); err != nil {
-			return fmt.Errorf("error promoting replica %s to master %s: %v", replicaNeedsMove[i].Name, masterNeedsReplicas[i].Name, err)
+		if err := replicaNeedsMove[i].ReplicateNode(ctx, *primaryNeedsReplicas[i]); err != nil {
+			return fmt.Errorf("error promoting replica %s to primary %s: %v", replicaNeedsMove[i].Name, primaryNeedsReplicas[i].Name, err)
 		}
 	}
 
@@ -1250,7 +1250,7 @@ func (rc *RedKeyCluster) convertNodesToReplica(ctx context.Context, nodesToConve
 		}
 
 		currentKeepable = currentKeepable + 1
-		if currentKeepable > rc.GetReplicas()-1 {
+		if currentKeepable > rc.GetPrimaries()-1 {
 			currentKeepable = 0
 		}
 	}
@@ -1266,12 +1266,12 @@ func (rc *RedKeyCluster) convertNodesToReplica(ctx context.Context, nodesToConve
 	return nil
 }
 
-// convertNodesToMaster promotes the specified nodes to masters
-func (rc *RedKeyCluster) convertNodesToMaster(ctx context.Context, nodes []*redis.RedisNode) error {
+// convertNodesToPrimary promotes the specified nodes to masters
+func (rc *RedKeyCluster) convertNodesToPrimary(ctx context.Context, nodes []*redis.RedisNode) error {
 	// Reset nodes that will be promoted to masters
 	for _, node := range nodes {
 		// Skip nodes that are already masters
-		if node.IsMaster() {
+		if node.IsPrimary() {
 			continue
 		}
 
@@ -1291,11 +1291,11 @@ func (rc *RedKeyCluster) convertNodesToMaster(ctx context.Context, nodes []*redi
 	return nil
 }
 
-// promoteReplicaOfNode promotes the first replica of the specified node to master
+// promoteReplicaOfNode promotes the first replica of the specified node to primary
 func (rc *RedKeyCluster) promoteReplicaOfNode(ctx context.Context, node *redis.RedisNode) error {
-	// Check if the node is a master
-	if !node.IsMaster() {
-		return fmt.Errorf("node %s is not a master", node.Name)
+	// Check if the node is a primary
+	if !node.IsPrimary() {
+		return fmt.Errorf("node %s is not a primary", node.Name)
 	}
 
 	// Get the current replicas
@@ -1305,9 +1305,9 @@ func (rc *RedKeyCluster) promoteReplicaOfNode(ctx context.Context, node *redis.R
 	}
 
 	// Promote the first replica
-	rc.logger.Info("Promoting replica to master", "replica", replicas[0].Name, "master", node.Name)
+	rc.logger.Info("Promoting replica to primary", "replica", replicas[0].Name, "primary", node.Name)
 	if err := replicas[0].Failover(ctx); err != nil {
-		return fmt.Errorf("error promoting replica %s to master %s: %v", replicas[0].Name, node.Name, err)
+		return fmt.Errorf("error promoting replica %s to primary %s: %v", replicas[0].Name, node.Name, err)
 	}
 
 	// Refresh nodes info
@@ -1333,7 +1333,7 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 	rc.logger.Info("Assigning missing slots")
 
 	// Get the master nodes
-	masters := rc.GetMasterNodes()
+	masters := rc.GetPrimaryNodes()
 
 	// We start with a map so we can easily delete slots if they are already assigned
 	allSlots := util.MakeRangeMap(0, 16383)
@@ -1397,7 +1397,7 @@ func (rc *RedKeyCluster) assignMissingSlots(ctx context.Context) error {
 
 // getClient returns a Redis client using the configured client factory
 func (rc *RedKeyCluster) getClient() (redis.RedisClientInterface, error) {
-		
+
 	if len(rc.nodes) > 0 {
 
 		// Prefer the canonical node with ordinal 0 ("<clusterName>-0") when available and

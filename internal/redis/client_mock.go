@@ -141,7 +141,7 @@ func (m MockRedisClient) GetNodesInfo() ([]RedisNode, error) {
 			IP:         "127.0.0.1",
 			Flags:      "master",
 			Slots:      []RedisSlotRange{{Start: 0, End: 5461}},
-			MasterID:   "-",
+			PrimaryID:  "-",
 			Failures:   0,
 			Sent:       100,
 			Recv:       100,

@@ -48,8 +48,8 @@ func (s *Server) GetRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request
 	s.logger.Info("Get redkey cluster replicas")
 
 	response := ClusterReplicasResponse{
-		Replicas:          s.cluster.GetReplicas(),
-		ReplicasPerMaster: s.cluster.GetReplicasPerMaster(),
+		Replicas:          s.cluster.GetPrimaries(),
+		ReplicasPerMaster: s.cluster.GetReplicasPerPrimary(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -71,8 +71,8 @@ func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Requ
 
 	// Send the response
 	response := ClusterReplicasResponse{
-		Replicas:          s.cluster.GetReplicas(),
-		ReplicasPerMaster: s.cluster.GetReplicasPerMaster(),
+		Replicas:          s.cluster.GetPrimaries(),
+		ReplicasPerMaster: s.cluster.GetReplicasPerPrimary(),
 	}
 	if err != nil {
 		if _, ok := err.(*cluster.OperationCompletedError); ok {

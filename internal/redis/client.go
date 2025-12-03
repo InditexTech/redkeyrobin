@@ -343,7 +343,7 @@ func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
 			IP:         strings.Split(ipPort, ":")[0], // Extract only IP
 			Flags:      flags,
 			Slots:      slots,
-			MasterID:   masterID,
+			PrimaryID:  masterID,
 			Failures:   failures,
 			Sent:       sent,
 			Recv:       recv,

@@ -25,8 +25,8 @@ type RedisReconcilerConfig struct {
 type RedKeyClusterConfig struct {
 	Namespace                  string        `yaml:"namespace"`
 	Name                       string        `yaml:"name"`
-	Replicas                   int           `yaml:"replicas"`
-	ReplicasPerMaster          int           `yaml:"replicas_per_master"`
+	Primaries                  int           `yaml:"replicas"`
+	ReplicasPerPrimary         int           `yaml:"replicas_per_master"`
 	Status                     string        `yaml:"status"`
 	Ephemeral                  bool          `yaml:"ephemeral"`
 	HealthProbePeriodSeconds   int           `yaml:"health_probe_interval_seconds"`
@@ -90,7 +90,7 @@ func (cfg *Configuration) validate() []string {
 	if cfg.Redis.Cluster.Name == "" {
 		missing = append(missing, "redis.cluster.name")
 	}
-	if cfg.Redis.Cluster.Replicas == 0 {
+	if cfg.Redis.Cluster.Primaries == 0 {
 		missing = append(missing, "redis.cluster.replicas")
 	}
 	if cfg.Redis.Cluster.Status == "" {
