@@ -393,26 +393,10 @@ components:
                 type: string
                 description: RedKey Cluster node name
                 example: redkeycluster-sample-0
-              flags:
+              role:
                 type: string
-                description: RedKey Cluster node flags
-                example: master
-              slots:
-                type: array
-                description: RedKey Cluster node slots
-                items:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      start:
-                        type: integer
-                        description: Slot start
-                        example: 0
-                      end:
-                        type: integer
-                        description: Slot end
-                        example: 16383
+                description: RedKey Cluster node role
+                example: primary
               ip:
                 type: string
                 description: RedKey Cluster node IP
