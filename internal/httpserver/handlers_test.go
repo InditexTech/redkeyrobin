@@ -108,23 +108,23 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 	}{
 		{
 			name:    "invalid request",
-			request: `{"replicas": -1}`,
+			request: `{"primaries": -1}`,
 			expectedBody: ErrorResponse{
-				Error: "Invalid request: 'replicas' must be positive",
+				Error: "Invalid request: 'primaries' must be positive",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name:    "invalid request replicas per primary",
-			request: `{"replicas": 0, "replicas_per_master": -1}`,
+			request: `{"primaries": 0, "replicas_per_primary": -1}`,
 			expectedBody: ErrorResponse{
-				Error: "Invalid request: 'replicas_per_master' must be positive",
+				Error: "Invalid request: 'replicas_per_primary' must be positive",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:    "same replicas",
-			request: `{"replicas": 0}`,
+			name:    "same primaries and replicas per primary",
+			request: `{"primaries": 0}`,
 			expectedBody: ClusterReplicasResponse{
 				Primaries:          0,
 				ReplicasPerPrimary: 0,
@@ -133,7 +133,7 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 		},
 		{
 			name:    "good request",
-			request: `{"replicas": 3}`,
+			request: `{"primaries": 3}`,
 			expectedBody: ClusterReplicasResponse{
 				Primaries:          3,
 				ReplicasPerPrimary: 0,
@@ -142,7 +142,7 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 		},
 		{
 			name:    "good request with replicas per primary",
-			request: `{"replicas": 3, "replicas_per_master": 2}`,
+			request: `{"primaries": 3, "replicas_per_primary": 2}`,
 			expectedBody: ClusterReplicasResponse{
 				Primaries:          3,
 				ReplicasPerPrimary: 2,
@@ -150,8 +150,8 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 			expectedStatusCode: http.StatusCreated,
 		},
 		{
-			name:    "same replicas and replicas per primary",
-			request: `{"replicas": 3, "replicas_per_master": 2}`,
+			name:    "same primaries and replicas per primary",
+			request: `{"primaries": 3, "replicas_per_primary": 2}`,
 			expectedBody: ClusterReplicasResponse{
 				Primaries:          3,
 				ReplicasPerPrimary: 2,

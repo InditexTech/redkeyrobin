@@ -1516,12 +1516,12 @@ func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name          string
 		nodes         map[string]*redis.RedisNode
-		replicas      int
+		primaries      int
 		expectedError error
 	}{
 		{
 			name:     "no upscale needed",
-			replicas: 2,
+			primaries: 2,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
 				"test-cluster-1": createNodeWithoutSlots("test-cluster-1", "0000000002"),
@@ -1530,7 +1530,7 @@ func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 		},
 		{
 			name:     "success",
-			replicas: 2,
+			primaries: 2,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
 			},
@@ -1548,7 +1548,7 @@ func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 							Name:       "test-cluster",
 							MaxRetries: 1,
 							BackOff:    time.Microsecond * 10,
-							Primaries:  tt.replicas,
+							Primaries:  tt.primaries,
 						},
 					},
 				},
@@ -1565,7 +1565,7 @@ func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 				assert.Equal(t, tt.expectedError, err)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, len(cluster.nodes), tt.replicas)
+				assert.Equal(t, len(cluster.nodes), tt.primaries)
 			}
 		})
 	}
@@ -1581,14 +1581,14 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name             string
 		nodes            map[string]*redis.RedisNode
-		replicas         int
+		primaries         int
 		operationFactory *OperationFactory
 		clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
 		expectedError    error
 	}{
 		{
 			name:     "error in getNodesToRemove",
-			replicas: 1,
+			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
 				"test-cluster-1": createNodeWithoutSlots("test-cluster-1", "0000000002"),
@@ -1598,7 +1598,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 		},
 		{
 			name:     "error in removeSlotsFromNodes",
-			replicas: 1,
+			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithSlots("test-cluster-0", "0000000001", []redis.RedisSlotRange{{Start: 0, End: 100}}),
 				"test-cluster-1": createNodeWithSlots("test-cluster-1", "0000000002", []redis.RedisSlotRange{{Start: 101, End: 200}}),
@@ -1615,7 +1615,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 		},
 		{
 			name:     "error in forgetAndRemoveNodes",
-			replicas: 1,
+			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": redis.NewFakeRedisNode("test-cluster-0", mockClientFactoryForgetError),
 				"test-cluster-1": redis.NewFakeRedisNode("test-cluster-1", mockClientFactoryForgetError),
@@ -1630,7 +1630,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 		},
 		{
 			name:     "no downscale needed",
-			replicas: 3,
+			primaries: 3,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
 				"test-cluster-1": createNodeWithoutSlots("test-cluster-1", "0000000002"),
@@ -1641,7 +1641,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 		},
 		{
 			name:     "success",
-			replicas: 1,
+			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
 				"test-cluster-1": createNodeWithoutSlots("test-cluster-1", "0000000002"),
@@ -1664,7 +1664,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 					Redis: config.RedisConfig{
 						Cluster: config.RedKeyClusterConfig{
 							Name:       "test-cluster",
-							Primaries:  tt.replicas,
+							Primaries:  tt.primaries,
 							MaxRetries: 1,
 							BackOff:    time.Microsecond * 10,
 						},

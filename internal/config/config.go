@@ -25,8 +25,8 @@ type RedisReconcilerConfig struct {
 type RedKeyClusterConfig struct {
 	Namespace                  string        `yaml:"namespace"`
 	Name                       string        `yaml:"name"`
-	Primaries                  int           `yaml:"replicas"`
-	ReplicasPerPrimary         int           `yaml:"replicas_per_master"`
+	Primaries                  int           `yaml:"primaries"`
+	ReplicasPerPrimary         int           `yaml:"replicas_per_primary"`
 	Status                     string        `yaml:"status"`
 	Ephemeral                  bool          `yaml:"ephemeral"`
 	HealthProbePeriodSeconds   int           `yaml:"health_probe_interval_seconds"`
