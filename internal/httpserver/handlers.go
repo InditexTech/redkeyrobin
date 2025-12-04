@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 // GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the RedKey cluster from the Operator's perspective.
@@ -259,9 +260,27 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster nodes")
 
+	nodes := make([]RedisNode, 0)
+	for _, node := range s.cluster.GetNodes() {
+		nodes = append(nodes, getResponseNodeFromRedisNode(node))
+	}
 	response := ClusterNodesResponse{
-		Nodes: s.cluster.GetNodes(),
+		Nodes: nodes,
 	}
 
 	s.sendResponse(w, http.StatusOK, response)
+}
+
+func getResponseNodeFromRedisNode(rn *redis.RedisNode) RedisNode {
+	return RedisNode{
+		Name:       rn.Name,
+		ID:         rn.ID,
+		IP:         rn.IP,
+		Flags:      rn.Flags,
+		PrimaryID:  rn.PrimaryID,
+		Failures:   rn.Failures,
+		Sent:       rn.Sent,
+		Recv:       rn.Recv,
+		LinkStatus: rn.LinkStatus,
+	}
 }

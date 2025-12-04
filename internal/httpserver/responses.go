@@ -7,8 +7,6 @@ package httpserver
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 type ResponseInterface interface {
@@ -135,7 +133,19 @@ func (r ClusterResetNodeResponse) GetKeys() []string {
 }
 
 type ClusterNodesResponse struct {
-	Nodes []*redis.RedisNode `json:"nodes"`
+	Nodes []RedisNode `json:"nodes"`
+}
+
+type RedisNode struct {
+	Name       string `json:"name"`
+	ID         string `json:"id"`
+	IP         string `json:"ip"`
+	Flags      string `json:"flags"`
+	PrimaryID  string `json:"primaryId"`
+	Failures   int    `json:"failures"`
+	Sent       int    `json:"sent"`
+	Recv       int    `json:"recv"`
+	LinkStatus string `json:"linkStatus"`
 }
 
 func (r ClusterNodesResponse) GetKeys() []string {

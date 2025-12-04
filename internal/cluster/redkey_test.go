@@ -1516,11 +1516,11 @@ func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name          string
 		nodes         map[string]*redis.RedisNode
-		primaries      int
+		primaries     int
 		expectedError error
 	}{
 		{
-			name:     "no upscale needed",
+			name:      "no upscale needed",
 			primaries: 2,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
@@ -1529,7 +1529,7 @@ func TestRedKeyClusterAddNewNodesIfNeeded(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:     "success",
+			name:      "success",
 			primaries: 2,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
@@ -1581,13 +1581,13 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 	tests := []struct {
 		name             string
 		nodes            map[string]*redis.RedisNode
-		primaries         int
+		primaries        int
 		operationFactory *OperationFactory
 		clientFactory    func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
 		expectedError    error
 	}{
 		{
-			name:     "error in getNodesToRemove",
+			name:      "error in getNodesToRemove",
 			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
@@ -1597,7 +1597,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 			expectedError: fmt.Errorf("error meeting nodes: error refreshing nodes info: error creating client"),
 		},
 		{
-			name:     "error in removeSlotsFromNodes",
+			name:      "error in removeSlotsFromNodes",
 			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithSlots("test-cluster-0", "0000000001", []redis.RedisSlotRange{{Start: 0, End: 100}}),
@@ -1614,7 +1614,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 			expectedError: fmt.Errorf("error ensuring nodes are up: nodes are not up"),
 		},
 		{
-			name:     "error in forgetAndRemoveNodes",
+			name:      "error in forgetAndRemoveNodes",
 			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": redis.NewFakeRedisNode("test-cluster-0", mockClientFactoryForgetError),
@@ -1629,7 +1629,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 			expectedError: fmt.Errorf("error forgetting node test-cluster-0 from node test-cluster-1: no forget"),
 		},
 		{
-			name:     "no downscale needed",
+			name:      "no downscale needed",
 			primaries: 3,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
@@ -1640,7 +1640,7 @@ func TestRedKeyClusterRemoveNodesIfNeeded(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:     "success",
+			name:      "success",
 			primaries: 1,
 			nodes: map[string]*redis.RedisNode{
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),

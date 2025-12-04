@@ -578,7 +578,7 @@ func TestNodeReplicateNode(t *testing.T) {
 		name          string
 		setupMock     func() *MockRedisClient
 		setupNode     func(*MockRedisClient) *RedisNode
-		primary        RedisNode
+		primary       RedisNode
 		expectedError bool
 	}{
 		{

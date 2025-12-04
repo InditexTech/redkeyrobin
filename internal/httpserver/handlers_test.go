@@ -388,13 +388,12 @@ func TestGetNodes(t *testing.T) {
 		{
 			name: "good request",
 			expectedBody: ClusterNodesResponse{
-				Nodes: []*redis.RedisNode{
+				Nodes: []RedisNode{
 					{
 						Name:       "node1",
 						ID:         "1234567890",
 						IP:         "1.1.1.1",
 						Flags:      "master",
-						Slots:      []redis.RedisSlotRange{},
 						PrimaryID:  "",
 						Failures:   0,
 						Sent:       0,
@@ -402,16 +401,10 @@ func TestGetNodes(t *testing.T) {
 						LinkStatus: "",
 					},
 					{
-						Name:  "test-1",
-						ID:    "0987654321",
-						IP:    "2.2.2.2",
-						Flags: "master",
-						Slots: []redis.RedisSlotRange{
-							{
-								Start: 5,
-								End:   7,
-							},
-						},
+						Name:       "test-1",
+						ID:         "0987654321",
+						IP:         "2.2.2.2",
+						Flags:      "master",
 						PrimaryID:  "",
 						Failures:   0,
 						Sent:       0,
@@ -419,16 +412,10 @@ func TestGetNodes(t *testing.T) {
 						LinkStatus: "",
 					},
 					{
-						Name:  "node3",
-						ID:    "0987654321",
-						IP:    "2.2.2.2",
-						Flags: "master",
-						Slots: []redis.RedisSlotRange{
-							{
-								Start: 7,
-								End:   10,
-							},
-						},
+						Name:       "node3",
+						ID:         "0987654321",
+						IP:         "2.2.2.2",
+						Flags:      "master",
 						PrimaryID:  "",
 						Failures:   0,
 						Sent:       0,
