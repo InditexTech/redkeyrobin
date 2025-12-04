@@ -28,7 +28,7 @@ var (
 	}
 
 	nodeInfoLabelKeys = []string{
-		NodeID, NodeIP, Role, Slots, MasterID, NodeFailures,
+		NodeID, NodeIP, Role, Slots, PrimaryID, NodeFailures,
 	}
 )
 
@@ -128,7 +128,7 @@ func (p *RedKeyClusterMetricsPoller) pollClusterNodes() error {
 		nodeTags[NodeIP] = node.IP
 		nodeTags[Role] = node.Flags
 		nodeTags[Slots] = fmt.Sprintf("%v", node.Slots)
-		nodeTags[MasterID] = node.MasterID
+		nodeTags[PrimaryID] = node.PrimaryID
 		nodeTags[NodeFailures] = fmt.Sprintf("%v", node.Failures)
 
 		p.metricsManager.UpdateDynamicMetricWithTime(redisNodesMetrics, nodeTags, nodeInfoLabelKeys, false)

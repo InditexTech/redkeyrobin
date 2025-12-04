@@ -30,11 +30,11 @@ func TestRedisOperationMoveLaunch(t *testing.T) {
 			nodeTo:        node1,
 		},
 		{
-			name: "convertNodesToMaster fails",
+			name: "convertNodesToPrimary fails",
 			setupMock: func(mock *MockRedKeyCluster) {
-				mock.ConvertNodesToMasterError = fmt.Errorf("conversion failed")
+				mock.ConvertNodesToPrimaryError = fmt.Errorf("conversion failed")
 			},
-			expectedError: fmt.Errorf("error converting node 'node3' to master: conversion failed"),
+			expectedError: fmt.Errorf("error converting node 'node3' to primary: conversion failed"),
 			nodeTo:        node3, // replica node to trigger conversion
 		},
 		{
@@ -54,12 +54,12 @@ func TestRedisOperationMoveLaunch(t *testing.T) {
 			nodeTo:        node1,
 		},
 		{
-			name: "success with master node",
+			name: "success with primary node",
 			setupMock: func(mock *MockRedKeyCluster) {
 				// All methods should succeed - no errors to set
 			},
 			expectedError: nil,
-			nodeTo:        node1, // node1 is already a master
+			nodeTo:        node1, // node1 is already a primary
 		},
 		{
 			name: "success with replica conversion",

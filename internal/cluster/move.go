@@ -60,10 +60,10 @@ func (ro *RedisOperationMove) Launch() error {
 		return fmt.Errorf("error ensuring nodes are up: %v", err)
 	}
 
-	// Asure destination node is master
-	if !ro.nodeTo.IsMaster() {
-		if err := ro.cluster.convertNodesToMaster(ro.ctx, []*redis.RedisNode{ro.nodeTo}); err != nil {
-			return fmt.Errorf("error converting node '%s' to master: %v", ro.nodeTo.Name, err)
+	// Asure destination node is primary
+	if !ro.nodeTo.IsPrimary() {
+		if err := ro.cluster.convertNodesToPrimary(ro.ctx, []*redis.RedisNode{ro.nodeTo}); err != nil {
+			return fmt.Errorf("error converting node '%s' to primary: %v", ro.nodeTo.Name, err)
 		}
 	}
 

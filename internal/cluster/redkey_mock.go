@@ -16,7 +16,7 @@ type MockRedKeyCluster struct {
 
 	// Error control fields
 	EnsureNodesAreUpError           error
-	ConvertNodesToMasterError       error
+	ConvertNodesToPrimaryError      error
 	GetAndCheckRedisClientError     error
 	RefreshNodesError               error
 	CheckNodesError                 error
@@ -43,7 +43,7 @@ func NewMockRedKeyCluster(baseCluster *RedKeyCluster) *MockRedKeyCluster {
 	return &MockRedKeyCluster{
 		RedKeyCluster:                   baseCluster,
 		EnsureNodesAreUpError:           nil,
-		ConvertNodesToMasterError:       nil,
+		ConvertNodesToPrimaryError:      nil,
 		GetAndCheckRedisClientError:     nil,
 		RefreshNodesError:               nil,
 		CheckNodesError:                 nil,
@@ -68,9 +68,9 @@ func (m *MockRedKeyCluster) ensureNodesAreUp(ctx context.Context) error {
 	return m.EnsureNodesAreUpError
 }
 
-// convertNodesToMaster mocks the convertNodesToMaster method
-func (m *MockRedKeyCluster) convertNodesToMaster(ctx context.Context, nodes []*redis.RedisNode) error {
-	return m.ConvertNodesToMasterError
+// convertNodesToPrimary mocks the convertNodesToPrimary method
+func (m *MockRedKeyCluster) convertNodesToPrimary(ctx context.Context, nodes []*redis.RedisNode) error {
+	return m.ConvertNodesToPrimaryError
 }
 
 // getRedisClient mocks the getRedisClient method and returns our configured mock client
