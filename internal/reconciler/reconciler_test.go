@@ -34,7 +34,7 @@ func TestRedKeyClusterReconcilerReconcile(t *testing.T) {
 				Redis: config.RedisConfig{
 					Cluster: config.RedKeyClusterConfig{
 						Status:                   "Ready",
-						Replicas:                 3,
+						Primaries:                3,
 						Name:                     "test",
 						Namespace:                "test",
 						MaxRetries:               1,
@@ -52,7 +52,7 @@ func TestRedKeyClusterReconcilerReconcile(t *testing.T) {
 				Redis: config.RedisConfig{
 					Cluster: config.RedKeyClusterConfig{
 						Status:                   "ScalingUp",
-						Replicas:                 3,
+						Primaries:                3,
 						Name:                     "test",
 						Namespace:                "test",
 						MaxRetries:               1,
@@ -70,7 +70,7 @@ func TestRedKeyClusterReconcilerReconcile(t *testing.T) {
 				Redis: config.RedisConfig{
 					Cluster: config.RedKeyClusterConfig{
 						Status:                   "ScalingDown",
-						Replicas:                 3,
+						Primaries:                3,
 						Name:                     "test",
 						Namespace:                "test",
 						MaxRetries:               1,
@@ -88,7 +88,7 @@ func TestRedKeyClusterReconcilerReconcile(t *testing.T) {
 				Redis: config.RedisConfig{
 					Cluster: config.RedKeyClusterConfig{
 						Status:                   "Upgrading",
-						Replicas:                 3,
+						Primaries:                3,
 						Name:                     "test",
 						Namespace:                "test",
 						MaxRetries:               1,

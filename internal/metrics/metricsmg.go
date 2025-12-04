@@ -32,7 +32,7 @@ const (
 	NodeIP              = "nodeIp"
 	Role                = "role"
 	Slots               = "slots"
-	MasterID            = "masterId"
+	PrimaryID           = "primaryId"
 	NodeFailures        = "nodeFailures"
 )
 

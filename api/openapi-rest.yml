@@ -271,26 +271,26 @@ components:
     ClusterReplicasResponse:
       type: object
       properties:
-        replicas:
+        primaries:
           type: integer
-          description: Cluster replicas
+          description: Cluster primary nodes
           example: 1
-        replicas_per_master:
+        replicas_per_primary:
           type: integer
-          description: Replicas per master
+          description: Replicas per primary
           example: 0
       required:
-        - replicas
+        - primaries
     ClusterReplicasRequest:
       type: object
       properties:
-        replicas:
+        primaries:
           type: integer
-          description: Cluster replicas
+          description: Cluster primary nodes
           example: 1
-        replicas_per_master:
+        replicas_per_primary:
           type: integer
-          description: Replicas per master
+          description: Replicas per primary
           example: 0
     ClusterStatusResponse:
       type: object
@@ -393,33 +393,17 @@ components:
                 type: string
                 description: RedKey Cluster node name
                 example: redkeycluster-sample-0
-              flags:
+              role:
                 type: string
-                description: RedKey Cluster node flags
-                example: master
-              slots:
-                type: array
-                description: RedKey Cluster node slots
-                items:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      start:
-                        type: integer
-                        description: Slot start
-                        example: 0
-                      end:
-                        type: integer
-                        description: Slot end
-                        example: 16383
+                description: RedKey Cluster node role
+                example: primary
               ip:
                 type: string
                 description: RedKey Cluster node IP
                 example: "10.0.0.1"     
-              masterId:
+              primaryId:
                 type: string
-                description: RedKey Cluster node master ID
+                description: RedKey Cluster node primary ID
                 example: c3f4bad062e19339e0e07bb836db5e23f09f0dff
               failures:
                 type: integer

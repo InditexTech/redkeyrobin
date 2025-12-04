@@ -86,8 +86,8 @@ func TestGetRedKeyClusterReplicas(t *testing.T) {
 		{
 			name: "good request",
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          0,
-				ReplicasPerMaster: 0,
+				Primaries:          0,
+				ReplicasPerPrimary: 0,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -108,53 +108,53 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 	}{
 		{
 			name:    "invalid request",
-			request: `{"replicas": -1}`,
+			request: `{"primaries": -1}`,
 			expectedBody: ErrorResponse{
-				Error: "Invalid request: 'replicas' must be positive",
+				Error: "Invalid request: 'primaries' must be positive",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:    "invalid request replicas per master",
-			request: `{"replicas": 0, "replicas_per_master": -1}`,
+			name:    "invalid request replicas per primary",
+			request: `{"primaries": 0, "replicas_per_primary": -1}`,
 			expectedBody: ErrorResponse{
-				Error: "Invalid request: 'replicas_per_master' must be positive",
+				Error: "Invalid request: 'replicas_per_primary' must be positive",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:    "same replicas",
-			request: `{"replicas": 0}`,
+			name:    "same primaries and replicas per primary",
+			request: `{"primaries": 0}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          0,
-				ReplicasPerMaster: 0,
+				Primaries:          0,
+				ReplicasPerPrimary: 0,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:    "good request",
-			request: `{"replicas": 3}`,
+			request: `{"primaries": 3}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          3,
-				ReplicasPerMaster: 0,
+				Primaries:          3,
+				ReplicasPerPrimary: 0,
 			},
 			expectedStatusCode: http.StatusCreated,
 		},
 		{
-			name:    "good request with replicas per master",
-			request: `{"replicas": 3, "replicas_per_master": 2}`,
+			name:    "good request with replicas per primary",
+			request: `{"primaries": 3, "replicas_per_primary": 2}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          3,
-				ReplicasPerMaster: 2,
+				Primaries:          3,
+				ReplicasPerPrimary: 2,
 			},
 			expectedStatusCode: http.StatusCreated,
 		},
 		{
-			name:    "same replicas and replicas per master",
-			request: `{"replicas": 3, "replicas_per_master": 2}`,
+			name:    "same primaries and replicas per primary",
+			request: `{"primaries": 3, "replicas_per_primary": 2}`,
 			expectedBody: ClusterReplicasResponse{
-				Replicas:          3,
-				ReplicasPerMaster: 2,
+				Primaries:          3,
+				ReplicasPerPrimary: 2,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
@@ -388,48 +388,35 @@ func TestGetNodes(t *testing.T) {
 		{
 			name: "good request",
 			expectedBody: ClusterNodesResponse{
-				Nodes: []*redis.RedisNode{
+				Nodes: []RedisNode{
 					{
 						Name:       "node1",
 						ID:         "1234567890",
 						IP:         "1.1.1.1",
-						Flags:      "master",
-						Slots:      []redis.RedisSlotRange{},
-						MasterID:   "",
+						Role:      	"primary",
+						PrimaryID:  "",
 						Failures:   0,
 						Sent:       0,
 						Recv:       0,
 						LinkStatus: "",
 					},
 					{
-						Name:  "test-1",
-						ID:    "0987654321",
-						IP:    "2.2.2.2",
-						Flags: "master",
-						Slots: []redis.RedisSlotRange{
-							{
-								Start: 5,
-								End:   7,
-							},
-						},
-						MasterID:   "",
+						Name:       "test-1",
+						ID:         "0987654321",
+						IP:         "2.2.2.2",
+						Role:       "primary",
+						PrimaryID:  "",
 						Failures:   0,
 						Sent:       0,
 						Recv:       0,
 						LinkStatus: "",
 					},
 					{
-						Name:  "node3",
-						ID:    "0987654321",
-						IP:    "2.2.2.2",
-						Flags: "master",
-						Slots: []redis.RedisSlotRange{
-							{
-								Start: 7,
-								End:   10,
-							},
-						},
-						MasterID:   "",
+						Name:       "node3",
+						ID:         "0987654321",
+						IP:         "2.2.2.2",
+						Role:       "primary",
+						PrimaryID:  "",
 						Failures:   0,
 						Sent:       0,
 						Recv:       0,

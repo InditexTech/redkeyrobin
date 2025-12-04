@@ -13,11 +13,11 @@ redis:
   reconciler:
     interval_seconds: 60
   cluster:
-    replicas: 1
+    primaries: 1
     namespace: redkey-operator
     name: redkeycluster-sample
     status: Ready
-    replicas_per_master: 0
+    replicas_per_primary: 0
     health_probe_interval_seconds: 60
     healing_time_seconds: 60
     max_retries: 2

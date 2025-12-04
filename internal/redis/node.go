@@ -28,7 +28,7 @@ type RedisNode struct {
 	IP         string           `json:"ip"`
 	Flags      string           `json:"flags"`
 	Slots      []RedisSlotRange `json:"slots"`
-	MasterID   string           `json:"masterId"`
+	PrimaryID  string           `json:"primaryId"`
 	Failures   int              `json:"failures"`
 	Sent       int              `json:"sent"`
 	Recv       int              `json:"recv"`
@@ -111,8 +111,8 @@ func (rn *RedisNode) SetIP(ip string) {
 // ---------------------------------------------- ASKERS ----------------------------------------------
 // ----------------------------------------------------------------------------------------------------
 
-// IsMaster returns true if the Redis node is a master.
-func (rn *RedisNode) IsMaster() bool {
+// IsPrimary returns true if the Redis node is a primary.
+func (rn *RedisNode) IsPrimary() bool {
 	return rn.hasFlag("master")
 }
 
@@ -196,7 +196,7 @@ func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
 	}
 	rn.Flags = nodeInfo.Flags
 	rn.Slots = nodeInfo.Slots
-	rn.MasterID = nodeInfo.MasterID
+	rn.PrimaryID = nodeInfo.PrimaryID
 	rn.Failures = nodeInfo.Failures
 	rn.Sent = nodeInfo.Sent
 	rn.Recv = nodeInfo.Recv
@@ -222,14 +222,14 @@ func (rn *RedisNode) GetClusterNodes(ctx context.Context) ([]RedisNode, error) {
 }
 
 // ReplicateNode replicates the Redis node.
-func (rn *RedisNode) ReplicateNode(ctx context.Context, master RedisNode) error {
+func (rn *RedisNode) ReplicateNode(ctx context.Context, primary RedisNode) error {
 	redisClient, err := rn.getClient(ctx)
 	if err != nil {
 		return err
 	}
 	defer redisClient.Close()
 
-	return redisClient.ClusterReplicate(master.ID)
+	return redisClient.ClusterReplicate(primary.ID)
 }
 
 // Reset resets the Redis node.

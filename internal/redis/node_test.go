@@ -107,14 +107,14 @@ func TestNodeAskers(t *testing.T) {
 	assert.False(t, node.ShouldBeRemoved())
 }
 
-func TestNodeIsMaster(t *testing.T) {
+func TestNodeIsPrimary(t *testing.T) {
 	tests := []struct {
 		name     string
 		node     *RedisNode
 		expected bool
 	}{
 		{
-			name: "master node",
+			name: "primary node",
 			node: &RedisNode{
 				IP:       "aaa",
 				Flags:    "master",
@@ -124,7 +124,7 @@ func TestNodeIsMaster(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "master node with flags",
+			name: "primary node with flags",
 			node: &RedisNode{
 				IP:       "aaa",
 				Flags:    "master,noaddr,myself",
@@ -156,7 +156,7 @@ func TestNodeIsMaster(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.node.IsMaster()
+			actual := tt.node.IsPrimary()
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -169,7 +169,7 @@ func TestNodeIsReplica(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "master node",
+			name: "primary node",
 			node: &RedisNode{
 				IP:       "aaa",
 				Flags:    "master",
@@ -179,7 +179,7 @@ func TestNodeIsReplica(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "master node with flags",
+			name: "primary node with flags",
 			node: &RedisNode{
 				IP:       "aaa",
 				Flags:    "master,noaddr,myself",
@@ -467,7 +467,7 @@ func TestNodeUpdateInfo(t *testing.T) {
 			assert.Equal(t, tt.node.IP, tt.update.IP)
 			assert.Equal(t, tt.node.Flags, tt.update.Flags)
 			assert.Equal(t, tt.node.Slots, tt.update.Slots)
-			assert.Equal(t, tt.node.MasterID, tt.update.MasterID)
+			assert.Equal(t, tt.node.PrimaryID, tt.update.PrimaryID)
 			assert.Equal(t, tt.node.Failures, tt.update.Failures)
 		})
 	}
@@ -578,7 +578,7 @@ func TestNodeReplicateNode(t *testing.T) {
 		name          string
 		setupMock     func() *MockRedisClient
 		setupNode     func(*MockRedisClient) *RedisNode
-		master        RedisNode
+		primary       RedisNode
 		expectedError bool
 	}{
 		{
@@ -596,8 +596,8 @@ func TestNodeReplicateNode(t *testing.T) {
 					clientFactory: factory,
 				}
 			},
-			master: RedisNode{
-				ID:    "master-node-id-123",
+			primary: RedisNode{
+				ID:    "primary-node-id-123",
 				IP:    "127.0.0.1",
 				Flags: "master",
 			},
@@ -618,8 +618,8 @@ func TestNodeReplicateNode(t *testing.T) {
 					clientFactory: factory,
 				}
 			},
-			master: RedisNode{
-				ID:    "master-node-id-123",
+			primary: RedisNode{
+				ID:    "primary-node-id-123",
 				IP:    "127.0.0.1",
 				Flags: "master",
 			},
@@ -642,8 +642,8 @@ func TestNodeReplicateNode(t *testing.T) {
 					clientFactory: factory,
 				}
 			},
-			master: RedisNode{
-				ID:    "master-node-id-123",
+			primary: RedisNode{
+				ID:    "primary-node-id-123",
 				IP:    "127.0.0.1",
 				Flags: "master",
 			},
@@ -655,7 +655,7 @@ func TestNodeReplicateNode(t *testing.T) {
 			mockClient := tt.setupMock()
 			node := tt.setupNode(mockClient)
 
-			err := node.ReplicateNode(context.Background(), tt.master)
+			err := node.ReplicateNode(context.Background(), tt.primary)
 
 			if tt.expectedError {
 				assert.NotNil(t, err)
@@ -1116,7 +1116,7 @@ func TestNodeHasFlag(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "master node has master flag",
+			name: "primary node has master flag",
 			node: &RedisNode{
 				IP:       "aaa",
 				Flags:    "master",
@@ -1127,7 +1127,7 @@ func TestNodeHasFlag(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "master node with multiple flags has master flag",
+			name: "primary node with multiple flags has master flag",
 			node: &RedisNode{
 				IP:       "aaa",
 				Flags:    "master,noaddr,myself",

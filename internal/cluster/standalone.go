@@ -52,7 +52,7 @@ func (rc *RedKeyStandalone) GetNode(name string) *redis.RedisNode {
 // ----------------------------------------------------------------------------------------------------
 
 // SetReplicas sets the number of replicas of the cluster.
-func (rc *RedKeyStandalone) SetReplicas(replicas int, replicasPerMaster *int) error {
+func (rc *RedKeyStandalone) SetReplicas(replicas int, replicasPerPrimary *int) error {
 	return nil
 }
 
@@ -196,8 +196,8 @@ func (rc *RedKeyStandalone) ensureNodesAreUp(ctx context.Context) error {
 	return nil
 }
 
-// convertNodesToMaster converts the provided nodes to master.
-func (rc *RedKeyStandalone) convertNodesToMaster(ctx context.Context, nodes []*redis.RedisNode) error {
+// convertNodesToPrimary converts the provided nodes to primary.
+func (rc *RedKeyStandalone) convertNodesToPrimary(ctx context.Context, nodes []*redis.RedisNode) error {
 	// For standalone, this is a no-op
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/inditextech/redkeyrobin/internal/cluster"
+	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
 // GetRedKeyClusterStatus handles the GET /v1/redkeycluster/status endpoint. It returns the current status of the RedKey cluster from the Operator's perspective.
@@ -48,8 +49,8 @@ func (s *Server) GetRedKeyClusterReplicas(w http.ResponseWriter, r *http.Request
 	s.logger.Info("Get redkey cluster replicas")
 
 	response := ClusterReplicasResponse{
-		Replicas:          s.cluster.GetReplicas(),
-		ReplicasPerMaster: s.cluster.GetReplicasPerMaster(),
+		Primaries:          s.cluster.GetPrimaries(),
+		ReplicasPerPrimary: s.cluster.GetReplicasPerPrimary(),
 	}
 	s.sendResponse(w, http.StatusOK, response)
 }
@@ -67,12 +68,12 @@ func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Update the replicas
-	err := s.cluster.SetReplicas(request.Replicas, request.ReplicasPerMaster)
+	err := s.cluster.SetReplicas(request.Primaries, request.ReplicasPerPrimary)
 
 	// Send the response
 	response := ClusterReplicasResponse{
-		Replicas:          s.cluster.GetReplicas(),
-		ReplicasPerMaster: s.cluster.GetReplicasPerMaster(),
+		Primaries:          s.cluster.GetPrimaries(),
+		ReplicasPerPrimary: s.cluster.GetReplicasPerPrimary(),
 	}
 	if err != nil {
 		if _, ok := err.(*cluster.OperationCompletedError); ok {
@@ -259,9 +260,32 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Get cluster nodes")
 
+	nodes := make([]RedisNode, 0)
+	for _, node := range s.cluster.GetNodes() {
+		nodes = append(nodes, getResponseNodeFromRedisNode(node))
+	}
 	response := ClusterNodesResponse{
-		Nodes: s.cluster.GetNodes(),
+		Nodes: nodes,
 	}
 
 	s.sendResponse(w, http.StatusOK, response)
+}
+
+func getResponseNodeFromRedisNode(rn *redis.RedisNode) RedisNode {
+	node := RedisNode{
+		Name:       rn.Name,
+		ID:         rn.ID,
+		IP:         rn.IP,
+		PrimaryID:  rn.PrimaryID,
+		Failures:   rn.Failures,
+		Sent:       rn.Sent,
+		Recv:       rn.Recv,
+		LinkStatus: rn.LinkStatus,
+	}
+	if rn.IsPrimary() {
+		node.Role = "primary"
+	} else {
+		node.Role = "replica"
+	}
+	return node	
 }

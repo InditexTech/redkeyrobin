@@ -48,10 +48,10 @@ type clusterGetter interface {
 	GetNode(name string) *redis.RedisNode
 	// GetRedKeyClusterStatus returns the status of the RedKey cluster.
 	GetRedKeyClusterStatus() string
-	// GetReplicas returns the number of replicas of the cluster.
-	GetReplicas() int
-	// GetReplicasPerMaster returns the number of replicas per master of the cluster.
-	GetReplicasPerMaster() int
+	// GetPrimaries returns the number of primary nodes of the cluster.
+	GetPrimaries() int
+	// GetReplicasPerPrimary returns the number of replicas per primary node of the cluster.
+	GetReplicasPerPrimary() int
 	// GetStatus returns the status of the cluster.
 	GetStatus() string
 	// GetReconcilerInterval returns the interval of the cluster reconciler.
@@ -85,8 +85,8 @@ type clusterGetter interface {
 type clusterSetter interface {
 	// SetRedKeyClusterStatus sets the status of the RedKey cluster.
 	SetRedKeyClusterStatus(status string) error
-	// SetReplicas sets the number of replicas of the cluster.
-	SetReplicas(replicas int, replicasPerMaster *int) error
+	// SetReplicas sets the number of primaries and replicas per primary of the cluster.
+	SetReplicas(primaries int, replicasPerPrimary *int) error
 	// SetStatus sets the status of the cluster.
 	SetStatus(status string) error
 	// SetOpenSlots sets the open slots of the cluster.
@@ -111,8 +111,8 @@ type clusterAsker interface {
 type clusterPrivate interface {
 	// ensureNodesAreUp ensures that all nodes are up.
 	ensureNodesAreUp(ctx context.Context) error
-	// convertNodesToMaster converts the provided nodes to master.
-	convertNodesToMaster(ctx context.Context, nodes []*redis.RedisNode) error
+	// convertNodesToPrimary converts the provided nodes to primary.
+	convertNodesToPrimary(ctx context.Context, nodes []*redis.RedisNode) error
 	// getRedisClient returns a Redis client.
 	getRedisClient(close bool) (redis.RedisClientInterface, error)
 	// refreshNodesInfo refreshes the nodes info.
@@ -205,19 +205,19 @@ func (rc *clusterBase) GetStatus() string {
 	return rc.status
 }
 
-// GetReplicas returns the number of replicas in the RedKey cluster
-func (rc *clusterBase) GetReplicas() int {
-	return rc.conf.Redis.Cluster.Replicas
+// GetPrimaries returns the number of replicas in the RedKey cluster
+func (rc *clusterBase) GetPrimaries() int {
+	return rc.conf.Redis.Cluster.Primaries
 }
 
-// GetReplicasPerMaster returns the number of replicas per master in the RedKey cluster
-func (rc *clusterBase) GetReplicasPerMaster() int {
-	return rc.conf.Redis.Cluster.ReplicasPerMaster
+// GetReplicasPerPrimary returns the number of replicas per primary node in the RedKey cluster
+func (rc *clusterBase) GetReplicasPerPrimary() int {
+	return rc.conf.Redis.Cluster.ReplicasPerPrimary
 }
 
 // GetDesiredReplicas returns the number of nodes needed to reach the desired number of replicas
 func (rc *clusterBase) GetDesiredReplicas() int {
-	return rc.GetReplicas() + (rc.GetReplicas() * rc.GetReplicasPerMaster())
+	return rc.GetPrimaries() + (rc.GetPrimaries() * rc.GetReplicasPerPrimary())
 }
 
 // GetName returns the name of the RedKey cluster
