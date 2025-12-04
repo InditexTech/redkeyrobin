@@ -140,7 +140,7 @@ type RedisNode struct {
 	Name       string `json:"name"`
 	ID         string `json:"id"`
 	IP         string `json:"ip"`
-	Flags      string `json:"flags"`
+	Role       string `json:"role"`
 	PrimaryID  string `json:"primaryId"`
 	Failures   int    `json:"failures"`
 	Sent       int    `json:"sent"`

@@ -272,15 +272,20 @@ func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func getResponseNodeFromRedisNode(rn *redis.RedisNode) RedisNode {
-	return RedisNode{
+	node := RedisNode{
 		Name:       rn.Name,
 		ID:         rn.ID,
 		IP:         rn.IP,
-		Flags:      rn.Flags,
 		PrimaryID:  rn.PrimaryID,
 		Failures:   rn.Failures,
 		Sent:       rn.Sent,
 		Recv:       rn.Recv,
 		LinkStatus: rn.LinkStatus,
 	}
+	if rn.IsPrimary() {
+		node.Role = "primary"
+	} else {
+		node.Role = "replica"
+	}
+	return node	
 }
