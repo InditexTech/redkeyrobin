@@ -28,7 +28,7 @@ type RedisNode struct {
 	IP         string           `json:"ip"`
 	Flags      string           `json:"flags"`
 	Slots      []RedisSlotRange `json:"slots"`
-	PrimaryID  string           `json:"masterId"`
+	PrimaryID  string           `json:"primaryId"`
 	Failures   int              `json:"failures"`
 	Sent       int              `json:"sent"`
 	Recv       int              `json:"recv"`
