@@ -36,7 +36,10 @@ const (
 	CheckingIntegrityError        = "CheckingIntegrityError"
 	Resetting                     = "Resetting"
 	ResettingError                = "ResettingError"
+	Recreating                    = "Recreating"
+	RecreatingError               = "RecreatingError"
 	NoReconciling                 = "NoReconciling"
+	CheckCluster                  = "CheckCluster"
 	RedKeyClusterTotalSlots       = 16384
 	RedisNodesUnbalancedThreshold = 2
 )
@@ -106,6 +109,8 @@ type clusterAsker interface {
 	IsEphemeral() bool
 	// CanBeUpgraded returns true if the cluster can be upgraded.
 	CanBeUpgraded() bool
+	// IsCheckingIntegrity returns true if the cluster is checking integrity.
+	IsCheckingIntegrity() bool
 }
 
 type clusterPrivate interface {
@@ -141,6 +146,8 @@ type clusterPrivate interface {
 	addNewNodesIfNeeded() error
 	// stabilizeOpenSlots stabilizes open slots if needed.
 	stabilizeOpenSlots(ctx context.Context, counter map[int]int, threshold int) (map[int]int, error)
+	// Clears stored nodes.
+	clearNodes() error
 }
 
 // Cluster represents a cluster, either standalone or Redis.
@@ -169,8 +176,8 @@ type Cluster interface {
 	Upgrade(force bool) error
 	// ResetNode resets a node of the cluster.
 	ResetNode(node *redis.RedisNode) error
-	// Clears stored nodes.
-	ClearNodes() error
+	// RecreateCluster recreates the cluster.
+	RecreateCluster() error
 }
 
 // NewCluster creates a new cluster. It returns a standalone or RedKey Cluster based on the cluster type.

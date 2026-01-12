@@ -228,8 +228,16 @@ func (rc *RedKeyCluster) SetReplicas(replicas int, replicasPerPrimary *int) erro
 
 // SetRedKeyClusterStatus sets the status of the RedKey cluster
 func (rc *RedKeyCluster) SetRedKeyClusterStatus(status string) error {
-	rc.logger.Info("Changing RedKey Cluster status", "current", rc.GetRedKeyClusterStatus(), "desired", status)
+	currentStatus := rc.GetRedKeyClusterStatus()
+
+	rc.logger.Info("Changing RedKey Cluster status", "current", currentStatus, "desired", status)
 	rc.conf.Redis.Cluster.Status = status
+
+	// Write in the channel to trigger the reconciler when previous status is Unknown
+	if currentStatus == Unknown {
+		rc.channel <- struct{}{}
+	}
+
 	return nil
 }
 
@@ -253,6 +261,7 @@ func (rc *RedKeyCluster) Init() error {
 	}
 
 	// Launch go routine to remove outdated operations
+	// TODO: check if there is an ongoing remove outdated operations
 	go rc.removeOutdatedOperations()
 
 	return nil
@@ -326,6 +335,13 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 // It launches the cluster check operation and waits for it to finish asynchronously.
 // It returns a ClusterCheckResult with the results of the check.
 func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
+	// Check if there is an ongoing operation that conflicts with a cluster check
+	conflict := rc.GetConflictingOperation(CheckCluster)
+	if conflict != nil {
+		rc.logger.Info("Cluster cannot be checked right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
+		return nil, &OperationInProgressError{Operation: conflict.GetName()}
+	}
+
 	// Get Redis client and check connection
 	redisClient, err := rc.getRedisClient(true)
 	if err != nil {
@@ -392,6 +408,13 @@ func (rc *RedKeyCluster) CheckIntegrity(async, force bool) error {
 // It launches the cluster scale up operation and waits for it to finish asynchronously.
 // It returns an OperationInProgressError if the cluster is already scaling up, unless the force flag is set, in which case a new scale up operation is launched.
 func (rc *RedKeyCluster) ScaleUp(force bool) error {
+	// Check if the cluster can be scaled up
+	conflict := rc.GetConflictingOperation(ScalingUp)
+	if conflict != nil {
+		rc.logger.Info("Cluster cannot be scaled up right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
+		return nil
+	}
+
 	// Check if the cluster is already scaling up
 	if rc.IsScalingUp() && !force {
 		rc.logger.Info("Cluster is already scaling up")
@@ -447,10 +470,16 @@ func (rc *RedKeyCluster) ResetNode(node *redis.RedisNode) error {
 	return rc.launchOperation(rc.operationFactory.NewResetNode(rc.ctx, rc, node), Upgrading, false)
 }
 
-// Clears the stored nodes creating a new map.
-func (rc *RedKeyCluster) ClearNodes() error {
-	rc.nodes = make(map[string]*redis.RedisNode)
-	return nil
+// RecreateCluster recreates the RedKey cluster
+func (rc *RedKeyCluster) RecreateCluster() error {
+	// Check if the cluster is already recreating
+	if rc.IsRecreating() {
+		rc.logger.Info("Cluster is already recreating")
+		return &OperationInProgressError{Operation: "RecreatingCluster"}
+	}
+
+	// Launch cluster recreate operation
+	return rc.launchOperation(rc.operationFactory.NewRecreate(rc.ctx, rc), Recreating, true)
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -538,6 +567,11 @@ func (rc *RedKeyCluster) IsResetting() bool {
 	return rc.hasOperation(Resetting, "Running")
 }
 
+// IsRecreating returns true if the cluster is recreating right now
+func (rc *RedKeyCluster) IsRecreating() bool {
+	return rc.hasOperation(Recreating, "Running")
+}
+
 // IsScaled returns true if the cluster is scaled. That is, if it has the desired number of replicas, has no missing slots and is balanced
 func (rc *RedKeyCluster) IsScaled() bool {
 	return rc.HasDesiredReplicas() && !rc.HasMissingSlots() && rc.IsBalanced()
@@ -554,9 +588,64 @@ func (rc *RedKeyCluster) CanBeUpgraded() bool {
 	return !rc.IsRebalancing() && !rc.IsResharding() && !rc.IsFixing() && !rc.IsCheckingIntegrity() && !rc.IsScalingUp() && !rc.IsScalingDown() && !rc.IsResetting()
 }
 
-// CanBeChecked returns true if there is not a conflicting operationr with a check cluster integrity. That is, if the cluster is not resharding, checking integrity or resetting
+// CanBeChecked returns true if there is not a conflicting operation with a check cluster integrity. That is, if the cluster is not resharding, checking integrity or resetting
 func (rc *RedKeyCluster) CanBeChecked() bool {
 	return !rc.IsResharding() && !rc.IsCheckingIntegrity() && !rc.IsResetting()
+}
+
+// GetConflictingOperation returns an operation that conflicts with the specified operation name, or nil if there is no conflicting operation
+func (rc *RedKeyCluster) GetConflictingOperation(operationName string) RedisOperation {
+	conflictMatrix := map[string][]string{
+		Rebalancing:       {},
+		Resharding:        {},
+		Fixing:            {},
+		CheckingIntegrity: {},
+		ScalingUp:         {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingDown, Resetting, Recreating},
+		ScalingDown:       {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingUp, Resetting, Recreating},
+		Upgrading:         {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingUp, ScalingDown, Resetting, Recreating},
+		Resetting:         {CheckingIntegrity},
+		Recreating:        {},
+		CheckCluster:      {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingUp, ScalingDown, Resetting, Upgrading, Recreating},
+	}
+
+	if _, ok := conflictMatrix[operationName]; !ok {
+		rc.logger.Error("Operation not found in GetConflictOperation", "operation", operationName)
+		return nil
+	}
+
+	for _, conflictingOperationName := range conflictMatrix[operationName] {
+		operation := rc.getOperation(conflictingOperationName, "Running")
+		if operation != nil {
+			return operation
+		}
+	}
+	return nil
+}
+
+// CanLaunchOperation returns true if there is not a conflicting operation with the specified operation name
+func (rc *RedKeyCluster) CanLaunchOperation(operationName string) bool {
+	switch operationName {
+	case Rebalancing:
+		return !rc.IsRebalancing()
+	case Resharding:
+		return !rc.IsResharding()
+	case Fixing:
+		return !rc.IsFixing()
+	case CheckingIntegrity:
+		return !rc.IsCheckingIntegrity()
+	case ScalingUp:
+		return !rc.IsScalingUp()
+	case ScalingDown:
+		return !rc.IsScalingDown()
+	case Upgrading:
+		return !rc.IsUpgrading()
+	case Resetting:
+		return !rc.IsResetting()
+	case Recreating:
+		return !rc.IsRecreating()
+	default:
+		return true
+	}
 }
 
 // HasMissingSlots returns true if the cluster has missing slots
@@ -745,6 +834,14 @@ func (rc *RedKeyCluster) checkNodes(refreshNodesList bool) error {
 	return nil
 }
 
+// ClearnNodes clears the stored nodes creating a new map.
+func (rc *RedKeyCluster) clearNodes() error {
+	rc.mux.Lock()
+	defer rc.mux.Unlock()
+	rc.nodes = make(map[string]*redis.RedisNode)
+	return nil
+}
+
 // updateNodesInfo updates the info of the Redis nodes in the cluster
 func (rc *RedKeyCluster) updateNodesInfo(nodesInfo []redis.RedisNode) {
 	for _, nodeInfo := range nodesInfo {
@@ -802,8 +899,12 @@ func (rc *RedKeyCluster) needsFix(ctx context.Context) (bool, error) {
 	}
 	defer redisClient.Close()
 
+	// Get a timedout context for the cluster check
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	// Check if the cluster needs to be fixed
-	result, err := redisClient.ClusterCheck(ctx)
+	result, err := redisClient.ClusterCheck(checkCtx)
 	if err != nil {
 		return false, fmt.Errorf("error checking cluster: %v", err)
 	}
@@ -873,7 +974,10 @@ func (rc *RedKeyCluster) balanceClusterIfNeeded(weights map[string]int) error {
 func (rc *RedKeyCluster) fixClusterIfNeeded(ctx context.Context) error {
 	// Check if the cluster needs a fix
 	needsFix, err := rc.needsFix(ctx)
-	if err != nil || !needsFix {
+	if err != nil {
+		return err
+	}
+	if !needsFix {
 		return nil
 	}
 

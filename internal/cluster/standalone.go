@@ -97,6 +97,11 @@ func (rc *RedKeyStandalone) CanBeUpgraded() bool {
 	return true
 }
 
+// IsCheckingIntegrity returns true if the cluster is checking integrity.
+func (rc *RedKeyStandalone) IsCheckingIntegrity() bool {
+	return true
+}
+
 // ----------------------------------------------------------------------------------------------------
 // --------------------------------------------- PUBLIC  ----------------------------------------------
 // ----------------------------------------------------------------------------------------------------
@@ -181,8 +186,8 @@ func (rc *RedKeyStandalone) ResetNode(node *redis.RedisNode) error {
 	return nil
 }
 
-// Clears the stored nodes.
-func (rc *RedKeyStandalone) ClearNodes() error {
+// RecreateCluster recreates the cluster.
+func (rc *RedKeyStandalone) RecreateCluster() error {
 	return nil
 }
 
@@ -218,6 +223,11 @@ func (rc *RedKeyStandalone) refreshNodesInfo() error {
 // refreshNodesList indicates whether to refresh the internal nodes list or not
 func (rc *RedKeyStandalone) checkNodes(refreshNodesList bool) error {
 	// For standalone, this is a no-op
+	return nil
+}
+
+// ClearNodes clears the stored nodes.
+func (rc *RedKeyStandalone) clearNodes() error {
 	return nil
 }
 

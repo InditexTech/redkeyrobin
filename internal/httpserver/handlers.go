@@ -161,14 +161,19 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	result, err := s.cluster.Check()
 
 	// Send the response
+	response := ClusterCheckResponse{}
 	if err != nil {
+		if _, ok := err.(*cluster.OperationInProgressError); ok {
+			response.Errors = append(response.Errors, "Cluster check is already in progress")
+			s.sendResponse(w, http.StatusConflict, response)
+			return
+		}
 		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error checking cluster: %v", err))
 		return
 	}
-	response := ClusterCheckResponse{
-		Errors:   result.Errors,
-		Warnings: result.Warnings,
-	}
+	
+	response.Errors = result.Errors
+	response.Warnings = result.Warnings
 	s.sendResponse(w, http.StatusOK, response)
 }
 
@@ -199,11 +204,8 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 func (s *Server) RecreateCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Recreate cluster")
 
-	s.cluster.ClearNodes()
-	err := s.cluster.Init()
-	if err == nil {
-		err = s.cluster.CheckIntegrity(true, false)
-	}
+	// Launch the recreate
+	err := s.cluster.RecreateCluster()
 
 	// Send the response
 	response := ClusterRecreateResponse{
