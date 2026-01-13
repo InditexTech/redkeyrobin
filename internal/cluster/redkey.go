@@ -368,8 +368,12 @@ func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
 		return nil, fmt.Errorf("error getting and checking Redis client: %v", err)
 	}
 
+	// Get a timedout context for the cluster check
+	checkCtx, cancel := context.WithTimeout(rc.ctx, rc.GetClusterCheckTimeout())
+	defer cancel()
+
 	// Launch check operation
-	result, err := redisClient.ClusterCheck(rc.ctx)
+	result, err := redisClient.ClusterCheck(checkCtx)
 	if err != nil {
 		return nil, fmt.Errorf("error checking cluster: %v", err)
 	}
@@ -916,7 +920,7 @@ func (rc *RedKeyCluster) needsFix(ctx context.Context) (bool, error) {
 	defer redisClient.Close()
 
 	// Get a timedout context for the cluster check
-	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, rc.GetClusterCheckTimeout())
 	defer cancel()
 
 	// Check if the cluster needs to be fixed

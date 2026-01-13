@@ -33,6 +33,7 @@ type RedKeyClusterConfig struct {
 	HealingTimeSeconds         int           `yaml:"healing_time_seconds"`
 	ClusterMeetWaitTimeSeconds int           `yaml:"cluster_meet_wait_time_seconds"`
 	NodeResetWaitTimeSeconds   int           `yaml:"node_reset_wait_time_seconds"`
+	ClusterCheckTimeoutSeconds int           `yaml:"cluster_check_timeout_seconds"`
 	MaxRetries                 int           `yaml:"max_retries"`
 	BackOff                    time.Duration `yaml:"back_off"`
 }
@@ -119,6 +120,9 @@ func (cfg *Configuration) validate() []string {
 	}
 	if cfg.Redis.Cluster.NodeResetWaitTimeSeconds == 0 {
 		cfg.Redis.Cluster.NodeResetWaitTimeSeconds = 2
+	}
+	if cfg.Redis.Cluster.ClusterCheckTimeoutSeconds == 0 {
+		cfg.Redis.Cluster.ClusterCheckTimeoutSeconds = 5
 	}
 	return missing
 }

@@ -48,7 +48,7 @@ func NewFakeRedisOperationRecreate(ctx context.Context, cluster Cluster, status 
 func (ro *RedisOperationRecreate) Launch() error {
 	ro.logger.Info("Recreating cluster")
 
-	// Launch check integrity operation
+	// Launch recreate operation
 	cmd := redis.NewRedisLibraryCommand(ro.ctx, ro.doRecreateCluster)
 	cmd.Start()
 

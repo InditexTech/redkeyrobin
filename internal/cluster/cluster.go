@@ -77,6 +77,8 @@ type clusterGetter interface {
 	GetClusterMeetWaitTime() time.Duration
 	// GetNodeResetWaitTime returns the node reset wait time for a RedKey cluster
 	GetNodeResetWaitTime() time.Duration
+	// GetClusterCheckTimeout returns the timeout for a RedKey Cluster check operation
+	GetClusterCheckTimeout() time.Duration
 	// GetMetricsRedisInfoKeys returns the Redis info keys to be collected
 	GetMetricsRedisInfoKeys() []string
 	// GetMetricsInterval returns the interval for collecting Redis metrics
@@ -283,6 +285,11 @@ func (rc *clusterBase) GetClusterMeetWaitTime() time.Duration {
 // GetNodeResetWaitTime returns the node reset wait time for a RedKey cluster
 func (rc *clusterBase) GetNodeResetWaitTime() time.Duration {
 	return time.Duration(rc.conf.Redis.Cluster.NodeResetWaitTimeSeconds) * time.Second
+}
+
+// GetClusterCheckTimeout returns the timeout for a RedKey Cluster check operation
+func (rc *clusterBase) GetClusterCheckTimeout() time.Duration {
+	return time.Duration(rc.conf.Redis.Cluster.ClusterCheckTimeoutSeconds) * time.Second
 }
 
 // GetMetricsRedisInfoKeys returns the Redis info keys to be collected
