@@ -109,8 +109,6 @@ type clusterAsker interface {
 	IsEphemeral() bool
 	// CanBeUpgraded returns true if the cluster can be upgraded.
 	CanBeUpgraded() bool
-	// IsCheckingIntegrity returns true if the cluster is checking integrity.
-	IsCheckingIntegrity() bool
 }
 
 type clusterPrivate interface {

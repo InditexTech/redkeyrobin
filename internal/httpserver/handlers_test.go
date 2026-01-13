@@ -9,10 +9,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/inditextech/redkeyrobin/internal/cluster"
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/redis"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -32,6 +31,7 @@ func TestGetRedKeyClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(nil, 0, 0)
 			testRequest(t, "GET", "/redkeycluster/status", "", "", nil, server.GetRedKeyClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -71,7 +71,8 @@ func TestUpdateRedKeyClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "POST", "/redkeycluster/status", tt.request, "", nil, server.UpdateRedKeyClusterStatus, tt.expectedStatusCode, tt.expectedBody)
+			server := createTestServer(nil, 0, 0)
+			testRequest(t, "PUT", "/redkeycluster/status", tt.request, "", nil, server.UpdateRedKeyClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }
@@ -94,6 +95,7 @@ func TestGetRedKeyClusterReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(nil, 0, 0)
 			testRequest(t, "GET", "/redkeycluster/replicas", tt.request, "", nil, server.GetRedKeyClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -103,28 +105,36 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 	tests := []struct {
 		name               string
 		request            string
+		primaries          int
+		replicasPerPrimary int
 		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
-			name:    "invalid request",
-			request: `{"primaries": -1}`,
+			name:               "invalid request",
+			request:            `{"primaries": -1}`,
+			primaries:          0,
+			replicasPerPrimary: 0,
 			expectedBody: ErrorResponse{
 				Error: "Invalid request: 'primaries' must be positive",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:    "invalid request replicas per primary",
-			request: `{"primaries": 0, "replicas_per_primary": -1}`,
+			name:               "invalid request replicas per primary",
+			request:            `{"primaries": 0, "replicas_per_primary": -1}`,
+			primaries:          0,
+			replicasPerPrimary: 0,
 			expectedBody: ErrorResponse{
 				Error: "Invalid request: 'replicas_per_primary' must be positive",
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:    "same primaries and replicas per primary",
-			request: `{"primaries": 0}`,
+			name:               "same primaries and replicas per primary",
+			request:            `{"primaries": 0}`,
+			primaries:          0,
+			replicasPerPrimary: 0,
 			expectedBody: ClusterReplicasResponse{
 				Primaries:          0,
 				ReplicasPerPrimary: 0,
@@ -132,8 +142,10 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name:    "good request",
-			request: `{"primaries": 3}`,
+			name:               "good request",
+			request:            `{"primaries": 3}`,
+			primaries:          0,
+			replicasPerPrimary: 0,
 			expectedBody: ClusterReplicasResponse{
 				Primaries:          3,
 				ReplicasPerPrimary: 0,
@@ -141,26 +153,31 @@ func TestUpdateRedKeyClusterReplicas(t *testing.T) {
 			expectedStatusCode: http.StatusCreated,
 		},
 		{
-			name:    "good request with replicas per primary",
-			request: `{"primaries": 3, "replicas_per_primary": 2}`,
-			expectedBody: ClusterReplicasResponse{
-				Primaries:          3,
-				ReplicasPerPrimary: 2,
-			},
-			expectedStatusCode: http.StatusCreated,
-		},
-		{
-			name:    "same primaries and replicas per primary",
-			request: `{"primaries": 3, "replicas_per_primary": 2}`,
+			name:               "same primaries and replicas per primary with values",
+			request:            `{"primaries": 3, "replicas_per_primary": 2}`,
+			primaries:          3,
+			replicasPerPrimary: 2,
 			expectedBody: ClusterReplicasResponse{
 				Primaries:          3,
 				ReplicasPerPrimary: 2,
 			},
 			expectedStatusCode: http.StatusOK,
 		},
+		{
+			name:               "good request with replicas per primary",
+			request:            `{"primaries": 3, "replicas_per_primary": 2}`,
+			primaries:          0,
+			replicasPerPrimary: 0,
+			expectedBody: ClusterReplicasResponse{
+				Primaries:          3,
+				ReplicasPerPrimary: 2,
+			},
+			expectedStatusCode: http.StatusCreated,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(nil, tt.primaries, tt.replicasPerPrimary)
 			testRequest(t, "PUT", "/redkeycluster/replicas", tt.request, "", nil, server.UpdateRedKeyClusterReplicas, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -183,6 +200,7 @@ func TestGetClusterStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(nil, 0, 0)
 			testRequest(t, "GET", "/cluster/status", tt.request, "", nil, server.GetClusterStatus, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -286,6 +304,7 @@ func TestMoveNodeSlots(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(nil, 0, 0)
 			testRequest(t, "PUT", "/v1/cluster/move", tt.request, "", nil, server.MoveNodeSlots, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -295,11 +314,27 @@ func TestCheckCluster(t *testing.T) {
 	tests := []struct {
 		name               string
 		request            string
+		operations         map[string][]cluster.RedisOperation
 		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
+			name: "conflict",
+			operations: map[string][]cluster.RedisOperation{
+				"Resharding": {
+					cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedKeyCluster{}, "Running", nil, nil, 10, time.Time{}),
+				},
+			},
+			expectedBody: ClusterCheckResponse{
+				Errors: []string{
+					"Cluster check is already in progress",
+				},
+			},
+			expectedStatusCode: http.StatusConflict,
+		},
+		{
 			name: "unexpected error",
+			operations: map[string][]cluster.RedisOperation{},
 			expectedBody: ErrorResponse{
 				Error: "Error checking cluster: error getting and checking Redis client: maxRetries must be greater than 0",
 			},
@@ -308,6 +343,7 @@ func TestCheckCluster(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(tt.operations, 0, 0)
 			testRequest(t, "GET", "/cluster/check", tt.request, "", nil, server.CheckCluster, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -317,11 +353,13 @@ func TestFixCluster(t *testing.T) {
 	tests := []struct {
 		name               string
 		request            string
+		operations         map[string][]cluster.RedisOperation
 		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
-			name: "good request",
+			name:       "good request",
+			operations: nil, // No operations, fresh server
 			expectedBody: ClusterFixResponse{
 				Status: "In progress",
 			},
@@ -329,6 +367,11 @@ func TestFixCluster(t *testing.T) {
 		},
 		{
 			name: "fix in progress",
+			operations: map[string][]cluster.RedisOperation{
+				"CheckingIntegrity": {
+					cluster.NewFakeRedisOperationCheckIntegrity(context.TODO(), &cluster.RedKeyCluster{}, "Running"),
+				},
+			},
 			expectedBody: ClusterFixResponse{
 				Status: "In progress",
 			},
@@ -337,6 +380,7 @@ func TestFixCluster(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(tt.operations, 0, 0)
 			testRequest(t, "PUT", "/cluster/fix", tt.request, "", nil, server.FixCluster, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -347,11 +391,13 @@ func TestResetNode(t *testing.T) {
 		name               string
 		request            string
 		pathValues         map[string]string
+		operations         map[string][]cluster.RedisOperation
 		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
-			name: "node not found",
+			name:       "node not found",
+			operations: nil,
 			expectedBody: ErrorResponse{
 				Error: "Node 'notfound' not found",
 			},
@@ -361,7 +407,8 @@ func TestResetNode(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "good request",
+			name:       "reset node error",
+			operations: nil,
 			expectedBody: ErrorResponse{
 				Error: "Error reseting node: error resetting cluster node 'test-1': maxRetries must be greater than 0",
 			},
@@ -370,9 +417,25 @@ func TestResetNode(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 		},
+		{
+			name: "reset in progress",
+			operations: map[string][]cluster.RedisOperation{
+				"Resetting": {
+					cluster.NewFakeRedisOperationResetNode(context.TODO(), &cluster.RedKeyCluster{}, "Running", node2),
+				},
+			},
+			expectedBody: ClusterResetNodeResponse{
+				Status: "In progress",
+			},
+			pathValues: map[string]string{
+				"nodeIndex": "1",
+			},
+			expectedStatusCode: http.StatusAccepted,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := createTestServer(tt.operations, 0, 0)
 			testRequest(t, "PUT", "/cluster/reset/1", tt.request, "", tt.pathValues, server.ResetNode, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
@@ -430,27 +493,7 @@ func TestGetNodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Recreate server cluster for each test to avoid shared state between tests
-			server.cluster = cluster.NewFakeRedKeyCluster(
-				context.TODO(),
-				&config.Configuration{
-					Redis: config.RedisConfig{
-						Cluster: config.RedKeyClusterConfig{
-							Name:   "test",
-							Status: "Ready",
-						},
-					},
-				},
-				"Unknown",
-				map[string]*redis.RedisNode{
-					"test-0": node1,
-					"test-1": node2,
-					"test-2": node3,
-				},
-				map[string][]cluster.RedisOperation{},
-				make(chan struct{}, 1),
-			)
-
+			server := createTestServer(nil, 0, 0)
 			body := testRequest(t, "PUT", "/cluster/nodes", tt.request, "", nil, server.GetNodes, tt.expectedStatusCode, nil)
 
 			var response ClusterNodesResponse
@@ -472,18 +515,25 @@ func TestRecreateCluster(t *testing.T) {
 	tests := []struct {
 		name               string
 		request            string
+		operations         map[string][]cluster.RedisOperation
 		expectedBody       ResponseInterface
 		expectedStatusCode int
 	}{
 		{
-			name: "good request",
+			name:       "good request",
+			operations: nil,
 			expectedBody: ClusterRecreateResponse{
 				Status: "In progress",
 			},
 			expectedStatusCode: http.StatusCreated,
 		},
 		{
-			name: "fix in progress",
+			name: "recreate in progress",
+			operations: map[string][]cluster.RedisOperation{
+				"Recreating": {
+					cluster.NewFakeRedisOperationRecreate(context.TODO(), &cluster.RedKeyCluster{}, "Running", time.Time{}),
+				},
+			},
 			expectedBody: ClusterRecreateResponse{
 				Status: "In progress",
 			},
@@ -492,7 +542,8 @@ func TestRecreateCluster(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRequest(t, "PUT", "/cluster/fix", tt.request, "", nil, server.FixCluster, tt.expectedStatusCode, tt.expectedBody)
+			server := createTestServer(tt.operations, 0, 0)
+			testRequest(t, "PUT", "/cluster/recreate", tt.request, "", nil, server.RecreateCluster, tt.expectedStatusCode, tt.expectedBody)
 		})
 	}
 }

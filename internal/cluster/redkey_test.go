@@ -426,6 +426,345 @@ func TestRedKeyClusterDoRemoveOutdatedOperations(t *testing.T) {
 	}
 }
 
+func TestRedKeyClusterGetConflictingOperation(t *testing.T) {
+	tests := []struct {
+		name             string
+		operationName    string
+		operations       map[string][]RedisOperation
+		expectedConflict RedisOperation
+	}{
+		{
+			name:             "Rebalancing - no conflicts",
+			operationName:    Rebalancing,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "Resharding - no conflicts",
+			operationName:    Resharding,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "Fixing - no conflicts",
+			operationName:    Fixing,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "CheckingIntegrity - no conflicts",
+			operationName:    CheckingIntegrity,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "Recreating - no conflicts",
+			operationName:    Recreating,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "ScalingUp - no conflicts",
+			operationName:    ScalingUp,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "ScalingDown - no conflicts",
+			operationName:    ScalingDown,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "Upgrading - no conflicts",
+			operationName:    Upgrading,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "Resetting - no conflicts",
+			operationName:    Resetting,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:             "CheckCluster - no conflicts",
+			operationName:    CheckCluster,
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+		{
+			name:          "ScalingUp - no conflicts despite defined conflicts but no running",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Now()),
+				},
+				Fixing: {
+					NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Finished"),
+				},
+				ScalingDown: {
+					NewFakeRedisOperationScaleDown(t.Context(), redkeyCluster, "Finished"),
+				},
+			},
+			expectedConflict: nil,
+		},
+		{
+			name:          "ScalingDown - no conflicts despite defined conflicts but no running",
+			operationName: ScalingDown,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Now()),
+				},
+				CheckingIntegrity: {
+					NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Finished"),
+				},
+			},
+			expectedConflict: nil,
+		},
+		{
+			name:          "Upgrading - no conflicts despite defined conflicts but no running",
+			operationName: Upgrading,
+			operations: map[string][]RedisOperation{
+				Fixing: {
+					NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Finished"),
+				},
+				ScalingUp: {
+					NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Finished"),
+				},
+			},
+			expectedConflict: nil,
+		},
+		{
+			name:          "Resetting - no conflicts despite defined conflicts but no running",
+			operationName: Resetting,
+			operations: map[string][]RedisOperation{
+				CheckingIntegrity: {
+					NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Finished"),
+				},
+			},
+			expectedConflict: nil,
+		},
+		{
+			name:          "CheckCluster - no conflicts despite defined conflicts but no running",
+			operationName: CheckCluster,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Now()),
+				},
+				Upgrading: {
+					NewFakeRedisOperationUpgrade(t.Context(), redkeyCluster, "Finished"),
+				},
+			},
+			expectedConflict: nil,
+		},
+		{
+			name:          "ScalingUp - conflict with Rebalancing",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+		},
+		{
+			name:          "ScalingUp - conflict with Resharding",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				Resharding: {
+					NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Running", node1, node2, 10, time.Time{}),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationMove(t.Context(), redkeyCluster, "Running", node1, node2, 10, time.Time{}),
+		},
+		{
+			name:          "ScalingUp - conflict with Fixing",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				Fixing: {
+					NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "ScalingUp - conflict with CheckingIntegrity",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				CheckingIntegrity: {
+					NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "ScalingUp - conflict with ScalingDown",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				ScalingDown: {
+					NewFakeRedisOperationScaleDown(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationScaleDown(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "ScalingUp - conflict with Resetting",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				Resetting: {
+					NewFakeRedisOperationResetNode(t.Context(), redkeyCluster, "Running", node1),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationResetNode(t.Context(), redkeyCluster, "Running", node1),
+		},
+		{
+			name:          "ScalingUp - conflict with Recreating",
+			operationName: ScalingUp,
+			operations: map[string][]RedisOperation{
+				Recreating: {
+					NewFakeRedisOperationRecreate(t.Context(), redkeyCluster, "Running", time.Time{}),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationRecreate(t.Context(), redkeyCluster, "Running", time.Time{}),
+		},
+		{
+			name:          "ScalingDown - conflict with Rebalancing",
+			operationName: ScalingDown,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+		},
+		{
+			name:          "ScalingDown - conflict with ScalingUp",
+			operationName: ScalingDown,
+			operations: map[string][]RedisOperation{
+				ScalingUp: {
+					NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "ScalingDown - conflict with CheckingIntegrity",
+			operationName: ScalingDown,
+			operations: map[string][]RedisOperation{
+				CheckingIntegrity: {
+					NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "Upgrading - conflict with Rebalancing",
+			operationName: Upgrading,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+		},
+		{
+			name:          "Upgrading - conflict with ScalingUp",
+			operationName: Upgrading,
+			operations: map[string][]RedisOperation{
+				ScalingUp: {
+					NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "Upgrading - conflict with first running operation",
+			operationName: Upgrading,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Finished", time.Now()),
+				},
+				Fixing: {
+					NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Running"),
+				},
+				ScalingUp: {
+					NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "CheckCluster - conflict with Rebalancing",
+			operationName: CheckCluster,
+			operations: map[string][]RedisOperation{
+				Rebalancing: {
+					NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{}),
+		},
+		{
+			name:          "CheckCluster - conflict with Upgrading",
+			operationName: CheckCluster,
+			operations: map[string][]RedisOperation{
+				Upgrading: {
+					NewFakeRedisOperationUpgrade(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationUpgrade(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "CheckCluster - conflict with ScalingUp",
+			operationName: CheckCluster,
+			operations: map[string][]RedisOperation{
+				ScalingUp: {
+					NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:          "Resetting - conflict with CheckingIntegrity",
+			operationName: Resetting,
+			operations: map[string][]RedisOperation{
+				CheckingIntegrity: {
+					NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running"),
+				},
+			},
+			expectedConflict: NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running"),
+		},
+		{
+			name:             "invalid operation name",
+			operationName:    "NonExistentOperation",
+			operations:       map[string][]RedisOperation{},
+			expectedConflict: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdcl := NewFakeRedKeyCluster(
+				t.Context(),
+				&config.Configuration{},
+				"Unknown",
+				map[string]*redis.RedisNode{},
+				tt.operations,
+				make(chan struct{}, 5),
+			)
+
+			conflict := rdcl.getConflictingOperation(tt.operationName)
+
+			if tt.expectedConflict != nil {
+				assert.NotNil(t, conflict, "expected to find a conflicting operation but got nil")
+				assert.Equal(t, tt.expectedConflict.GetName(), conflict.GetName(), "expected conflicting operation %s but got %s", tt.expectedConflict.GetName(), conflict.GetName())
+			} else {
+				assert.Nil(t, conflict, "expected no conflicting operation but got %v", conflict)
+			}
+		})
+	}
+}
+
 func TestRedKeyClusterGetters(t *testing.T) {
 	assert.Equal(t, redkeyCluster.GetRedKeyClusterStatus(), "Ready")
 	assert.Equal(t, redkeyCluster.GetPrimaries(), 3)
@@ -1412,7 +1751,7 @@ func TestRedKeyClusterFixClusterIfNeeded(t *testing.T) {
 				"test-cluster-0": createNodeWithoutSlots("test-cluster-0", "0000000001"),
 			},
 			clientFactory: mockClientFactoryError,
-			expectedError: nil, // fixClusterIfNeeded returns nil when needsFix fails
+			expectedError: fmt.Errorf("error getting and checking Redis client: error creating client"),
 		},
 		{
 			name: "error in needsFix - error in cluster check",
@@ -1421,11 +1760,11 @@ func TestRedKeyClusterFixClusterIfNeeded(t *testing.T) {
 			},
 			clientFactory: func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 				client := redis.MockRedisClient{
-					ClusterCheckError: fmt.Errorf("cluster check failed"),
+					ClusterCheckError: fmt.Errorf("error checking cluster: cluster check failed"),
 				}
 				return client, nil
 			},
-			expectedError: nil, // fixClusterIfNeeded returns nil when needsFix fails
+			expectedError: fmt.Errorf("error checking cluster: error checking cluster: cluster check failed"),
 		},
 		{
 			name: "no fix needed - cluster check returns code 0",
@@ -4378,17 +4717,28 @@ func TestRedKeyClusterMoveSlots(t *testing.T) {
 func TestRedKeyClusterCheck(t *testing.T) {
 	tests := []struct {
 		name           string
+		operations     map[string][]RedisOperation
 		clientFactory  func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error)
 		expectedError  error
 		expectedResult *redis.ClusterCheckResult
 	}{
 		{
+			name: "conflict with rebalancing",
+			operations: map[string][]RedisOperation{
+				Rebalancing: {NewFakeRedisOperationRebalance(context.Background(), nil, "Running", time.Time{})},
+			},
+			clientFactory: mockClientFactory,
+			expectedError: &OperationInProgressError{Operation: "Rebalance"},
+		},
+		{
 			name:          "bad redis client",
+			operations:    map[string][]RedisOperation{},
 			clientFactory: mockClientFactoryError,
 			expectedError: fmt.Errorf("error getting and checking Redis client: error creating client"),
 		},
 		{
-			name: "cluster check fails",
+			name:       "cluster check fails",
+			operations: map[string][]RedisOperation{},
 			clientFactory: func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 				return &redis.MockRedisClient{
 					ClusterCheckError: fmt.Errorf("cluster check failed"),
@@ -4397,7 +4747,8 @@ func TestRedKeyClusterCheck(t *testing.T) {
 			expectedError: fmt.Errorf("error checking cluster: cluster check failed"),
 		},
 		{
-			name: "success",
+			name:       "success",
+			operations: map[string][]RedisOperation{},
 			clientFactory: func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (redis.RedisClientInterface, error) {
 				return &redis.MockRedisClient{}, nil
 			},
@@ -4424,7 +4775,7 @@ func TestRedKeyClusterCheck(t *testing.T) {
 				},
 				"Ready",
 				map[string]*redis.RedisNode{},
-				map[string][]RedisOperation{},
+				tt.operations,
 				make(chan struct{}, 1),
 			).WithClientFactory(tt.clientFactory)
 
@@ -4627,6 +4978,13 @@ func TestRedKeyClusterScaleUp(t *testing.T) {
 			expectedError: &OperationInProgressError{Operation: "ScaleUp"},
 		},
 		{
+			name: "conflict with rebalancing",
+			operations: map[string][]RedisOperation{
+				Rebalancing: {NewFakeRedisOperationRebalance(t.Context(), redkeyCluster, "Running", time.Time{})},
+			},
+			expectedError: &OperationInProgressError{Operation: "Rebalance"},
+		},
+		{
 			name: "fail",
 			operations: map[string][]RedisOperation{
 				ScalingUp: {NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running")},
@@ -4707,6 +5065,19 @@ func TestRedKeyClusterScaleDown(t *testing.T) {
 				ScalingDown: {NewFakeRedisOperationScaleDown(t.Context(), redkeyCluster, "Running")},
 			},
 			expectedError: &OperationInProgressError{Operation: "ScaleDown"},
+		},
+		{
+			name: "conflict with scaling up",
+			operationFactory: &OperationFactory{
+				NewScaleDown: func(ctx context.Context, cluster Cluster) *RedisOperationScaleDown {
+					mockCluster := NewMockRedKeyCluster(redkeyCluster)
+					return NewFakeRedisOperationScaleDown(ctx, mockCluster, "Running")
+				},
+			},
+			operations: map[string][]RedisOperation{
+				ScalingUp: {NewFakeRedisOperationScaleUp(t.Context(), redkeyCluster, "Running")},
+			},
+			expectedError: &OperationInProgressError{Operation: "ScaleUp"},
 		},
 		{
 			name: "fail",
@@ -4791,6 +5162,19 @@ func TestRedKeyClusterUpgrade(t *testing.T) {
 			expectedError: &OperationInProgressError{Operation: "Upgrade"},
 		},
 		{
+			name: "conflict with fixing",
+			operationFactory: &OperationFactory{
+				NewUpgrade: func(ctx context.Context, cluster Cluster) *RedisOperationUpgrade {
+					mockCluster := NewMockRedKeyCluster(redkeyCluster)
+					return NewFakeRedisOperationUpgrade(ctx, mockCluster, "Running")
+				},
+			},
+			operations: map[string][]RedisOperation{
+				Fixing: {NewFakeRedisOperationFix(t.Context(), redkeyCluster, "Running")},
+			},
+			expectedError: &OperationInProgressError{Operation: "Fix"},
+		},
+		{
 			name: "fail",
 			operationFactory: &OperationFactory{
 				NewUpgrade: func(ctx context.Context, cluster Cluster) *RedisOperationUpgrade {
@@ -4869,6 +5253,14 @@ func TestRedKeyClusterResetNode(t *testing.T) {
 			expectedError: &OperationInProgressError{Operation: "Resetting"},
 		},
 		{
+			name: "conflict with checking integrity",
+			operations: map[string][]RedisOperation{
+				CheckingIntegrity: {NewFakeRedisOperationCheckIntegrity(t.Context(), redkeyCluster, "Running")},
+			},
+			node:          node1,
+			expectedError: &OperationInProgressError{Operation: "CheckIntegrity"},
+		},
+		{
 			name: "fail",
 			operationFactory: &OperationFactory{
 				NewResetNode: func(ctx context.Context, cluster Cluster, node *redis.RedisNode) *RedisOperationResetNode {
@@ -4922,6 +5314,69 @@ func TestRedKeyClusterResetNode(t *testing.T) {
 			).WithOperationFactory(tt.operationFactory).WithClientFactory(mockClientFactory)
 
 			err := cluster.ResetNode(tt.node)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestRedKeyClusterRecreateCluster(t *testing.T) {
+	tests := []struct {
+		name             string
+		operationFactory *OperationFactory
+		operations       map[string][]RedisOperation
+		expectedError    error
+	}{
+		{
+			name: "recreating",
+			operations: map[string][]RedisOperation{
+				Recreating: {NewFakeRedisOperationRecreate(t.Context(), redkeyCluster, "Running", time.Time{})},
+			},
+			expectedError: &OperationInProgressError{Operation: "RecreatingCluster"},
+		},
+		{
+			name: "good",
+			operationFactory: &OperationFactory{
+				NewRecreate: func(ctx context.Context, cluster Cluster) *RedisOperationRecreate {
+					mockCluster := NewMockRedKeyCluster(cluster.(*RedKeyCluster))
+					return NewFakeRedisOperationRecreate(ctx, mockCluster, "Running", time.Time{})
+				},
+			},
+			operations: map[string][]RedisOperation{
+				Recreating: {},
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := NewFakeRedKeyCluster(
+				context.Background(),
+				&config.Configuration{
+					Redis: config.RedisConfig{
+						Cluster: config.RedKeyClusterConfig{
+							Name:       "test-cluster",
+							MaxRetries: 1,
+							BackOff:    time.Microsecond * 10,
+						},
+					},
+				},
+				"Ready",
+				map[string]*redis.RedisNode{},
+				tt.operations,
+				make(chan struct{}, 1),
+			).WithClientFactory(mockClientFactory)
+
+			if tt.operationFactory != nil {
+				cluster = cluster.WithOperationFactory(tt.operationFactory)
+			}
+
+			err := cluster.RecreateCluster()
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)

@@ -23,7 +23,7 @@ func NewRedKeyStandalone(ctx context.Context, conf *config.Configuration) Cluste
 	return &RedKeyStandalone{
 		clusterBase: clusterBase{
 			ctx:    ctx,
-			logger: util.GetLogger("redis-standalone"),
+			logger: util.GetLogger("redkey-standalone"),
 			conf:   conf,
 			status: Ready,
 		},
@@ -94,11 +94,6 @@ func (rc *RedKeyStandalone) IsEphemeral() bool {
 
 // CanBeUpgraded returns true if the cluster can be upgraded.
 func (rc *RedKeyStandalone) CanBeUpgraded() bool {
-	return true
-}
-
-// IsCheckingIntegrity returns true if the cluster is checking integrity.
-func (rc *RedKeyStandalone) IsCheckingIntegrity() bool {
 	return true
 }
 
