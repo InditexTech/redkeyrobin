@@ -264,7 +264,7 @@ func (rc *RedKeyCluster) Init() error {
 
 	// Launch go routine to remove outdated operations
 	if !rc.outdatedOperationsRunning {
-		go rc.removeOutdatedOperations()		
+		go rc.removeOutdatedOperations()
 	}
 
 	return nil
@@ -277,7 +277,7 @@ func (rc *RedKeyCluster) Init() error {
 // Rebalance rebalances the RedKey cluster.
 // It receives the weights of the nodes (map) and the async and force flags (bool).
 // It launches the cluster rebalance operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a rebalance.
+// It returns an OperationConflictError if there is already a conflicting operation with a rebalance.
 // It returns an OperationInProgressError if the cluster is already rebalancing, unless the force flag is set, in which case the ongoing rebalance operation is cancelled.
 // It returns an OperationCompletedError if the cluster is already rebalanced.
 func (rc *RedKeyCluster) Rebalance(async bool, weights map[string]int, force bool) error {
@@ -285,7 +285,7 @@ func (rc *RedKeyCluster) Rebalance(async bool, weights map[string]int, force boo
 	conflict := rc.getConflictingOperation(Rebalancing)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be rebalanced right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "Rebalance", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster is already rebalancing or is already rebalanced
@@ -312,7 +312,7 @@ func (rc *RedKeyCluster) Rebalance(async bool, weights map[string]int, force boo
 // MoveSlots moves slots from one Redis node to another.
 // It receives the origin node (from), the destination node (to) and the number of slots to move (slots).
 // It launches the move operation and waits for it to finish asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a reshard.
+// It returns an OperationConflictError if there is already a conflicting operation with a reshard.
 // It returns an OperationInProgressError if there is already a reshard operation between the specified nodes.
 // It returns an OperationCompletedError if the origin node is a replica, has no slots or has replicas (and a replica of the origin node is promoted).
 func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
@@ -320,21 +320,21 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 	conflict := rc.getConflictingOperation(Resharding)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be resharded right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "Reshard", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if a move operation should be launched
 	if rc.IsReshardingNodes(*from, *to) { // There is an ongoing move between the specified nodes
 		rc.logger.Info("There is already a reshard operation between nodes", "from", from.Name, "to", to.Name)
-		return &OperationInProgressError{Operation: "Resharding"}
+		return &OperationInProgressError{Operation: "Reshard"}
 
 	} else if from.IsReplica() { // The origin node is a replica
 		rc.logger.Info("Origin node is a replica", "from", from.Name)
-		return &OperationCompletedError{Operation: "Resharding", Reason: "Origin node is a replica"}
+		return &OperationCompletedError{Operation: "Reshard", Reason: "Origin node is a replica"}
 
 	} else if !from.HasSlots() { // The origin node has no slots
 		rc.logger.Info("Origin node has no slots", "from", from.Name)
-		return &OperationCompletedError{Operation: "Resharding", Reason: "Origin node has no slots"}
+		return &OperationCompletedError{Operation: "Reshard", Reason: "Origin node has no slots"}
 
 	} else if rc.NodeHasReplicas(from) { // The origin node has replicas
 		rc.logger.Info("Origin node has replicas", "from", from.Name)
@@ -343,7 +343,7 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 		if err := rc.promoteReplicaOfNode(rc.ctx, from); err != nil {
 			return fmt.Errorf("error promoting replica of node '%s': %v", from.Name, err)
 		}
-		return &OperationCompletedError{Operation: "Resharding", Reason: "Promoted replica of origin node"}
+		return &OperationCompletedError{Operation: "Reshard", Reason: "Promoted replica of origin node"}
 	}
 
 	// Launch move operation
@@ -352,14 +352,14 @@ func (rc *RedKeyCluster) MoveSlots(from, to *redis.RedisNode, slots int) error {
 
 // Check checks the RedKey cluster.
 // It launches the cluster check operation and waits for it to finish asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a check.
+// It returns an OperationConflictError if there is already a conflicting operation with a check.
 // It returns a ClusterCheckResult with the results of the check.
 func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
 	// Check if there is an ongoing operation that conflicts with a cluster check
 	conflict := rc.getConflictingOperation(CheckCluster)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be checked right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return nil, &OperationInProgressError{Operation: conflict.GetName()}
+		return nil, &OperationConflictError{Operation: "CheckCluster", ConflictingWith: conflict.GetName()}
 	}
 
 	// Get Redis client and check connection
@@ -384,14 +384,14 @@ func (rc *RedKeyCluster) Check() (*redis.ClusterCheckResult, error) {
 // Fix fixes the RedKey cluster.
 // It receives the async and force flags (bool).
 // It launches the cluster fix operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a fix.
+// It returns an OperationConflictError if there is already a conflicting operation with a fix.
 // It returns an OperationInProgressError if the cluster is already fixing, unless the force flag is set, in which case the ongoing fixing operation is cancelled.
 func (rc *RedKeyCluster) Fix(async bool, force bool) error {
 	// Check if there is an ongoing operation that conflicts with a fix
 	conflict := rc.getConflictingOperation(Fixing)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be fixed right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "Fix", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster is already fixing
@@ -404,7 +404,7 @@ func (rc *RedKeyCluster) Fix(async bool, force bool) error {
 			}
 		} else {
 			rc.logger.Info("Cluster is already fixing")
-			return &OperationInProgressError{Operation: "Fixing"}
+			return &OperationInProgressError{Operation: "Fix"}
 		}
 	}
 
@@ -415,14 +415,14 @@ func (rc *RedKeyCluster) Fix(async bool, force bool) error {
 // CheckIntegrity checks the integrity of the RedKey cluster
 // It receives the async and force flags (bool).
 // It launches the cluster check integrity operation and, depending on the async flag, waits for it to finish synchronously or asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a check integrity.
+// It returns an OperationConflictError if there is already a conflicting operation with a check integrity.
 // It returns an OperationInProgressError if the cluster is already checking integrity, unless the force flag is set, in which case the ongoing checking integrity operation is cancelled.
 func (rc *RedKeyCluster) CheckIntegrity(async, force bool) error {
 	// Check if there is an ongoing operation that conflicts with a check integrity
 	conflict := rc.getConflictingOperation(CheckingIntegrity)
 	if conflict != nil {
 		rc.logger.Info("Cluster integrity cannot be checked right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "CheckIntegrity", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster check integrity is being executed
@@ -435,7 +435,7 @@ func (rc *RedKeyCluster) CheckIntegrity(async, force bool) error {
 			}
 		} else {
 			rc.logger.Info("Cluster check integrity is already being executed")
-			return &OperationInProgressError{Operation: "CheckingIntegrity"}
+			return &OperationInProgressError{Operation: "CheckIntegrity"}
 		}
 	}
 
@@ -446,14 +446,14 @@ func (rc *RedKeyCluster) CheckIntegrity(async, force bool) error {
 // ScaleUp scales up the RedKey cluster
 // It receives the force flag (bool).
 // It launches the cluster scale up operation and waits for it to finish asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a scale up.
+// It returns an OperationConflictError if there is already a conflicting operation with a scale up.
 // It returns an OperationInProgressError if the cluster is already scaling up, unless the force flag is set, in which case a new scale up operation is launched.
 func (rc *RedKeyCluster) ScaleUp(force bool) error {
 	// Check if the cluster can be scaled up
 	conflict := rc.getConflictingOperation(ScalingUp)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be scaled up right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "ScaleUp", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster is already scaling up
@@ -469,14 +469,14 @@ func (rc *RedKeyCluster) ScaleUp(force bool) error {
 // ScaleDown scales down the RedKey cluster
 // It receives the force flag (bool).
 // It launches the cluster scale down operation and waits for it to finish asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a scale down.
+// It returns an OperationConflictError if there is already a conflicting operation with a scale down.
 // It returns an OperationInProgressError if the cluster is already scaling down, unless the force flag is set, in which case a new scale down operation is launched.
 func (rc *RedKeyCluster) ScaleDown(force bool) error {
 	// Check if there is an ongoing operation that conflicts with a scale down
 	conflict := rc.getConflictingOperation(ScalingDown)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be scaled down right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "ScaleDown", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster is already scaling down
@@ -492,14 +492,14 @@ func (rc *RedKeyCluster) ScaleDown(force bool) error {
 // Upgrade upgrades the RedKey cluster
 // It receives the force flag (bool).
 // It launches the cluster upgrade operation and waits for it to finish asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a upgrade.
+// It returns an OperationConflictError if there is already a conflicting operation with a upgrade.
 // It returns an OperationInProgressError if the cluster is already upgrading, unless the force flag is set, in which case a new upgrade operation is launched.
 func (rc *RedKeyCluster) Upgrade(force bool) error {
 	// Check if there is an ongoing operation that conflicts with an upgrade
 	conflict := rc.getConflictingOperation(Upgrading)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be upgraded right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "Upgrade", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster is already upgrading
@@ -515,20 +515,20 @@ func (rc *RedKeyCluster) Upgrade(force bool) error {
 // Check reset a Redis node in the cluster
 // It receives the node to reset.
 // It launches the cluster reset operation and waits for it to finish asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a reset node.
+// It returns an OperationConflictError if there is already a conflicting operation with a reset node.
 // It returns an OperationInProgressError if the cluster is already resetting the node.
 func (rc *RedKeyCluster) ResetNode(node *redis.RedisNode) error {
 	// Check if there is an ongoing operation that conflicts with a reset
 	conflict := rc.getConflictingOperation(Resetting)
 	if conflict != nil {
 		rc.logger.Info("Cluster node cannot be reset right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "ResetNode", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster node is already being resetted
 	if rc.IsResettingNode(*node) {
 		rc.logger.Info("Cluster node is already being resetted", "node", node.Name)
-		return &OperationInProgressError{Operation: "Resetting"}
+		return &OperationInProgressError{Operation: "ResetNode"}
 	}
 
 	// Launch reset node operation
@@ -537,20 +537,20 @@ func (rc *RedKeyCluster) ResetNode(node *redis.RedisNode) error {
 
 // RecreateCluster recreates the RedKey cluster
 // It launches the cluster recreate operation and waits for it to finish asynchronously.
-// It returns an OperationInProgressError if there is already a conflicting operation with a recreate cluster.
+// It returns an OperationConflictError if there is already a conflicting operation with a recreate cluster.
 // It returns an OperationInProgressError if the cluster is already recreating.
 func (rc *RedKeyCluster) RecreateCluster() error {
 	// Check if there is an ongoing operation that conflicts with a recreate
 	conflict := rc.getConflictingOperation(Recreating)
 	if conflict != nil {
 		rc.logger.Info("Cluster cannot be recreated right now due to conflicting operation", "operation", conflict.GetName(), "status", conflict.GetStatus())
-		return &OperationInProgressError{Operation: conflict.GetName()}
+		return &OperationConflictError{Operation: "RecreateCluster", ConflictingWith: conflict.GetName()}
 	}
 
 	// Check if the cluster is already recreating
 	if rc.IsRecreating() {
 		rc.logger.Info("Cluster is already recreating")
-		return &OperationInProgressError{Operation: "RecreatingCluster"}
+		return &OperationInProgressError{Operation: "RecreateCluster"}
 	}
 
 	// Launch cluster recreate operation
@@ -1706,18 +1706,37 @@ func (rc *RedKeyCluster) doRemoveOutdatedNodes() {
 }
 
 // getConflictingOperation returns an operation that conflicts with the specified operation name, or nil if there is no conflicting operation
+// A conflicting operation is one that cannot run at the same time as the specified operation, thus the specified operation must wait for the conflicting operation to finish
+// It does not include operations of the same type, which are handled separately.
 func (rc *RedKeyCluster) getConflictingOperation(operationName string) RedisOperation {
 	conflictMatrix := map[string][]string{
-		Rebalancing:       {},
-		Resharding:        {},
-		Fixing:            {},
-		CheckingIntegrity: {},
-		ScalingUp:         {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingDown, Resetting, Recreating},
-		ScalingDown:       {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingUp, Resetting, Recreating},
-		Upgrading:         {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingUp, ScalingDown, Resetting, Recreating},
-		Resetting:         {CheckingIntegrity},
-		Recreating:        {},
-		CheckCluster:      {Rebalancing, Resharding, Fixing, CheckingIntegrity, ScalingUp, ScalingDown, Resetting, Upgrading, Recreating},
+		// ATOMIC OPERATIONS: operations that does one single change to the cluster
+		// Rebalancing conflicts with resharding and resetting.
+		// It does not conflict with checking cluster, scaling up, scaling down, upgrade and recreate because those operations may include rebalancing as part of their process.
+		Rebalancing: {Resharding, Resetting},
+		// Fixing does not conflict with any other operation: there is not problem running it at the same time as other operations.
+		// It does not conflict with checking cluster, scaling up, scaling down, upgrade and recreate because those operations may include fixing as part of their process.
+		Fixing: {},
+		// Resharding conflicts with rebalancing, checking integrity, scaling up, scaling down, resetting and recreating.
+		// This operation can only be launched manually (using the API).
+		Resharding: {Rebalancing, CheckingIntegrity, ScalingUp, ScalingDown, Resetting, Recreating},
+		// CheckCluster conflicts with all other operations: launching at the same time can cause inconsistent results.
+		// This operation can only be launched manually (using the API).
+		CheckCluster: {Rebalancing, Resharding, CheckingIntegrity, ScalingUp, ScalingDown, Resetting, Upgrading, Recreating},
+
+		// NON-ATOMIC OPERATIONS: operations that may do multiple changes to the cluster
+		// CheckingIntegrity conflicts with the rest non-atomic operations.
+		CheckingIntegrity: {ScalingUp, ScalingDown, Resetting, Upgrading, Recreating},
+		// ScalingUp conflicts with the rest non-atomic operations.
+		ScalingUp: {CheckingIntegrity, ScalingDown, Upgrading, Resetting, Recreating},
+		// ScalingDown conflicts with the rest non-atomic operations.
+		ScalingDown: {CheckingIntegrity, ScalingUp, Upgrading, Resetting, Recreating},
+		// Upgrading conflicts with the rest non-atomic operations.
+		Upgrading: {CheckingIntegrity, ScalingUp, ScalingDown, Resetting, Recreating},
+		// Resetting conflicts with the rest non-atomic operations.
+		Resetting: {CheckingIntegrity, ScalingUp, ScalingDown, Upgrading, Recreating},
+		// Recreating conflicts with the rest non-atomic operations.
+		Recreating: {CheckingIntegrity, ScalingUp, ScalingDown, Upgrading, Resetting},
 	}
 
 	if _, ok := conflictMatrix[operationName]; !ok {

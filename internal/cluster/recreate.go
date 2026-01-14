@@ -16,7 +16,6 @@ import (
 // RedisOperationRecreate represents a recreate operation for a RedKey cluster.
 type RedisOperationRecreate struct {
 	RedisOperationBase
-	weights map[string]int
 }
 
 func NewRedisOperationRecreate(ctx context.Context, cluster Cluster) *RedisOperationRecreate {

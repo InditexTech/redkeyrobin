@@ -297,7 +297,7 @@ func TestMoveNodeSlots(t *testing.T) {
 			name:    "unexpected error",
 			request: `{"from": "1", "to": "2"}`,
 			expectedBody: ErrorResponse{
-				Error: "Error rebalancing cluster: error getting and checking Redis client: maxRetries must be greater than 0",
+				Error: "Internal server error: error getting and checking Redis client: maxRetries must be greater than 0",
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 		},
@@ -327,16 +327,16 @@ func TestCheckCluster(t *testing.T) {
 			},
 			expectedBody: ClusterCheckResponse{
 				Errors: []string{
-					"Cluster check is already in progress",
+					"Operation CheckCluster conflicts with ongoing operation Move",
 				},
 			},
 			expectedStatusCode: http.StatusConflict,
 		},
 		{
-			name: "unexpected error",
+			name:       "unexpected error",
 			operations: map[string][]cluster.RedisOperation{},
 			expectedBody: ErrorResponse{
-				Error: "Error checking cluster: error getting and checking Redis client: maxRetries must be greater than 0",
+				Error: "Internal server error: error getting and checking Redis client: maxRetries must be greater than 0",
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 		},
@@ -410,7 +410,7 @@ func TestResetNode(t *testing.T) {
 			name:       "reset node error",
 			operations: nil,
 			expectedBody: ErrorResponse{
-				Error: "Error reseting node: error resetting cluster node 'test-1': maxRetries must be greater than 0",
+				Error: "Internal server error: error resetting cluster node 'test-1': maxRetries must be greater than 0",
 			},
 			pathValues: map[string]string{
 				"nodeIndex": "1",
@@ -456,7 +456,7 @@ func TestGetNodes(t *testing.T) {
 						Name:       "node1",
 						ID:         "1234567890",
 						IP:         "1.1.1.1",
-						Role:      	"primary",
+						Role:       "primary",
 						PrimaryID:  "",
 						Failures:   0,
 						Sent:       0,
