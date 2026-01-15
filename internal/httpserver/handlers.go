@@ -76,12 +76,7 @@ func (s *Server) UpdateRedKeyClusterReplicas(w http.ResponseWriter, r *http.Requ
 		ReplicasPerPrimary: s.cluster.GetReplicasPerPrimary(),
 	}
 	if err != nil {
-		if _, ok := err.(*cluster.OperationCompletedError); ok {
-			s.sendResponse(w, http.StatusOK, response)
-			return
-		}
-
-		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error updating replicas: %v", err))
+		s.handleError(w, err, response)
 		return
 	}
 	s.sendResponse(w, http.StatusCreated, response)
@@ -136,17 +131,7 @@ func (s *Server) MoveNodeSlots(w http.ResponseWriter, r *http.Request) {
 	err := s.cluster.MoveSlots(from, to, slots)
 	response := ClusterMoveSlotsResponse{}
 	if err != nil {
-		if _, ok := err.(*cluster.OperationInProgressError); ok {
-			response.Status = "In progress"
-			s.sendResponse(w, http.StatusAccepted, response)
-			return
-		} else if _, ok := err.(*cluster.OperationCompletedError); ok {
-			response.Status = "Completed"
-			s.sendResponse(w, http.StatusOK, response)
-			return
-		}
-
-		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error rebalancing cluster: %v", err))
+		s.handleError(w, err, &response)
 		return
 	}
 	response.Status = "In progress"
@@ -161,14 +146,13 @@ func (s *Server) CheckCluster(w http.ResponseWriter, r *http.Request) {
 	result, err := s.cluster.Check()
 
 	// Send the response
+	response := ClusterCheckResponse{}
 	if err != nil {
-		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error checking cluster: %v", err))
+		s.handleError(w, err, &response)
 		return
 	}
-	response := ClusterCheckResponse{
-		Errors:   result.Errors,
-		Warnings: result.Warnings,
-	}
+	response.Errors = result.Errors
+	response.Warnings = result.Warnings
 	s.sendResponse(w, http.StatusOK, response)
 }
 
@@ -180,18 +164,12 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 	err := s.cluster.CheckIntegrity(true, false)
 
 	// Send the response
-	response := ClusterFixResponse{
-		Status: "In progress",
-	}
+	response := ClusterFixResponse{}
 	if err != nil {
-		if _, ok := err.(*cluster.OperationInProgressError); ok {
-			s.sendResponse(w, http.StatusAccepted, response)
-			return
-		}
-
-		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error fixing cluster: %v", err))
+		s.handleError(w, err, &response)
 		return
 	}
+	response.Status = "In progress"
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
@@ -199,25 +177,16 @@ func (s *Server) FixCluster(w http.ResponseWriter, r *http.Request) {
 func (s *Server) RecreateCluster(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Recreate cluster")
 
-	s.cluster.ClearNodes()
-	err := s.cluster.Init()
-	if err == nil {
-		err = s.cluster.CheckIntegrity(true, false)
-	}
+	// Launch the recreate
+	err := s.cluster.RecreateCluster()
 
 	// Send the response
-	response := ClusterRecreateResponse{
-		Status: "In progress",
-	}
+	response := ClusterRecreateResponse{}
 	if err != nil {
-		if _, ok := err.(*cluster.OperationInProgressError); ok {
-			s.sendResponse(w, http.StatusAccepted, response)
-			return
-		}
-
-		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error recreating cluster: %v", err))
+		s.handleError(w, err, &response)
 		return
 	}
+	response.Status = "In progress"
 	s.sendResponse(w, http.StatusCreated, response)
 }
 
@@ -239,20 +208,12 @@ func (s *Server) ResetNode(w http.ResponseWriter, r *http.Request) {
 	err := s.cluster.ResetNode(node)
 
 	// Send the response
-	response := ClusterResetNodeResponse{
-		Status: "Completed",
-	}
+	response := ClusterResetNodeResponse{}
 	if err != nil {
-		if _, ok := err.(*cluster.OperationInProgressError); ok {
-			response.Status = "In progress"
-			s.sendResponse(w, http.StatusAccepted, response)
-			return
-		}
-
-		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Error reseting node: %v", err))
+		s.handleError(w, err, &response)
 		return
 	}
-
+	response.Status = "Completed"
 	s.sendResponse(w, http.StatusOK, response)
 }
 
@@ -267,8 +228,24 @@ func (s *Server) GetNodes(w http.ResponseWriter, r *http.Request) {
 	response := ClusterNodesResponse{
 		Nodes: nodes,
 	}
-
 	s.sendResponse(w, http.StatusOK, response)
+}
+
+func (s *Server) handleError(w http.ResponseWriter, err error, response ErrorableResponseInterface) {
+	if _, ok := err.(*cluster.OperationInProgressError); ok {
+		response.SetStatus("In progress")
+		s.sendResponse(w, http.StatusAccepted, response)
+	} else if _, ok := err.(*cluster.OperationCompletedError); ok {
+		response.SetStatus("Completed")
+		s.sendResponse(w, http.StatusOK, response)
+	} else if conflictErr, ok := err.(*cluster.OperationConflictError); ok {
+		response.SetStatus("Conflict")
+		response.AddError("Operation " + conflictErr.Operation + " conflicts with ongoing operation " + conflictErr.ConflictingWith)
+		s.sendResponse(w, http.StatusConflict, response)
+	} else {
+		s.logger.Error("Internal server error", "error", err)
+		s.sendError(w, http.StatusInternalServerError, fmt.Sprintf("Internal server error: %v", err))
+	}
 }
 
 func getResponseNodeFromRedisNode(rn *redis.RedisNode) RedisNode {
@@ -287,5 +264,5 @@ func getResponseNodeFromRedisNode(rn *redis.RedisNode) RedisNode {
 	} else {
 		node.Role = "replica"
 	}
-	return node	
+	return node
 }

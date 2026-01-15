@@ -117,6 +117,7 @@ type OperationFactory struct {
 	NewScaleDown      func(ctx context.Context, cluster Cluster) *RedisOperationScaleDown
 	NewUpgrade        func(ctx context.Context, cluster Cluster) *RedisOperationUpgrade
 	NewResetNode      func(ctx context.Context, cluster Cluster, node *redis.RedisNode) *RedisOperationResetNode
+	NewRecreate       func(ctx context.Context, cluster Cluster) *RedisOperationRecreate
 }
 
 func defaultOperationFactory() *OperationFactory {
@@ -129,5 +130,6 @@ func defaultOperationFactory() *OperationFactory {
 		NewScaleDown:      NewRedisOperationScaleDown,
 		NewUpgrade:        NewRedisOperationUpgrade,
 		NewResetNode:      NewRedisOperationResetNode,
+		NewRecreate:       NewRedisOperationRecreate,
 	}
 }

@@ -13,6 +13,12 @@ type ResponseInterface interface {
 	GetKeys() []string
 }
 
+type ErrorableResponseInterface interface {
+	ResponseInterface
+	SetStatus(status string)
+	AddError(err string)
+}
+
 type Response struct {
 	Code    int
 	Headers map[string][]string
@@ -91,6 +97,14 @@ func (r ClusterReplicasResponse) GetKeys() []string {
 	return []string{"primaries", "replicas_per_primary"}
 }
 
+func (r ClusterReplicasResponse) SetStatus(status string) {
+	// No-op for this response type
+}
+
+func (r ClusterReplicasResponse) AddError(err string) {
+	// No-op for this response type
+}
+
 type ClusterStatusResponse struct {
 	Status string `json:"status"`
 }
@@ -107,6 +121,14 @@ func (r ClusterMoveSlotsResponse) GetKeys() []string {
 	return []string{"status"}
 }
 
+func (r *ClusterMoveSlotsResponse) SetStatus(status string) {
+	r.Status = status
+}
+
+func (r ClusterMoveSlotsResponse) AddError(err string) {
+	// No-op for this response type
+}
+
 type ClusterCheckResponse struct {
 	Errors   []string `json:"errors"`
 	Warnings []string `json:"warnings"`
@@ -114,6 +136,14 @@ type ClusterCheckResponse struct {
 
 func (r ClusterCheckResponse) GetKeys() []string {
 	return []string{"errors", "warnings"}
+}
+
+func (r ClusterCheckResponse) SetStatus(status string) {
+	// No-op for this response type
+}
+
+func (r *ClusterCheckResponse) AddError(err string) {
+	r.Errors = append(r.Errors, err)
 }
 
 type ClusterFixResponse struct {
@@ -124,12 +154,28 @@ func (r ClusterFixResponse) GetKeys() []string {
 	return []string{"status"}
 }
 
+func (r *ClusterFixResponse) SetStatus(status string) {
+	r.Status = status
+}
+
+func (r ClusterFixResponse) AddError(err string) {
+	// No-op for this response type
+}
+
 type ClusterResetNodeResponse struct {
 	Status string `json:"status"`
 }
 
 func (r ClusterResetNodeResponse) GetKeys() []string {
 	return []string{"status"}
+}
+
+func (r *ClusterResetNodeResponse) SetStatus(status string) {
+	r.Status = status
+}
+
+func (r ClusterResetNodeResponse) AddError(err string) {
+	// No-op for this response type
 }
 
 type ClusterNodesResponse struct {
@@ -158,4 +204,12 @@ type ClusterRecreateResponse struct {
 
 func (r ClusterRecreateResponse) GetKeys() []string {
 	return []string{"status"}
+}
+
+func (r *ClusterRecreateResponse) SetStatus(status string) {
+	r.Status = status
+}
+
+func (r ClusterRecreateResponse) AddError(err string) {
+	// No-op for this response type
 }

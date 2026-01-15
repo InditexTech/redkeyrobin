@@ -14,23 +14,6 @@ FROM golang:${GOLANG_VERSION}-trixie AS builder
 ENV GOPROXY=https://proxy.golang.org,direct
 ENV CGO_ENABLED=0
 
-
-## Build manager binary
-
-# Create a working directory for the application
-WORKDIR /app
-
-# Copy Go module files and download dependencies first for better caching
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy the entire source code
-COPY / .
-
-# Build the Go application with version information
-RUN go build -ldflags "-X main.version=2.0.0" -o robin ./cmd/
-
-
 ## Build the desired redis-client binary version
 
 # Create a working directory for the redis client
@@ -47,6 +30,22 @@ RUN git clone https://github.com/redis/redis.git && \
     cd redis && \
     git checkout ${REDIS_CLIENT_VERSION} && \
     make redis-cli
+
+
+## Build manager binary
+
+# Create a working directory for the application
+WORKDIR /app
+
+# Copy Go module files and download dependencies first for better caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the entire source code
+COPY / .
+
+# Build the Go application with version information
+RUN go build -ldflags "-X main.version=2.0.0" -o robin ./cmd/
 
 
 ### Final stage

@@ -30,6 +30,8 @@ type MockRedKeyCluster struct {
 	AddNewNodesIfNeededError        error
 	ForgetNodeError                 error
 	StabilizeOpenSlotsError         error
+	ClearNodesError                 error
+	InitError                       error
 
 	// Behavior control fields
 	IsEphemeralValue bool
@@ -56,6 +58,9 @@ func NewMockRedKeyCluster(baseCluster *RedKeyCluster) *MockRedKeyCluster {
 		RemoveNodesIfNeededError:        nil,
 		AddNewNodesIfNeededError:        nil,
 		ForgetNodeError:                 nil,
+		StabilizeOpenSlotsError:         nil,
+		ClearNodesError:                 nil,
+		InitError:                       nil,
 
 		// Behavior control fields
 		IsEphemeralValue: false,
@@ -222,4 +227,14 @@ func (m *MockRedKeyCluster) forgetNode(ctx context.Context, node redis.RedisNode
 		return m.ForgetNodeError
 	}
 	return m.RedKeyCluster.forgetNode(ctx, node)
+}
+
+// clearNodes mock implementation
+func (m *MockRedKeyCluster) clearNodes() error {
+	return m.ClearNodesError
+}
+
+// Init mock implementation
+func (m *MockRedKeyCluster) Init() error {
+	return m.InitError
 }
