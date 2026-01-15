@@ -166,7 +166,7 @@ func NewRedisClient(ctx context.Context, addr, password string, db int) *RedisCl
 		DB:       db,
 	})
 	return &RedisClient{
-		logger: util.GetLogger("redis-cluster"),
+		logger: util.GetLogger("redis-client"),
 		client: client,
 		ctx:    ctx,
 	}

@@ -22,3 +22,14 @@ type OperationCompletedError struct {
 func (e *OperationCompletedError) Error() string {
 	return "operation already done: " + e.Operation
 }
+
+// OperationConflictError represents an error when an operation conflicts with another ongoing operation.
+type OperationConflictError struct {
+	Operation         string
+	ConflictingWith   string
+	ConflictingReason string
+}
+
+func (e *OperationConflictError) Error() string {
+	return "operation " + e.Operation + " conflicts with ongoing operation " + e.ConflictingWith
+}

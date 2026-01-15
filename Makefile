@@ -46,7 +46,7 @@ TEST_REPORT_OUTPUT_E2E = ".local/test_report_e2e.ndjson"
 # .............................................................................
 # / IMPORTANT VARIABLES
 # .............................................................................
-# CHANNELS define the bundle channels used in the bundle. 
+# CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
 # - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=preview,fast,stable)
@@ -55,7 +55,7 @@ ifneq ($(origin CHANNELS), undefined)
 BUNDLE_CHANNELS := --channels=$(CHANNELS)
 endif
 
-# DEFAULT_CHANNEL defines the default channel used in the bundle. 
+# DEFAULT_CHANNEL defines the default channel used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
 # To re-generate a bundle for any other default channel without changing the default setup, you can:
 # - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
@@ -129,7 +129,7 @@ deps: ## Installs dependencies
 	$(info $(M) installing dependencies...)
 	GONOSUMDB=honnef.co/go/* GONOPROXY=honnef.co/go/* $(GO) install honnef.co/go/tools/cmd/staticcheck@v0.6.1
 
-.PHONY: version 
+.PHONY: version
 version:: ## Print the current version of the project.
 	@echo "$(VERSION)"
 
@@ -143,7 +143,7 @@ version-set:: ## Set the project version to the given version, using the NEW_VER
 	@echo "Setting version to $(NEW_VERSION)"
 	sed -ri 's/(.*)(VERSION\s*:=\s*)([0-9]+\.[0-9]+\.[0-9]+)(-SNAPSHOT)(.*)/echo "\1\2$(NEW_VERSION)\5"/ge' Makefile
 
-.PHONY: checkfmt 
+.PHONY: checkfmt
 checkfmt: ## Check format validation
 	$(info $(M) running gofmt checking code style...)
 	@fmtRes=$$($(GOFMT) -d $(SRC)); \
@@ -153,17 +153,17 @@ checkfmt: ## Check format validation
 		exit 1; \
 	fi
 
-.PHONY: fmt 
+.PHONY: fmt
 fmt: ## Run gofmt on all source files
 	$(info $(M) running go fmt...)
 	$(GOFMT) -l -w $(SRC)
 
-.PHONY: lint 
+.PHONY: lint
 lint: deps ## Run golint
 	$(info $(M) running staticcheck...)
 	$(GOLINT) ./...
 
-.PHONY: vet 
+.PHONY: vet
 vet: ## Run go vet
 	$(info $(M) running go vet...)
 	$(GO) vet ./...
@@ -226,7 +226,7 @@ debug-docker-push: ##	Push docker image for debugging from debug.Dockerfile (use
 
 ##@ Deployment
 REDKEY_ROBIN=$(shell kubectl -n ${NAMESPACE} get po -l='redis.redkeycluster.operator/component=robin' -o=jsonpath='{.items[0].metadata.name}')
-dev-deploy: ## 		Build a new robin binary, copy the file to the webhook pod and run it.
+dev-deploy: ##		Build a new robin binary, copy the file to the webhook pod and run it.
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -gcflags="all=-N -l" -C robin -o ../bin/robin  main.go
 	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.redkeycluster.operator/component=robin
 	kubectl cp ./bin/robin $(REDKEY_ROBIN):/robin -n ${NAMESPACE}
@@ -262,16 +262,16 @@ test-e2e-cov: ginkgo ## Execute e2e application test
 	$(info $(M) generating coverage report...)
 	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT)))
 	mkdir -p $(TEST_REPORT_OUTPUT_DIRNAME)
-	ginkgo ./test/e2e -vv -cover -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -covermode=count 
+	ginkgo ./test/e2e -vv -cover -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -covermode=count
 
 
-.PHONY: test-sonar 
+.PHONY: test-sonar
 test-sonar: ## Execute the application test for Sonar (coverage + test report)
 	$(info $(M) running tests and generating sonar report...)
 	$(eval TEST_COVERAGE_PROFILE_OUTPUT_DIRNAME=$(shell dirname $(TEST_COVERAGE_PROFILE_OUTPUT)))
 	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT)))
 	mkdir -p $(TEST_COVERAGE_PROFILE_OUTPUT_DIRNAME) $(TEST_REPORT_OUTPUT_DIRNAME)
-	$(GO) test ./controllers/ ./internal/*/ -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -json > $(TEST_REPORT_OUTPUT)
+	$(GO) test ./internal/*/ -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -json > $(TEST_REPORT_OUTPUT)
 
 .PHONY: test-cov
 test-cov: ## Execute the application test with coverage
@@ -279,4 +279,3 @@ test-cov: ## Execute the application test with coverage
 	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT)))
 	mkdir -p $(TEST_REPORT_OUTPUT_DIRNAME)
 	$(GO) test ./internal/*/ -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -covermode=count
-

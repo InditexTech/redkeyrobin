@@ -72,9 +72,19 @@ func init() {
 	node3.PrimaryID = ""
 }
 
-var server = Server{
-	logger: util.GetLogger("http-server"),
-	cluster: cluster.NewFakeRedKeyCluster(
+// createTestServer creates a new server instance for testing
+func createTestServer(operations map[string][]cluster.RedisOperation, primaries int, replicasPerPrimary int) *Server {
+	// Use default operations if none provided
+	if operations == nil {
+		operations = map[string][]cluster.RedisOperation{
+			"Resharding": {
+				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedKeyCluster{}, "Running", node1, node3, 10, time.Time{}),
+				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedKeyCluster{}, "Finished", node1, node2, 10, time.Time{}),
+			},
+		}
+	}
+
+	redkeyCluster := cluster.NewFakeRedKeyCluster(
 		context.TODO(),
 		&config.Configuration{
 			Redis: config.RedisConfig{
@@ -90,14 +100,28 @@ var server = Server{
 			"test-1": node2,
 			"test-2": node3,
 		},
-		map[string][]cluster.RedisOperation{
-			"Resharding": {
-				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedKeyCluster{}, "Running", node1, node3, 10, time.Time{}),
-				cluster.NewFakeRedisOperationMove(context.TODO(), &cluster.RedKeyCluster{}, "Finished", node1, node2, 10, time.Time{}),
-			},
-		},
+		operations,
 		make(chan struct{}, 5),
-	),
+	)
+
+	// Set desired primaries and replicas if provided
+	if primaries > 0 || replicasPerPrimary > 0 {
+		// If primaries is 0, use the cluster's current primaries count
+		if primaries == 0 {
+			primaries = redkeyCluster.GetPrimaries()
+		}
+		// If replicasPerPrimary is 0, pass nil (don't change)
+		var replicasPtr *int
+		if replicasPerPrimary > 0 {
+			replicasPtr = &replicasPerPrimary
+		}
+		_ = redkeyCluster.SetReplicas(primaries, replicasPtr)
+	}
+
+	return &Server{
+		logger:  util.GetLogger("http-server"),
+		cluster: redkeyCluster,
+	}
 }
 
 func TestInit(t *testing.T) {

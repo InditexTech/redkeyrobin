@@ -97,7 +97,7 @@ func (r *RedKeyClusterReconciler) reconcileScalingDownStatus() error {
 // reconcileUpgradingStatus reconciles the RedKey cluster when it is in the Upgrading status.
 func (r *RedKeyClusterReconciler) reconcileUpgradingStatus() error {
 	// Check if the cluster needs to be upgraded
-	if !r.cluster.IsUpgraded() && !r.cluster.CanBeUpgraded() {
+	if r.cluster.IsUpgraded() {
 		return nil
 	}
 
