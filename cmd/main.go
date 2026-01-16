@@ -30,7 +30,7 @@ func main() {
 	}
 	ctx := util.SetupSignalHandler()
 
-	// Communication channel for the reconciler
+	// Communication channel for the cluster reconciler
 	channel := make(chan struct{})
 	defer close(channel)
 
