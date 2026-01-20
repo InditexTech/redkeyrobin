@@ -25,7 +25,7 @@ var metricNameReplacer = strings.NewReplacer("-", "_")
 // MetricsPoller is an interface that represents a metrics poller.
 type MetricsPoller interface {
 	// Start starts the poller.
-	Start(ctx context.Context)
+	Start(ctx context.Context) error
 }
 
 // MetricsPollerDelegate is an interface that represents a metrics poller delegate.
@@ -52,10 +52,9 @@ type basePoller struct {
 }
 
 // Start begins the polling loop.
-func (bp *basePoller) Start(ctx context.Context) {
+func (bp *basePoller) Start(ctx context.Context) error {
 	if bp.delegate == nil {
-		bp.logger.Error("Metrics poller delegate must be set")
-		return
+		return fmt.Errorf("metrics poller delegate must be set")
 	}
 
 	timeout := time.Duration(bp.cluster.GetMetricsInterval()) * time.Second
@@ -64,7 +63,7 @@ func (bp *basePoller) Start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			bp.logger.Info("Context canceled, stopping polling")
-			return
+			return nil
 		case <-time.After(timeout):
 			bp.pollMetrics(ctx)
 		}

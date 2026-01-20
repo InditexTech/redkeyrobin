@@ -6,6 +6,7 @@ package reconciler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 // Reconciler is an interface for reconciling a cluster.
 type Reconciler interface {
 	// Start starts the reconciler loop.
-	Start(ctx context.Context)
+	Start(ctx context.Context) error
 }
 
 // ReconcilerDelegate is an interface for reconciling a cluster.
@@ -42,10 +43,9 @@ type baseClusterReconciler struct {
 }
 
 // Start starts the reconciler loop.
-func (br *baseClusterReconciler) Start(ctx context.Context) {
+func (br *baseClusterReconciler) Start(ctx context.Context) error {
 	if br.delegate == nil {
-		br.logger.Error("Metrics poller delegate must be set")
-		return
+		return fmt.Errorf("reconciler delegate must be set")
 	}
 
 	br.reconcile()
@@ -56,7 +56,7 @@ func (br *baseClusterReconciler) Start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			br.logger.Info("Context cancelled, stopping reconciler")
-			return
+			return nil
 		case <-br.channel:
 			br.reconcile()
 		case <-time.After(timeout):

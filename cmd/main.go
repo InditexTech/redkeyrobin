@@ -67,20 +67,28 @@ func main() {
 	reconciler, err := reconciler.NewReconciler(clusterInstance, channel)
 	if err != nil {
 		logger.Error("Unable to create reconciler", "error", err)
-		errChan <- err
-		return
+		os.Exit(1)
 	}
-	go reconciler.Start(ctx)
+	go func() {
+		if err := reconciler.Start(ctx); err != nil {
+			logger.Error("Error in reconciler", "error", err)
+			errChan <- err
+		}
+	}()
 
 	// Create and launch a metrics poller if needed
 	if !opts.DisableMetrics {
 		metricsPoller, err := metrics.NewMetricsPoller(clusterInstance)
 		if err != nil {
 			logger.Error("Unable to create metrics poller", "error", err)
-			errChan <- err
-			return
+			os.Exit(1)
 		}
-		go metricsPoller.Start(ctx)
+		go func() {
+			if err := metricsPoller.Start(ctx); err != nil {
+				logger.Error("Error in metrics poller", "error", err)
+				errChan <- err
+			}
+		}()
 	}
 
 	// Wait for context cancellation or critical error
