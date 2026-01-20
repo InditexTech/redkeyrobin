@@ -8,7 +8,7 @@ SHELL := /bin/bash
 name                 := redkeyrobin
 version              := 1.0.0
 redis_client_version := 8.2.3
-golang_version       := 1.24.6
+golang_version       := 1.25.6
 delve_version        := 1.25
 package              := github.com/inditextech/$(name)
 
