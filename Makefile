@@ -244,27 +244,6 @@ port-forward: ##		Port forwarding of port 40000 to port 40002 for debugging robi
 port-forward-metrics: ##		Port forwarding of port 8080 for debugging the manager with Delve.
 	kubectl port-forward pod/$(REDKEY_ROBIN) 8080:8080 -n ${NAMESPACE}
 
-##@ Test
-ginkgo:
-	go install github.com/onsi/ginkgo/v2/ginkgo
-
-.PHONY: test-e2e
-test-e2e: ginkgo ## Execute e2e application test
-	$(info $(M) running e2e tests...)
-	$(info $(M) generating sonar report...)
-	$(eval TEST_COVERAGE_PROFILE_OUTPUT_DIRNAME=$(shell dirname $(TEST_COVERAGE_PROFILE_OUTPUT)))
-	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT_E2E)))
-	mkdir -p $(TEST_COVERAGE_PROFILE_OUTPUT_DIRNAME) $(TEST_REPORT_OUTPUT_DIRNAME)
-	ginkgo ./test/e2e -cover -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -json > $(TEST_REPORT_OUTPUT_E2E)
-
-.PHONY: test-e2e-cov
-test-e2e-cov: ginkgo ## Execute e2e application test
-	$(info $(M) generating coverage report...)
-	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT)))
-	mkdir -p $(TEST_REPORT_OUTPUT_DIRNAME)
-	ginkgo ./test/e2e -vv -cover -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -covermode=count
-
-
 .PHONY: test-sonar
 test-sonar: ## Execute the application test for Sonar (coverage + test report)
 	$(info $(M) running tests and generating sonar report...)
