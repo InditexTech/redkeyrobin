@@ -28,8 +28,9 @@ func NewStandaloneReconciler(cluster cluster.Cluster, channel chan struct{}) (*R
 }
 
 // Start starts the reconciler loop.
-func (r *RedisStandaloneReconciler) Start(ctx context.Context) {
+func (r *RedisStandaloneReconciler) Start(ctx context.Context) error {
 	r.logger.Info("Redis standalone reconciler not needed. Finishing.")
+	return nil
 }
 
 // doReconcile reconciles the Redis standalone based on its current status.
