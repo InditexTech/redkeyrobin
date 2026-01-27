@@ -1764,18 +1764,32 @@ func (rc *RedKeyCluster) stabilizeOpenSlots(ctx context.Context, counter map[int
 		}
 
 		for _, clusterNode := range clusterNodes {
-			if clusterNode.ID == node.ID && len(clusterNode.Migrating) > 0 {
-				for slot := range clusterNode.Migrating {
-					if count, ok := counter[slot]; ok {
-						if count+1 > threshold {
-							slotsToStabilize = append(slotsToStabilize, MigratingSlot{Slot: slot, From: clusterNode.ID, To: clusterNode.Migrating[slot]})
+			if clusterNode.ID == node.ID {
+				if len(clusterNode.Migrating) > 0 {
+					for slot := range clusterNode.Migrating {
+						if count, ok := counter[slot]; ok {
+							if count+1 > threshold {
+								slotsToStabilize = append(slotsToStabilize, MigratingSlot{Slot: slot, From: clusterNode.ID, To: clusterNode.Migrating[slot]})
+							} else {
+								updatedCounter[slot] = count + 1
+							}
 						} else {
-							updatedCounter[slot] = count + 1
+							updatedCounter[slot] = 1
 						}
-					} else {
-						updatedCounter[slot] = 1
 					}
-				}
+				} else if len(clusterNode.Importing) > 0 {
+					for slot := range clusterNode.Importing {
+						if count, ok := counter[slot]; ok {
+							if count+1 > threshold {
+								slotsToStabilize = append(slotsToStabilize, MigratingSlot{Slot: slot, From: clusterNode.Importing[slot], To: clusterNode.ID})
+							} else {
+								updatedCounter[slot] = count + 1
+							}
+						} else {
+							updatedCounter[slot] = 1
+						}
+					}
+				}					
 			}
 		}
 	}
