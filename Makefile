@@ -6,14 +6,15 @@
 SHELL := /bin/bash
 
 NAME                 := redkeyrobin
-VERSION              := 1.0.0
+VERSION              := 0.1.0
 REDIS_CLIENT_VERSION := 8.2.3
 GOLANG_VERSION       := 1.25.7
 DELVE_VERSION        := 1.25
 PACKAGE              := github.com/inditextech/$(NAME)
 
 # Image URL to use for building/pushing image.
-IMG ?= redkey-robin:$(VERSION)
+IMAGE_TAG_BASE ?= localhost:5001/redkey-robin
+IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
 
 # .............................................................................
 # DONT TOUCH THIS SECTION
