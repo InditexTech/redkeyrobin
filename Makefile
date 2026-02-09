@@ -5,15 +5,15 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-name                 := redkeyrobin
-version              := 1.0.0
-redis_client_version := 8.2.3
-golang_version       := 1.25.7
-delve_version        := 1.25
-package              := github.com/inditextech/$(name)
+NAME                 := redkeyrobin
+VERSION              := 1.0.0
+REDIS_CLIENT_VERSION := 8.2.3
+GOLANG_VERSION       := 1.25.7
+DELVE_VERSION        := 1.25
+PACKAGE              := github.com/inditextech/$(NAME)
 
 # Image URL to use for building/pushing image.
-IMG ?= redkey-robin:$(version)
+IMG ?= redkey-robin:$(VERSION)
 
 # .............................................................................
 # DONT TOUCH THIS SECTION
@@ -206,19 +206,19 @@ dev-build: ##	Build robin binary.
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -o bin/robin ./cmd/main.go
 
 docker-build: ##	Build docker image with the manager (uses `${IMG}` image name).
-	docker build -t ${IMG} --build-arg REDIS_CLIENT_VERSION=${redis_client_version} --build-arg GOLANG_VERSION=${golang_version} .
+	docker build -t ${IMG} --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} .
 
 docker-push: ##	Push docker image with the manager (uses `${IMG}` image name).
 	docker push ${IMG}
 
 dev-docker-build:  ##	Build docker image with the manager for development (uses `${IMG_DEV}` image name).
-	docker build -t ${IMG_DEV} --build-arg REDIS_CLIENT_VERSION=${redis_client_version} --build-arg GOLANG_VERSION=${golang_version} .
+	docker build -t ${IMG_DEV} --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} .
 
 dev-docker-push: ##	Push docker image with the manager for development (uses `${IMG_DEV}` image name).
 	docker push ${IMG_DEV}
 
 debug-docker-build: ##	Build docker image for debugging from debug.Dockerfile (uses `${IMG_DEBUG}` image name).
-	docker build -t ${IMG_DEBUG} -f debug.Dockerfile --build-arg REDIS_CLIENT_VERSION=${redis_client_version} --build-arg GOLANG_VERSION=${golang_version} --build-arg DELVE_VERSION=${delve_version} .
+	docker build -t ${IMG_DEBUG} -f debug.Dockerfile --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} --build-arg DELVE_VERSION=${DELVE_VERSION} .
 
 debug-docker-push: ##	Push docker image for debugging from debug.Dockerfile (uses `${IMG_DEBUG}` image name).
 	docker push ${IMG_DEBUG}
