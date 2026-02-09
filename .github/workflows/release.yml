@@ -46,7 +46,7 @@ jobs:
           fi
 
   build:
-    name: 🛠️ Build Operator images
+    name: 🛠️ Build Robin image
     needs: check
     runs-on: ubuntu-latest
     permissions:
