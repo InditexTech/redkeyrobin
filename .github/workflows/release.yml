@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
+# SPDX-License-Identifier: Apache-2.0
+name: 🚀 Release
+permissions: read-all
+
+on:
+  release:
+    types:
+      - created
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: inditextech/redkey-robin
+
+jobs:
+  release:
+    name: 🏷️ Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      user_agent_version: ${{ steps.version.outputs.user_agent_version }}
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+      - name: 📝 Load Robin version
+        id: version
+        run: |
+          echo "version=$(make version)" >> $GITHUB_OUTPUT
+          echo $GITHUB_OUTPUT
+
+  check:
+    name: 🔎 Check versions
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🔎 Check versions
+        run: |
+          echo "version: ${{ needs.release.outputs.version }}"
+          echo "tag_name: ${{ github.event.release.tag_name }}"
+
+          if [ "${{ github.event.release.tag_name }}" != "${{ needs.release.outputs.version }}" ]; then
+            echo "Version in Makefile does not match release tag"
+            exit 1
+          fi
+
+  build:
+    name: 🛠️ Build Robin image
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔐 Login into ${{ env.REGISTRY }}
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏗️ Build and push Robin image
+        run: |
+          make docker-build IMAGE_TAG_BASE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          make docker-push IMAGE_TAG_BASE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
