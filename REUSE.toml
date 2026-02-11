@@ -1,7 +1,7 @@
 version = 1
-SPDX-PackageName = "redisrobin"
+SPDX-PackageName = "redkeyrobin"
 SPDX-PackageSupplier = "2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
-SPDX-PackageDownloadLocation = "https://github.com/InditexTech/redisrobin"
+SPDX-PackageDownloadLocation = "https://github.com/InditexTech/redkeyrobin"
 
 [[annotations]]
 path = [
@@ -9,6 +9,11 @@ path = [
     "NOTICE",
     ".gitignore",
     ".github/CODEOWNERS",
+    "go.sum",
+    "api/openapi-rest.yml",
+    "local/configmap.yml",
+    "docs/images/redkey-robin-architecture.png",
+    ".go-version",
 ]
 SPDX-FileCopyrightText = "2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
 SPDX-License-Identifier = "Apache-2.0"
