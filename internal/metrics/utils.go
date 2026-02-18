@@ -74,7 +74,7 @@ func gatherAllFieldsAsStrings(ri *redis.RedisInfo) map[string]string {
 	maps.Copy(allFields, ri.Stats)
 	// Convert int fields to strings
 	for k, v := range ri.Clients {
-		allFields[k] = strconv.Itoa(int(v))
+		allFields[k] = strconv.FormatInt(v, 10)
 	}
 
 	// Convert float fields to strings
