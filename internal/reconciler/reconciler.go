@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+	"github.com/inditextech/redkeyrobin/internal/config"
 )
 
 const (
@@ -27,17 +28,19 @@ type Reconciler struct {
 	namespace       string
 	interval        time.Duration
 	intervalOnError time.Duration
+	runtimeConfig   *config.RuntimeConfig
 	logger          *slog.Logger
 }
 
 // NewReconciler creates a new Reconciler.
-func NewReconciler(c client.Client, clusterName, namespace string, interval time.Duration, intervalOnError time.Duration) *Reconciler {
+func NewReconciler(c client.Client, clusterName, namespace string, interval time.Duration, intervalOnError time.Duration, runtimeConfig *config.RuntimeConfig) *Reconciler {
 	return &Reconciler{
 		client:          c,
 		clusterName:     clusterName,
 		namespace:       namespace,
 		interval:        interval,
 		intervalOnError: intervalOnError,
+		runtimeConfig:   runtimeConfig,
 		logger:          slog.Default().With("component", "reconciler", "cluster", clusterName),
 	}
 }
@@ -115,6 +118,9 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 
 	// TODO: Handle monitoring configuration.
 
+	// Apply Robin configuration from the target or applied config.
+	r.applyRobinConfig(targetConfig, previousConfig)
+
 	// From here, we start processing Redkey Cluster configuration and health checks.
 	// We decide what to do based on the phase of the target configuration.
 	switch targetConfig.Status.ConfigPhase {
@@ -154,4 +160,48 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 
 	// Config applied, iterate with the next one immediately in case there are more pending configs.
 	return true, false
+}
+
+// applyRobinConfig reads the RobinConfig from the effective configuration and
+// updates the shared RuntimeConfig so that other components (metrics collector,
+// reconciler interval) pick up the changes.
+// It also stores the topology for node discovery by the metrics collector.
+func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyClusterConfig, previous *redisv1.RedkeyClusterConfig) {
+	if r.runtimeConfig == nil {
+		return
+	}
+
+	// Determine which config holds the effective Robin settings:
+	// - If the target is Applied, use it (it's the current active config).
+	// - If the target is InProgress or Pending, use the previous (last Applied) if available,
+	//   since the new config hasn't been fully applied yet. But we also update topology
+	//   from the target so node discovery reflects the desired state.
+	var effectiveConfig *redisv1.RedkeyClusterConfig
+	switch target.Status.ConfigPhase {
+	case redisv1.ConfigPhaseApplied:
+		effectiveConfig = target
+	default:
+		if previous != nil {
+			effectiveConfig = previous
+		} else {
+			// No previous applied config — use target's RobinConfig even though it's not yet applied.
+			effectiveConfig = target
+		}
+	}
+
+	if effectiveConfig.Spec.RobinConfig != nil {
+		r.runtimeConfig.SetFromRobinConfig(effectiveConfig.Spec.RobinConfig)
+		// Update reconciler interval from the runtime config.
+		newInterval := r.runtimeConfig.ReconcilerInterval()
+		if newInterval != r.interval {
+			r.logger.Info("Updating reconciler interval", "old", r.interval, "new", newInterval)
+			r.interval = newInterval
+		}
+	}
+
+	// Update topology for node discovery (always from the effective config).
+	r.runtimeConfig.SetTopology(effectiveConfig.Spec.Primaries, effectiveConfig.Spec.ReplicasPerPrimary)
+
+	// Update auth secret name so the metrics collector can read the password.
+	r.runtimeConfig.SetAuthSecret(effectiveConfig.Spec.Auth.SecretName)
 }

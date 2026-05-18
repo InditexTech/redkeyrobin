@@ -10,6 +10,7 @@ import (
 	"time"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+	"github.com/inditextech/redkeyrobin/internal/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -18,6 +19,8 @@ import (
 )
 
 var testScheme = runtime.NewScheme()
+
+func intPtr(v int) *int { return &v }
 
 func init() {
 	_ = clientgoscheme.AddToScheme(testScheme)
@@ -30,7 +33,7 @@ func newTestReconciler(objs ...client.Object) *Reconciler {
 		WithObjects(objs...).
 		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
 		Build()
-	return NewReconciler(fakeClient, "test-cluster", "default", 5*time.Second, 2*time.Second)
+	return NewReconciler(fakeClient, "test-cluster", "default", 5*time.Second, 2*time.Second, config.NewRuntimeConfig())
 }
 
 func makeConfigWithLabels(name string, seq int, phase string, primaries, replicas int32) *redisv1.RedkeyClusterConfig {
@@ -59,7 +62,7 @@ func makeConfigWithLabels(name string, seq int, phase string, primaries, replica
 
 func TestNewReconciler(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
-	r := NewReconciler(fakeClient, "my-cluster", "ns-1", 10*time.Second, 3*time.Second)
+	r := NewReconciler(fakeClient, "my-cluster", "ns-1", 10*time.Second, 3*time.Second, config.NewRuntimeConfig())
 
 	if r.clusterName != "my-cluster" {
 		t.Fatalf("expected clusterName 'my-cluster', got '%s'", r.clusterName)
@@ -455,5 +458,229 @@ func TestApplySupersedingStatus_Success(t *testing.T) {
 	}
 	if updated.Status.ConfigPhase != redisv1.ConfigPhaseSuperseded {
 		t.Fatalf("expected Superseded, got '%s'", updated.Status.ConfigPhase)
+	}
+}
+
+// --- applyRobinConfig tests ---
+
+func TestApplyRobinConfig_UpdatesReconcilerInterval(t *testing.T) {
+	cfg := makeConfigWithLabels("cfg-interval", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg.Spec.RobinConfig = &redisv1.RobinConfig{
+		Reconciler: &redisv1.RobinConfigReconciler{
+			IntervalSeconds: intPtr(20),
+		},
+	}
+
+	r := newTestReconciler(cfg)
+	// Initial interval is 5s (from newTestReconciler).
+	if r.interval != 5*time.Second {
+		t.Fatalf("expected initial interval 5s, got %v", r.interval)
+	}
+
+	r.applyRobinConfig(cfg, nil)
+
+	// RuntimeConfig should be updated.
+	if r.runtimeConfig.ReconcilerInterval() != 20*time.Second {
+		t.Fatalf("expected runtimeConfig interval 20s, got %v", r.runtimeConfig.ReconcilerInterval())
+	}
+	// Reconciler's own interval field should be updated.
+	if r.interval != 20*time.Second {
+		t.Fatalf("expected r.interval 20s, got %v", r.interval)
+	}
+}
+
+func TestApplyRobinConfig_SetsAuthSecret(t *testing.T) {
+	cfg := makeConfigWithLabels("cfg-auth", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg.Spec.Auth = redisv1.RedisAuth{SecretName: "my-secret"}
+	cfg.Spec.RobinConfig = &redisv1.RobinConfig{}
+
+	r := newTestReconciler(cfg)
+	r.applyRobinConfig(cfg, nil)
+
+	if r.runtimeConfig.AuthSecret() != "my-secret" {
+		t.Fatalf("expected auth secret 'my-secret', got %q", r.runtimeConfig.AuthSecret())
+	}
+}
+
+func TestApplyRobinConfig_SetsAuthSecretEmpty(t *testing.T) {
+	cfg := makeConfigWithLabels("cfg-noauth", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	// No auth set — Auth.SecretName is "".
+	cfg.Spec.RobinConfig = &redisv1.RobinConfig{}
+
+	r := newTestReconciler(cfg)
+	// Pre-set a secret to verify it gets cleared.
+	r.runtimeConfig.SetAuthSecret("old-secret")
+
+	r.applyRobinConfig(cfg, nil)
+
+	if r.runtimeConfig.AuthSecret() != "" {
+		t.Fatalf("expected empty auth secret, got %q", r.runtimeConfig.AuthSecret())
+	}
+}
+
+func TestApplyRobinConfig_UsesPreviousWhenTargetIsPending(t *testing.T) {
+	// Previous is Applied with specific robin config.
+	prev := makeConfigWithLabels("cfg-prev", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	prev.Spec.RobinConfig = &redisv1.RobinConfig{
+		Reconciler: &redisv1.RobinConfigReconciler{
+			IntervalSeconds: intPtr(15),
+		},
+	}
+	prev.Spec.Auth = redisv1.RedisAuth{SecretName: "prev-secret"}
+
+	// Target is Pending with different robin config (should NOT be used).
+	target := makeConfigWithLabels("cfg-target", 2, redisv1.ConfigPhasePending, 5, 2)
+	target.Spec.RobinConfig = &redisv1.RobinConfig{
+		Reconciler: &redisv1.RobinConfigReconciler{
+			IntervalSeconds: intPtr(99),
+		},
+	}
+	target.Spec.Auth = redisv1.RedisAuth{SecretName: "target-secret"}
+
+	r := newTestReconciler(prev, target)
+	r.applyRobinConfig(target, prev)
+
+	// Should use previous config (15s, prev-secret).
+	if r.runtimeConfig.ReconcilerInterval() != 15*time.Second {
+		t.Fatalf("expected interval from previous (15s), got %v", r.runtimeConfig.ReconcilerInterval())
+	}
+	if r.runtimeConfig.AuthSecret() != "prev-secret" {
+		t.Fatalf("expected auth secret from previous, got %q", r.runtimeConfig.AuthSecret())
+	}
+}
+
+func TestApplyRobinConfig_NilRobinConfigDoesNotPanic(t *testing.T) {
+	cfg := makeConfigWithLabels("cfg-norobin", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	// RobinConfig is nil.
+
+	r := newTestReconciler(cfg)
+	// Should not panic. Topology and auth should still be set.
+	r.applyRobinConfig(cfg, nil)
+
+	topo := r.runtimeConfig.AppliedTopology()
+	if topo.Primaries != 3 || topo.ReplicasPerPrimary != 1 {
+		t.Fatalf("expected topology 3/1, got %d/%d", topo.Primaries, topo.ReplicasPerPrimary)
+	}
+}
+
+func TestApplyRobinConfig_UpdatesMetricsLabels(t *testing.T) {
+	cfg := makeConfigWithLabels("cfg-labels", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg.Spec.RobinConfig = &redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			MetricsLabels: map[string]string{"env": "staging", "team": "platform"},
+		},
+	}
+
+	r := newTestReconciler(cfg)
+	r.applyRobinConfig(cfg, nil)
+
+	got := r.runtimeConfig.MetricsLabels()
+	expected := map[string]string{"env": "staging", "team": "platform"}
+	if len(got) != len(expected) {
+		t.Fatalf("expected %d labels, got %d: %v", len(expected), len(got), got)
+	}
+	for k, v := range expected {
+		if got[k] != v {
+			t.Fatalf("expected label %q=%q, got %q", k, v, got[k])
+		}
+	}
+}
+
+func TestApplyRobinConfig_MetricsLabelsUpdateOnConfigChange(t *testing.T) {
+	// First config with initial labels.
+	cfg1 := makeConfigWithLabels("cfg-labels-v1", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg1.Spec.RobinConfig = &redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			MetricsLabels: map[string]string{"env": "staging"},
+		},
+	}
+
+	r := newTestReconciler(cfg1)
+	r.applyRobinConfig(cfg1, nil)
+
+	got := r.runtimeConfig.MetricsLabels()
+	if got["env"] != "staging" {
+		t.Fatalf("expected env=staging, got %q", got["env"])
+	}
+
+	// Second config with updated labels.
+	cfg2 := makeConfigWithLabels("cfg-labels-v2", 2, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg2.Spec.RobinConfig = &redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			MetricsLabels: map[string]string{"env": "prod", "region": "eu"},
+		},
+	}
+
+	r.applyRobinConfig(cfg2, cfg1)
+
+	got = r.runtimeConfig.MetricsLabels()
+	if got["env"] != "prod" {
+		t.Fatalf("expected env=prod after update, got %q", got["env"])
+	}
+	if got["region"] != "eu" {
+		t.Fatalf("expected region=eu after update, got %q", got["region"])
+	}
+	// "team" should no longer be present (was never set in cfg2).
+	if _, exists := got["team"]; exists {
+		t.Fatalf("expected 'team' label to be absent, but it exists")
+	}
+}
+
+// --- selectConfig with multiple chained superseded configs ---
+
+func TestSelectConfig_MultipleChainedSuperseded(t *testing.T) {
+	cfg1 := makeConfigWithLabels("cfg-applied", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg2 := makeConfigWithLabels("cfg-skip-1", 2, redisv1.ConfigPhasePending, 5, 1)
+	cfg2.Spec.SkipIfSuperseded = true
+	cfg3 := makeConfigWithLabels("cfg-skip-2", 3, redisv1.ConfigPhasePending, 6, 1)
+	cfg3.Spec.SkipIfSuperseded = true
+	cfg4 := makeConfigWithLabels("cfg-skip-3", 4, redisv1.ConfigPhasePending, 7, 1)
+	cfg4.Spec.SkipIfSuperseded = true
+	cfg5 := makeConfigWithLabels("cfg-final", 5, redisv1.ConfigPhasePending, 9, 2)
+
+	r := newTestReconciler(cfg1, cfg2, cfg3, cfg4, cfg5)
+
+	prev, selected, err := r.selectConfig(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if selected == nil || selected.Name != "cfg-final" {
+		t.Fatalf("expected cfg-final, got %v", selected)
+	}
+	if prev == nil || prev.Name != "cfg-applied" {
+		t.Fatalf("expected prev cfg-applied, got %v", prev)
+	}
+
+	// All intermediate configs should be Superseded.
+	for _, name := range []string{"cfg-skip-1", "cfg-skip-2", "cfg-skip-3"} {
+		var fetched redisv1.RedkeyClusterConfig
+		key := client.ObjectKey{Name: name, Namespace: "default"}
+		if err := r.client.Get(context.Background(), key, &fetched); err != nil {
+			t.Fatalf("failed to get %s: %v", name, err)
+		}
+		if fetched.Status.ConfigPhase != redisv1.ConfigPhaseSuperseded {
+			t.Fatalf("expected %s to be Superseded, got '%s'", name, fetched.Status.ConfigPhase)
+		}
+	}
+}
+
+func TestSelectConfig_SkipIfSupersededButIsLastPending(t *testing.T) {
+	// When a config has skipIfSuperseded=true but it's the last pending, it should NOT be skipped.
+	cfg1 := makeConfigWithLabels("cfg-applied", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg2 := makeConfigWithLabels("cfg-last-skip", 2, redisv1.ConfigPhasePending, 5, 1)
+	cfg2.Spec.SkipIfSuperseded = true
+
+	r := newTestReconciler(cfg1, cfg2)
+
+	prev, selected, err := r.selectConfig(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Since cfg-last-skip is the only pending and there's nothing superseding it, it should be selected.
+	if selected == nil || selected.Name != "cfg-last-skip" {
+		t.Fatalf("expected cfg-last-skip (only pending), got %v", selected)
+	}
+	if prev == nil || prev.Name != "cfg-applied" {
+		t.Fatalf("expected prev cfg-applied, got %v", prev)
 	}
 }

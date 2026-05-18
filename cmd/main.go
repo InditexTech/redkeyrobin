@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -19,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+	robinconfig "github.com/inditextech/redkeyrobin/internal/config"
 	"github.com/inditextech/redkeyrobin/internal/metrics"
 	"github.com/inditextech/redkeyrobin/internal/reconciler"
 )
@@ -90,10 +92,13 @@ func main() {
 	defer cancel()
 
 	// Error channel for critical failures
-	errChan := make(chan error, 2)
+	errChan := make(chan error, 3)
+
+	// Create shared runtime configuration with defaults from CLI flags.
+	runtimeConfig := robinconfig.NewRuntimeConfig()
 
 	// Start the reconciliation loop
-	rec := reconciler.NewReconciler(k8sClient, clusterName, namespace, reconcileInterval, reconcileIntervalOnError)
+	rec := reconciler.NewReconciler(k8sClient, clusterName, namespace, reconcileInterval, reconcileIntervalOnError, runtimeConfig)
 	go func() {
 		if err := rec.Start(ctx); err != nil {
 			logger.Error("Error in reconciler", "error", err)
@@ -101,7 +106,16 @@ func main() {
 		}
 	}()
 
-	// Start the metrics server
+	// Start the metrics collector (Redis INFO polling)
+	collector := metrics.NewCollector(runtimeConfig, clusterName, namespace, k8sClient, prometheus.DefaultRegisterer)
+	go func() {
+		if err := collector.Start(ctx); err != nil {
+			logger.Error("Error in metrics collector", "error", err)
+			errChan <- err
+		}
+	}()
+
+	// Start the metrics HTTP server (Prometheus endpoint)
 	metricsSrv := metrics.NewServer(metricsAddr)
 	go func() {
 		if err := metricsSrv.Start(ctx); err != nil {
