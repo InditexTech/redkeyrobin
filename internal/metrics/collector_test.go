@@ -6,11 +6,14 @@ package metrics
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,6 +22,7 @@ import (
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/health"
 	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
@@ -79,8 +83,8 @@ func TestCollector_CollectNode(t *testing.T) {
 	}
 
 	// connected_clients should be exposed by miniredis INFO.
-	if !found["redis_connected_clients"] {
-		t.Error("expected redis_connected_clients metric to be registered")
+	if !found["redkey_connected_clients"] {
+		t.Error("expected redkey_connected_clients metric to be registered")
 	}
 }
 
@@ -114,7 +118,7 @@ func TestCollector_FiltersInfoKeys(t *testing.T) {
 	}
 
 	for _, f := range families {
-		if f.GetName() != "redis_connected_clients" {
+		if f.GetName() != "redkey_connected_clients" {
 			t.Errorf("unexpected metric %s should have been filtered", f.GetName())
 		}
 	}
@@ -474,7 +478,6 @@ func TestCollector_CollectReactsToInfoKeysChange(t *testing.T) {
 	if len(families) != 1 {
 		t.Fatalf("expected 1 metric family after first collect, got %d", len(families))
 	}
-
 	// Now change the info keys to include more.
 	// Use total_connections_received which miniredis does expose.
 	err = collector.collectNode(context.Background(), node, "", []string{"connected_clients", "total_connections_received"})
@@ -485,13 +488,53 @@ func TestCollector_CollectReactsToInfoKeysChange(t *testing.T) {
 	families, _ = reg.Gather()
 	foundNew := false
 	for _, f := range families {
-		if f.GetName() == "redis_total_connections_received" {
+		if f.GetName() == "redkey_total_connections_received" {
 			foundNew = true
 		}
 	}
 	if !foundNew {
-		t.Error("expected redis_total_connections_received metric after info keys change")
+		t.Error("expected redkey_total_connections_received metric after info keys change")
 	}
+}
+
+func TestCollector_CollectStillPublishesHealthWhenNoInfoKeys(t *testing.T) {
+	rtConfig := config.NewRuntimeConfig()
+	rtConfig.SetTopology(1, 0)
+	rtConfig.SetFromRobinConfig(&redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			RedisInfoKeys: []string{},
+		},
+	})
+
+	reg := prometheus.NewRegistry()
+	collector := &Collector{
+		runtimeConfig: rtConfig,
+		clusterName:   "cluster",
+		namespace:     "ns",
+		manager:       NewMetricsManager(reg),
+		healthChecker: &fakeHealthChecker{
+			report: &health.Report{
+				MembershipOK:                  true,
+				SlotsCoveredOK:                true,
+				BalancedOK:                    true,
+				ClusterCheckOK:                true,
+				Healthy:                       true,
+				ClusterCheckCommandOutputCode: 0,
+			},
+		},
+		passwordLoaded: true,
+		cachedPassword: "",
+		logger:         slog.Default(),
+	}
+
+	collector.collect(context.Background())
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	assertGaugeValue(t, families, "redkey_cluster_healthy", 1)
 }
 
 func TestCollector_CollectReactsToTopologyChange(t *testing.T) {
@@ -587,7 +630,7 @@ func TestCollector_MetricsLabelsAppearOnMetrics(t *testing.T) {
 
 	var found bool
 	for _, f := range families {
-		if f.GetName() == "redis_connected_clients" {
+		if f.GetName() == "redkey_connected_clients" {
 			found = true
 			m := f.GetMetric()[0]
 			labelMap := make(map[string]string)
@@ -614,7 +657,7 @@ func TestCollector_MetricsLabelsAppearOnMetrics(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("metric redis_connected_clients not found")
+		t.Fatal("metric redkey_connected_clients not found")
 	}
 }
 
@@ -643,7 +686,7 @@ func TestCollector_StringMetricExposedAsGaugeMinus1(t *testing.T) {
 
 	var found bool
 	for _, f := range families {
-		if f.GetName() == "redis_redis_version" {
+		if f.GetName() == "redkey_version" {
 			found = true
 			m := f.GetMetric()[0]
 			if m.GetGauge().GetValue() != -1 {
@@ -660,7 +703,7 @@ func TestCollector_StringMetricExposedAsGaugeMinus1(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("metric redis_redis_version not found")
+		t.Fatal("metric redkey_version not found")
 	}
 }
 
@@ -688,9 +731,9 @@ func TestCollector_CompoundValueCreatesSubMetrics(t *testing.T) {
 	}
 
 	expected := map[string]float64{
-		"redis_cmdstat_get_calls":         100,
-		"redis_cmdstat_get_usec":          500,
-		"redis_cmdstat_get_usec_per_call": 5.0,
+		"redkey_cmdstat_get_calls":         100,
+		"redkey_cmdstat_get_usec":          500,
+		"redkey_cmdstat_get_usec_per_call": 5.0,
 	}
 
 	found := make(map[string]float64)
@@ -734,9 +777,9 @@ func TestCollector_KeyspaceMetrics(t *testing.T) {
 	}
 
 	expected := map[string]float64{
-		"redis_keyspace_keys":    1500,
-		"redis_keyspace_expires": 50,
-		"redis_keyspace_avg_ttl": 2000,
+		"redkey_keyspace_keys":    1500,
+		"redkey_keyspace_expires": 50,
+		"redkey_keyspace_avg_ttl": 2000,
 	}
 
 	found := make(map[string]float64)
@@ -756,5 +799,134 @@ func TestCollector_KeyspaceMetrics(t *testing.T) {
 		if found[name] != val {
 			t.Errorf("expected %s=%f, got %f", name, val, found[name])
 		}
+	}
+}
+
+type fakeHealthChecker struct {
+	report   *health.Report
+	err      error
+	nodes    []health.Node
+	password string
+}
+
+func (f *fakeHealthChecker) Check(_ context.Context, nodes []health.Node, password string) (*health.Report, error) {
+	f.nodes = append([]health.Node(nil), nodes...)
+	f.password = password
+	return f.report, f.err
+}
+
+func TestCollector_CollectClusterMetrics_EmitsHealthGauges(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	rtConfig := config.NewRuntimeConfig()
+	checker := &fakeHealthChecker{
+		report: &health.Report{
+			ClusterNodes: []redis.ClusterNode{{
+				ID:      "node-1",
+				IP:      "10.0.0.1",
+				Flags:   "master",
+				Slots:   "0-5460",
+				Primary: "-",
+				State:   "connected",
+			}},
+			MembershipOK:                  true,
+			SlotsCoveredOK:                true,
+			BalancedOK:                    false,
+			ClusterCheckOK:                false,
+			Healthy:                       false,
+			ClusterCheckErrors:            []string{"err-a", "err-b"},
+			ClusterCheckWarnings:          []string{"warn-a"},
+			ClusterCheckCommandOutputCode: 1,
+		},
+	}
+
+	collector := &Collector{
+		runtimeConfig: rtConfig,
+		clusterName:   "test-cluster",
+		namespace:     "default",
+		manager:       NewMetricsManager(reg),
+		healthChecker: checker,
+		logger:        slog.Default(),
+	}
+
+	collector.collectClusterMetrics(context.Background(), []nodeInfo{{name: "test-cluster-0", addr: "node-0:6379"}, {name: "test-cluster-1", addr: "node-1:6379"}}, "secret")
+
+	if checker.password != "secret" {
+		t.Fatalf("expected password to be forwarded, got %q", checker.password)
+	}
+	if len(checker.nodes) != 2 {
+		t.Fatalf("expected 2 nodes to be passed to checker, got %d", len(checker.nodes))
+	}
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	assertGaugeValue(t, families, "redkey_cluster_membership_ok", 1)
+	assertGaugeValue(t, families, "redkey_cluster_slots_covered_ok", 1)
+	assertGaugeValue(t, families, "redkey_cluster_balanced_ok", 0)
+	assertGaugeValue(t, families, "redkey_cluster_healthy", 0)
+	assertGaugeValue(t, families, "redkey_cluster_check_errors", 2)
+	assertGaugeValue(t, families, "redkey_cluster_check_warnings", 1)
+	assertGaugeValue(t, families, "redkey_cluster_check_command_output_code", 1)
+
+	if metricFamilyByName(families, "redkey_nodes_metrics") == nil {
+		t.Fatal("expected redkey_nodes_metrics to be emitted from cluster node report")
+	}
+}
+
+func TestCollector_CollectClusterMetrics_EmitsConservativeValuesOnCheckerError(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	rtConfig := config.NewRuntimeConfig()
+	checker := &fakeHealthChecker{
+		report: &health.Report{ClusterCheckCommandOutputCode: -1},
+		err:    errors.New("redis-cli unavailable"),
+	}
+
+	collector := &Collector{
+		runtimeConfig: rtConfig,
+		clusterName:   "test-cluster",
+		namespace:     "default",
+		manager:       NewMetricsManager(reg),
+		healthChecker: checker,
+		logger:        slog.Default(),
+	}
+
+	collector.collectClusterMetrics(context.Background(), []nodeInfo{{name: "test-cluster-0", addr: "node-0:6379"}}, "")
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	assertGaugeValue(t, families, "redkey_cluster_membership_ok", 0)
+	assertGaugeValue(t, families, "redkey_cluster_slots_covered_ok", 0)
+	assertGaugeValue(t, families, "redkey_cluster_balanced_ok", 0)
+	assertGaugeValue(t, families, "redkey_cluster_healthy", 0)
+	assertGaugeValue(t, families, "redkey_cluster_check_errors", 0)
+	assertGaugeValue(t, families, "redkey_cluster_check_warnings", 0)
+	assertGaugeValue(t, families, "redkey_cluster_check_command_output_code", -1)
+}
+
+func metricFamilyByName(families []*dto.MetricFamily, name string) *dto.MetricFamily {
+	for _, family := range families {
+		if family.GetName() == name {
+			return family
+		}
+	}
+	return nil
+}
+
+func assertGaugeValue(t *testing.T, families []*dto.MetricFamily, name string, expected float64) {
+	t.Helper()
+	family := metricFamilyByName(families, name)
+	if family == nil {
+		t.Fatalf("metric family %s not found", name)
+	}
+	if len(family.GetMetric()) != 1 {
+		t.Fatalf("expected exactly 1 metric for %s, got %d", name, len(family.GetMetric()))
+	}
+	if value := family.GetMetric()[0].GetGauge().GetValue(); value != expected {
+		t.Fatalf("expected %s=%f, got %f", name, expected, value)
 	}
 }

@@ -29,9 +29,20 @@ func NewMetricsManager(registry prometheus.Registerer) *MetricsManager {
 	}
 }
 
-// metricName normalises a Redis INFO key into a valid Prometheus metric name.
+// metricName normalises a metric key into a valid Prometheus metric name
+// with a single redkey_ prefix.
 func metricName(key string) string {
-	return "redis_" + strings.ReplaceAll(key, "-", "_")
+	normalized := strings.ReplaceAll(key, "-", "_")
+	for {
+		switch {
+		case strings.HasPrefix(normalized, "redis_"):
+			normalized = strings.TrimPrefix(normalized, "redis_")
+		case strings.HasPrefix(normalized, "redkey_"):
+			normalized = strings.TrimPrefix(normalized, "redkey_")
+		default:
+			return "redkey_" + normalized
+		}
+	}
 }
 
 // UpdateDynamicMetric registers or updates a dynamic metric.

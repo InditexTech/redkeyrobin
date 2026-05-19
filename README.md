@@ -35,7 +35,7 @@ Designed to help the Operator (Batman) in its duties and seamlessly deployed by 
 
 ## Key Features
 
-- Redis metrics
+- Redis metrics, including cluster health gauges and redis-cli cluster check signals
 - Monitors the RedKey Cluster to ensure it is well-formed and balanced, performing the necessary operations to achieve this
 - Exposes an API to the RedKey Operator so that it can query the status of the RedKey Cluster and perform scaling and upgrading operations
 

@@ -21,8 +21,9 @@ const (
 
 // Client wraps a go-redis client for a single Redis node.
 type Client struct {
-	client *goredis.Client
-	addr   string
+	client   *goredis.Client
+	addr     string
+	password string
 }
 
 // NewClient creates a new Redis client connected to the given address.
@@ -32,8 +33,9 @@ func NewClient(addr, password string) *Client {
 		Password: password,
 	}
 	return &Client{
-		client: goredis.NewClient(opts),
-		addr:   addr,
+		client:   goredis.NewClient(opts),
+		addr:     addr,
+		password: password,
 	}
 }
 

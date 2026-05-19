@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/health"
 	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
@@ -41,12 +42,17 @@ type Collector struct {
 	namespace     string
 	k8sClient     client.Client
 	manager       *MetricsManager
+	healthChecker clusterHealthChecker
 	logger        *slog.Logger
 
 	// cachedPassword holds the Redis password read from the Secret.
 	cachedPassword   string
 	cachedAuthSecret string
 	passwordLoaded   bool
+}
+
+type clusterHealthChecker interface {
+	Check(ctx context.Context, nodes []health.Node, password string) (*health.Report, error)
 }
 
 // NewCollector creates a new metrics Collector.
@@ -56,13 +62,17 @@ func NewCollector(
 	k8sClient client.Client,
 	registry prometheus.Registerer,
 ) *Collector {
+	logger := slog.Default().With("component", "metrics-collector", "cluster", clusterName)
 	return &Collector{
 		runtimeConfig: runtimeConfig,
 		clusterName:   clusterName,
 		namespace:     namespace,
 		k8sClient:     k8sClient,
 		manager:       NewMetricsManager(registry),
-		logger:        slog.Default().With("component", "metrics-collector", "cluster", clusterName),
+		healthChecker: health.NewChecker(logger.With("subcomponent", "cluster-health"), func(addr, password string) health.ClusterClient {
+			return redis.NewClient(addr, password)
+		}, 5*time.Second),
+		logger: logger,
 	}
 }
 
@@ -85,10 +95,6 @@ func (c *Collector) Start(ctx context.Context) error {
 // collect performs a single metrics collection cycle across all cluster nodes.
 func (c *Collector) collect(ctx context.Context) {
 	redisInfoKeys := c.runtimeConfig.RedisInfoKeys()
-	if len(redisInfoKeys) == 0 {
-		c.logger.Debug("No Redis INFO keys configured, skipping collection")
-		return
-	}
 
 	password, err := c.getPassword(ctx)
 	if err != nil {
@@ -102,13 +108,17 @@ func (c *Collector) collect(ctx context.Context) {
 		return
 	}
 
-	for _, node := range nodes {
-		if err := c.collectNode(ctx, node, password, redisInfoKeys); err != nil {
-			c.logger.Warn("Failed to collect metrics from node", "node", node.name, "error", err)
+	if len(redisInfoKeys) == 0 {
+		c.logger.Debug("No Redis INFO keys configured, skipping node INFO collection")
+	} else {
+		for _, node := range nodes {
+			if err := c.collectNode(ctx, node, password, redisInfoKeys); err != nil {
+				c.logger.Warn("Failed to collect metrics from node", "node", node.name, "error", err)
+			}
 		}
 	}
 
-	// Collect cluster-level metrics from the first reachable node.
+	// Collect cluster-level metrics regardless of INFO key selection.
 	c.collectClusterMetrics(ctx, nodes, password)
 }
 
@@ -261,35 +271,48 @@ func (c *Collector) processKeyspaceMetrics(keyspaces map[string]string, tags map
 	}
 }
 
-// collectClusterMetrics collects CLUSTER INFO and CLUSTER NODES metrics.
+// collectClusterMetrics collects CLUSTER INFO, CLUSTER NODES, and health metrics.
 func (c *Collector) collectClusterMetrics(ctx context.Context, nodes []nodeInfo, password string) {
 	if len(nodes) == 0 {
 		return
 	}
 
-	// Use the first node for cluster commands.
-	rc := redis.NewClient(nodes[0].addr, password)
-	defer func() {
-		if err := rc.Close(); err != nil {
-			c.logger.Debug("Error closing Redis client for cluster metrics", "error", err)
-		}
-	}()
+	c.ensureHealthChecker()
 
-	// CLUSTER INFO
-	clusterInfo, err := rc.GetClusterInfo(ctx)
+	report, err := c.healthChecker.Check(ctx, c.toHealthNodes(nodes), password)
 	if err != nil {
-		c.logger.Warn("Failed to get CLUSTER INFO", "error", err)
-	} else {
-		c.processClusterInfo(clusterInfo)
+		c.logger.Warn("Cluster health check reported errors", "error", err)
+	}
+	if report == nil {
+		return
 	}
 
-	// CLUSTER NODES
-	clusterNodes, err := rc.GetClusterNodes(ctx)
-	if err != nil {
-		c.logger.Warn("Failed to get CLUSTER NODES", "error", err)
-	} else {
-		c.processClusterNodes(clusterNodes)
+	if report.ClusterInfo != nil {
+		c.processClusterInfo(report.ClusterInfo)
 	}
+	if len(report.ClusterNodes) > 0 {
+		c.processClusterNodes(report.ClusterNodes)
+	}
+	c.processClusterHealthMetrics(report)
+}
+
+func (c *Collector) ensureHealthChecker() {
+	if c.logger == nil {
+		c.logger = slog.Default().With("component", "metrics-collector", "cluster", c.clusterName)
+	}
+	if c.healthChecker == nil {
+		c.healthChecker = health.NewChecker(c.logger.With("subcomponent", "cluster-health"), func(addr, password string) health.ClusterClient {
+			return redis.NewClient(addr, password)
+		}, 5*time.Second)
+	}
+}
+
+func (c *Collector) toHealthNodes(nodes []nodeInfo) []health.Node {
+	healthNodes := make([]health.Node, 0, len(nodes))
+	for _, node := range nodes {
+		healthNodes = append(healthNodes, health.Node{Name: node.name, Addr: node.addr})
+	}
+	return healthNodes
 }
 
 // processClusterInfo exposes CLUSTER INFO fields as metrics with SetToCurrentTime.
@@ -306,7 +329,7 @@ func (c *Collector) processClusterInfo(info *redis.ClusterInfo) {
 		labelKeys = append(labelKeys, k)
 	}
 
-	c.manager.UpdateDynamicMetricWithTime("redkey_cluster_metrics", tags, labelKeys)
+	c.manager.UpdateDynamicMetricWithTime("cluster_metrics", tags, labelKeys)
 }
 
 // processClusterNodes exposes per-node information from CLUSTER NODES.
@@ -325,8 +348,27 @@ func (c *Collector) processClusterNodes(nodes []redis.ClusterNode) {
 			labelKeys = append(labelKeys, k)
 		}
 
-		c.manager.UpdateDynamicMetricWithTime("redis_nodes_metrics", tags, labelKeys)
+		c.manager.UpdateDynamicMetricWithTime("nodes_metrics", tags, labelKeys)
 	}
+}
+
+func (c *Collector) processClusterHealthMetrics(report *health.Report) {
+	tags := c.buildCommonMetadataTags()
+
+	c.manager.UpdateDynamicMetric("cluster_membership_ok", tags, nil, boolToFloat(report.MembershipOK))
+	c.manager.UpdateDynamicMetric("cluster_slots_covered_ok", tags, nil, boolToFloat(report.SlotsCoveredOK))
+	c.manager.UpdateDynamicMetric("cluster_balanced_ok", tags, nil, boolToFloat(report.BalancedOK))
+	c.manager.UpdateDynamicMetric("cluster_healthy", tags, nil, boolToFloat(report.Healthy))
+	c.manager.UpdateDynamicMetric("cluster_check_errors", tags, nil, float64(len(report.ClusterCheckErrors)))
+	c.manager.UpdateDynamicMetric("cluster_check_warnings", tags, nil, float64(len(report.ClusterCheckWarnings)))
+	c.manager.UpdateDynamicMetric("cluster_check_command_output_code", tags, nil, float64(report.ClusterCheckCommandOutputCode))
+}
+
+func boolToFloat(value bool) float64 {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 // getPassword reads the Redis password from the Kubernetes Secret referenced

@@ -25,7 +25,7 @@ func TestMetricsManager_UpdateDynamicMetric_RegistersOnce(t *testing.T) {
 	}
 
 	for _, f := range families {
-		if f.GetName() == "redis_used_memory" {
+		if f.GetName() == "redkey_used_memory" {
 			m := f.GetMetric()[0]
 			if m.GetGauge().GetValue() != 200 {
 				t.Fatalf("expected 200, got %f", m.GetGauge().GetValue())
@@ -33,7 +33,7 @@ func TestMetricsManager_UpdateDynamicMetric_RegistersOnce(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("metric redis_used_memory not found")
+	t.Fatal("metric redkey_used_memory not found")
 }
 
 func TestMetricsManager_UpdateDynamicMetric_WithAdditionalLabels(t *testing.T) {
@@ -50,7 +50,7 @@ func TestMetricsManager_UpdateDynamicMetric_WithAdditionalLabels(t *testing.T) {
 	}
 
 	for _, f := range families {
-		if f.GetName() == "redis_redis_version" {
+		if f.GetName() == "redkey_version" {
 			m := f.GetMetric()[0]
 			if m.GetGauge().GetValue() != -1 {
 				t.Fatalf("expected -1, got %f", m.GetGauge().GetValue())
@@ -65,7 +65,7 @@ func TestMetricsManager_UpdateDynamicMetric_WithAdditionalLabels(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("metric redis_redis_version not found")
+	t.Fatal("metric redkey_version not found")
 }
 
 func TestMetricsManager_MetricName(t *testing.T) {
@@ -73,9 +73,12 @@ func TestMetricsManager_MetricName(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"used_memory", "redis_used_memory"},
-		{"used-memory-rss", "redis_used_memory_rss"},
-		{"total_commands_processed", "redis_total_commands_processed"},
+		{"used_memory", "redkey_used_memory"},
+		{"used-memory-rss", "redkey_used_memory_rss"},
+		{"total_commands_processed", "redkey_total_commands_processed"},
+		{"redis_version", "redkey_version"},
+		{"redkey_cluster_metrics", "redkey_cluster_metrics"},
+		{"redis_nodes_metrics", "redkey_nodes_metrics"},
 	}
 	for _, tt := range tests {
 		got := metricName(tt.input)
@@ -105,11 +108,11 @@ func TestMetricsManager_MultipleMetrics(t *testing.T) {
 		}
 	}
 
-	if names["redis_used_memory"] != 1024 {
-		t.Fatalf("expected used_memory=1024, got %f", names["redis_used_memory"])
+	if names["redkey_used_memory"] != 1024 {
+		t.Fatalf("expected used_memory=1024, got %f", names["redkey_used_memory"])
 	}
-	if names["redis_connected_clients"] != 5 {
-		t.Fatalf("expected connected_clients=5, got %f", names["redis_connected_clients"])
+	if names["redkey_connected_clients"] != 5 {
+		t.Fatalf("expected connected_clients=5, got %f", names["redkey_connected_clients"])
 	}
 }
 
