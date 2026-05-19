@@ -4,7 +4,7 @@
 
 module github.com/inditextech/redkeyrobin
 
-go 1.26.2
+go 1.26.3
 
 replace github.com/inditextech/redkeyoperator => ../redkeyoperator
 
