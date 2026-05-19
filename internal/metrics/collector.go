@@ -128,21 +128,34 @@ type nodeInfo struct {
 	addr string
 }
 
-// discoverNodes returns the list of Redis nodes based on the applied config's
-// topology (primaries * (1 + replicasPerPrimary)).
+// discoverNodes returns the list of Redis nodes based on pod IPs from the Kubernetes API.
+// Using pod IPs directly works both in-cluster and out-of-cluster (e.g. kind dev).
 func (c *Collector) discoverNodes() []nodeInfo {
 	cfg := c.runtimeConfig.AppliedTopology()
 	if cfg.Primaries <= 0 {
 		return nil
 	}
 
-	nodeCount := int(cfg.Primaries) * (1 + int(cfg.ReplicasPerPrimary))
-	nodes := make([]nodeInfo, 0, nodeCount)
-	for i := range nodeCount {
-		name := fmt.Sprintf("%s-%d", c.clusterName, i)
-		addr := fmt.Sprintf("%s-%d.%s-hl.%s.svc.cluster.local:%d",
-			c.clusterName, i, c.clusterName, c.namespace, redis.DefaultPort)
-		nodes = append(nodes, nodeInfo{name: name, addr: addr})
+	podList := &corev1.PodList{}
+	if err := c.k8sClient.List(context.Background(), podList,
+		client.InNamespace(c.namespace),
+		client.MatchingLabels{
+			"redkey.inditex.dev/cluster":   c.clusterName,
+			"redkey.inditex.dev/component": "redis",
+		},
+	); err != nil {
+		c.logger.Error("Failed to list pods for node discovery", "error", err)
+		return nil
+	}
+
+	nodes := make([]nodeInfo, 0, len(podList.Items))
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		if pod.Status.PodIP == "" {
+			continue
+		}
+		addr := fmt.Sprintf("%s:%d", pod.Status.PodIP, redis.DefaultPort)
+		nodes = append(nodes, nodeInfo{name: pod.Name, addr: addr})
 	}
 	return nodes
 }

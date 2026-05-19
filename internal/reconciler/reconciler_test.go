@@ -28,12 +28,39 @@ func init() {
 }
 
 func newTestReconciler(objs ...client.Object) *Reconciler {
+	// Always include the owner RedkeyCluster so cluster reconciler can find it.
+	hasCluster := false
+	for _, obj := range objs {
+		if _, ok := obj.(*redisv1.RedkeyCluster); ok {
+			hasCluster = true
+			break
+		}
+	}
+	if !hasCluster {
+		objs = append(objs, testRedkeyCluster())
+	}
+
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(objs...).
 		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
 		Build()
 	return NewReconciler(fakeClient, "test-cluster", "default", 5*time.Second, 2*time.Second, config.NewRuntimeConfig())
+}
+
+func testRedkeyCluster() *redisv1.RedkeyCluster {
+	return &redisv1.RedkeyCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cluster",
+			Namespace: "default",
+		},
+		Spec: redisv1.RedkeyClusterSpec{
+			Primaries:          3,
+			ReplicasPerPrimary: 1,
+			Ephemeral:          true,
+			Image:              "redis:7",
+		},
+	}
 }
 
 func makeConfigWithLabels(name string, seq int, phase string, primaries, replicas int32) *redisv1.RedkeyClusterConfig {

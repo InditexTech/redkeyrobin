@@ -7,7 +7,9 @@ package metrics
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,31 +127,58 @@ func TestCollector_FiltersInfoKeys(t *testing.T) {
 }
 
 func TestCollector_DiscoverNodes(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(scheme)
+
 	rtConfig := config.NewRuntimeConfig()
 	rtConfig.SetTopology(3, 1)
+
+	// Create fake pods with IPs.
+	pods := []corev1.Pod{}
+	for i := range 6 {
+		pods = append(pods, corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("my-cluster-%d", i),
+				Namespace: "prod",
+				Labels: map[string]string{
+					"redkey.inditex.dev/cluster":   "my-cluster",
+					"redkey.inditex.dev/component": "redis",
+				},
+			},
+			Status: corev1.PodStatus{
+				PodIP: fmt.Sprintf("10.0.0.%d", i+1),
+			},
+		})
+	}
+
+	objs := make([]runtime.Object, len(pods))
+	for i := range pods {
+		objs[i] = &pods[i]
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objs...).Build()
 
 	collector := &Collector{
 		runtimeConfig: rtConfig,
 		clusterName:   "my-cluster",
 		namespace:     "prod",
+		k8sClient:     fakeClient,
+		logger:        slog.Default(),
 	}
 
 	nodes := collector.discoverNodes()
-	expected := 3 * (1 + 1) // 3 primaries * 2 (1 primary + 1 replica)
+	expected := 6 // 3 primaries * 2 (1 primary + 1 replica)
 	if len(nodes) != expected {
 		t.Fatalf("expected %d nodes, got %d", expected, len(nodes))
 	}
 
-	// Check first and last node names and addresses.
-	if nodes[0].name != "my-cluster-0" {
-		t.Errorf("expected first node name my-cluster-0, got %s", nodes[0].name)
-	}
-	expectedAddr := "my-cluster-0.my-cluster-hl.prod.svc.cluster.local:" + "6379"
-	if nodes[0].addr != expectedAddr {
-		t.Errorf("expected addr %s, got %s", expectedAddr, nodes[0].addr)
-	}
-	if nodes[5].name != "my-cluster-5" {
-		t.Errorf("expected last node name my-cluster-5, got %s", nodes[5].name)
+	// Verify addresses use pod IPs.
+	for _, n := range nodes {
+		if !strings.Contains(n.addr, "10.0.0.") {
+			t.Errorf("expected pod IP-based address, got %s", n.addr)
+		}
+		if !strings.HasSuffix(n.addr, ":6379") {
+			t.Errorf("expected port 6379, got %s", n.addr)
+		}
 	}
 }
 
@@ -161,6 +190,7 @@ func TestCollector_DiscoverNodes_ZeroPrimaries(t *testing.T) {
 		runtimeConfig: rtConfig,
 		clusterName:   "my-cluster",
 		namespace:     "prod",
+		logger:        slog.Default(),
 	}
 
 	nodes := collector.discoverNodes()
@@ -506,11 +536,25 @@ func TestCollector_CollectStillPublishesHealthWhenNoInfoKeys(t *testing.T) {
 		},
 	})
 
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cluster-0",
+			Namespace: "ns",
+			Labels: map[string]string{
+				"redkey.inditex.dev/cluster":   "cluster",
+				"redkey.inditex.dev/component": "redis",
+			},
+		},
+		Status: corev1.PodStatus{PodIP: "10.0.0.1"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(newFakeScheme()).WithRuntimeObjects(pod).Build()
+
 	reg := prometheus.NewRegistry()
 	collector := &Collector{
 		runtimeConfig: rtConfig,
 		clusterName:   "cluster",
 		namespace:     "ns",
+		k8sClient:     fakeClient,
 		manager:       NewMetricsManager(reg),
 		healthChecker: &fakeHealthChecker{
 			report: &health.Report{
@@ -540,30 +584,50 @@ func TestCollector_CollectStillPublishesHealthWhenNoInfoKeys(t *testing.T) {
 func TestCollector_CollectReactsToTopologyChange(t *testing.T) {
 	rtConfig := config.NewRuntimeConfig()
 
+	// Create pods for the maximum topology (6 nodes).
+	var pods []runtime.Object
+	for i := range 6 {
+		pods = append(pods, &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("my-cluster-%d", i),
+				Namespace: "default",
+				Labels: map[string]string{
+					"redkey.inditex.dev/cluster":   "my-cluster",
+					"redkey.inditex.dev/component": "redis",
+				},
+			},
+			Status: corev1.PodStatus{PodIP: fmt.Sprintf("10.0.0.%d", i+1)},
+		})
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(newFakeScheme()).WithRuntimeObjects(pods...).Build()
+
 	collector := &Collector{
 		runtimeConfig: rtConfig,
 		clusterName:   "my-cluster",
 		namespace:     "default",
+		k8sClient:     fakeClient,
+		logger:        slog.Default(),
 	}
 
-	// Initially 0 primaries.
+	// Initially 0 primaries — discoverNodes returns early before listing pods.
 	nodes := collector.discoverNodes()
 	if len(nodes) != 0 {
 		t.Fatalf("expected 0 nodes initially, got %d", len(nodes))
 	}
 
-	// Change topology.
+	// Change topology — now pods are listed, returns all matching pods.
 	rtConfig.SetTopology(3, 1)
 	nodes = collector.discoverNodes()
 	if len(nodes) != 6 {
 		t.Fatalf("expected 6 nodes after topology change, got %d", len(nodes))
 	}
 
-	// Change again.
+	// With fewer pods, still returns all pods that exist with matching labels.
 	rtConfig.SetTopology(2, 0)
 	nodes = collector.discoverNodes()
-	if len(nodes) != 2 {
-		t.Fatalf("expected 2 nodes after second topology change, got %d", len(nodes))
+	// All 6 pods still have the labels, so we get 6 (pod listing is label-based, not topology-based).
+	if len(nodes) != 6 {
+		t.Fatalf("expected 6 nodes (all labeled pods), got %d", len(nodes))
 	}
 }
 

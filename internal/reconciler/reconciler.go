@@ -23,25 +23,27 @@ const (
 // Reconciler implements the polling reconciliation loop for a single RedkeyCluster.
 // It periodically lists RedkeyClusterConfig CRs and processes them sequentially.
 type Reconciler struct {
-	client          client.Client
-	clusterName     string
-	namespace       string
-	interval        time.Duration
-	intervalOnError time.Duration
-	runtimeConfig   *config.RuntimeConfig
-	logger          *slog.Logger
+	client            client.Client
+	clusterName       string
+	namespace         string
+	interval          time.Duration
+	intervalOnError   time.Duration
+	runtimeConfig     *config.RuntimeConfig
+	clusterReconciler *ClusterReconciler
+	logger            *slog.Logger
 }
 
 // NewReconciler creates a new Reconciler.
 func NewReconciler(c client.Client, clusterName, namespace string, interval time.Duration, intervalOnError time.Duration, runtimeConfig *config.RuntimeConfig) *Reconciler {
 	return &Reconciler{
-		client:          c,
-		clusterName:     clusterName,
-		namespace:       namespace,
-		interval:        interval,
-		intervalOnError: intervalOnError,
-		runtimeConfig:   runtimeConfig,
-		logger:          slog.Default().With("component", "reconciler", "cluster", clusterName),
+		client:            c,
+		clusterName:       clusterName,
+		namespace:         namespace,
+		interval:          interval,
+		intervalOnError:   intervalOnError,
+		runtimeConfig:     runtimeConfig,
+		clusterReconciler: NewClusterReconciler(c, clusterName, namespace, runtimeConfig),
+		logger:            slog.Default().With("component", "reconciler", "cluster", clusterName),
 	}
 }
 
@@ -114,10 +116,6 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 		return false, true
 	}
 
-	// TODO: Handle Robin auto-configuration.
-
-	// TODO: Handle monitoring configuration.
-
 	// Apply Robin configuration from the target or applied config.
 	r.applyRobinConfig(targetConfig, previousConfig)
 
@@ -136,18 +134,33 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 			"name", targetConfig.Name,
 			"sequence", targetConfig.Spec.Sequence,
 		)
-		// TODO: apply the targetConfig (future phases will implement this)
+		requeue, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		if err != nil {
+			r.logger.Error("Cluster reconciliation error", "error", err)
+			return requeue, true
+		}
+		return requeue, false
 	case redisv1.ConfigPhaseInProgress:
 		// Resume an already in progress config.
 		r.logger.Info("Resuming in-progress configuration",
 			"name", targetConfig.Name,
 			"sequence", targetConfig.Spec.Sequence,
 		)
-		// TODO: resume applying the targetConfig (future phases will implement this)
+		requeue, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		if err != nil {
+			r.logger.Error("Cluster reconciliation error", "error", err)
+			return requeue, true
+		}
+		return requeue, false
 	case redisv1.ConfigPhaseApplied:
 		// No new config to apply, do a full check of the Redkey Cluster.
 		r.logger.Info("Configuration already applied, performing full cluster check")
-		// TODO: full Redkey Cluster check
+		requeue, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		if err != nil {
+			r.logger.Error("Cluster health check error", "error", err)
+			return requeue, true
+		}
+		return requeue, false
 	default:
 		// This should never happen due to the earlier validation, but we check again just in case.
 		r.logger.Error("Configuration with unknown phase detected",
@@ -157,9 +170,6 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 		)
 		return false, true
 	}
-
-	// Config applied, iterate with the next one immediately in case there are more pending configs.
-	return true, false
 }
 
 // applyRobinConfig reads the RobinConfig from the effective configuration and

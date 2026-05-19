@@ -113,3 +113,146 @@ func TestAddr(t *testing.T) {
 		t.Fatalf("expected '10.0.0.1:6379', got %q", c.Addr())
 	}
 }
+
+func TestPassword(t *testing.T) {
+	c := NewClient("10.0.0.1:6379", "secret")
+	defer func() { _ = c.Close() }()
+
+	if c.Password() != "secret" {
+		t.Fatalf("expected 'secret', got %q", c.Password())
+	}
+}
+
+func TestPassword_Empty(t *testing.T) {
+	c := NewClient("10.0.0.1:6379", "")
+	defer func() { _ = c.Close() }()
+
+	if c.Password() != "" {
+		t.Fatalf("expected empty, got %q", c.Password())
+	}
+}
+
+func TestClose(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+
+	// Should succeed
+	err := c.Close()
+	if err != nil {
+		t.Fatalf("unexpected error on Close: %v", err)
+	}
+
+	// After close, operations should fail
+	_, err = c.GetInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error after closing client")
+	}
+}
+
+func TestGetClusterInfo_FailsOnNonCluster(t *testing.T) {
+	// miniredis doesn't support CLUSTER INFO, so it should return an error
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	_, err := c.GetClusterInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestGetClusterNodes_ReturnsEmptyOnStandalone(t *testing.T) {
+	// miniredis supports CLUSTER NODES but returns empty for standalone
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	nodes, err := c.GetClusterNodes(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Standalone returns empty node list
+	if len(nodes) > 1 {
+		t.Fatalf("expected 0 or 1 nodes from standalone, got %d", len(nodes))
+	}
+}
+
+func TestClusterMyID_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	_, err := c.ClusterMyID(context.Background())
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterMeet_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterMeet(context.Background(), "10.0.0.1", 6379)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterAddSlots_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterAddSlots(context.Background(), 0, 1, 2)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterReplicate_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterReplicate(context.Background(), "some-node-id")
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterReset_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterReset(context.Background(), false)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterForget_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterForget(context.Background(), "some-node-id")
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestGetInfo_Success(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	info, err := c.GetInfo(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info == "" {
+		t.Fatal("expected non-empty INFO response")
+	}
+}

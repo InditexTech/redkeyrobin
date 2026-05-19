@@ -195,3 +195,66 @@ func (c *Client) Close() error {
 func (c *Client) Addr() string {
 	return c.addr
 }
+
+// Password returns the configured password (may be empty).
+func (c *Client) Password() string {
+	return c.password
+}
+
+// ClusterMyID executes CLUSTER MYID and returns the node's unique cluster ID.
+func (c *Client) ClusterMyID(ctx context.Context) (string, error) {
+	result, err := c.client.Do(ctx, "CLUSTER", "MYID").Text()
+	if err != nil {
+		return "", fmt.Errorf("CLUSTER MYID on %s: %w", c.addr, err)
+	}
+	return strings.TrimSpace(result), nil
+}
+
+// ClusterMeet sends CLUSTER MEET to introduce a node to the cluster.
+func (c *Client) ClusterMeet(ctx context.Context, ip string, port int) error {
+	err := c.client.ClusterMeet(ctx, ip, fmt.Sprintf("%d", port)).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER MEET %s:%d on %s: %w", ip, port, c.addr, err)
+	}
+	return nil
+}
+
+// ClusterAddSlots assigns slots to the current node.
+func (c *Client) ClusterAddSlots(ctx context.Context, slots ...int) error {
+	err := c.client.ClusterAddSlots(ctx, slots...).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER ADDSLOTS on %s: %w", c.addr, err)
+	}
+	return nil
+}
+
+// ClusterReplicate makes the current node a replica of the given primary node ID.
+func (c *Client) ClusterReplicate(ctx context.Context, primaryID string) error {
+	err := c.client.ClusterReplicate(ctx, primaryID).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER REPLICATE %s on %s: %w", primaryID, c.addr, err)
+	}
+	return nil
+}
+
+// ClusterReset resets the cluster node. If hard is true, performs a HARD reset.
+func (c *Client) ClusterReset(ctx context.Context, hard bool) error {
+	mode := "SOFT"
+	if hard {
+		mode = "HARD"
+	}
+	err := c.client.Do(ctx, "CLUSTER", "RESET", mode).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER RESET %s on %s: %w", mode, c.addr, err)
+	}
+	return nil
+}
+
+// ClusterForget removes a node from the cluster's node table.
+func (c *Client) ClusterForget(ctx context.Context, nodeID string) error {
+	err := c.client.ClusterForget(ctx, nodeID).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER FORGET %s on %s: %w", nodeID, c.addr, err)
+	}
+	return nil
+}
