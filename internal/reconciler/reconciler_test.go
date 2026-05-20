@@ -345,9 +345,9 @@ func TestSelectConfig_WithSuperseding(t *testing.T) {
 func TestReconcile_NoConfigs(t *testing.T) {
 	r := newTestReconciler()
 
-	hasPending, onError := r.reconcile(context.Background())
-	if hasPending {
-		t.Fatal("expected no pending configs")
+	schedule, onError := r.reconcile(context.Background())
+	if schedule != reconcileAfterInterval {
+		t.Fatalf("expected interval reconcile, got %v", schedule)
 	}
 	if onError {
 		t.Fatal("expected no error")
@@ -359,9 +359,9 @@ func TestReconcile_PendingConfig_TransitionsToInProgress(t *testing.T) {
 
 	r := newTestReconciler(cfg)
 
-	hasPending, onError := r.reconcile(context.Background())
-	if !hasPending {
-		t.Fatal("expected pending=true (there are configs being processed)")
+	schedule, onError := r.reconcile(context.Background())
+	if schedule != reconcileImmediately {
+		t.Fatalf("expected immediate reconcile, got %v", schedule)
 	}
 	if onError {
 		t.Fatal("expected no error")
@@ -382,9 +382,9 @@ func TestReconcile_InProgressConfig_Resumes(t *testing.T) {
 
 	r := newTestReconciler(cfg)
 
-	hasPending, onError := r.reconcile(context.Background())
-	if !hasPending {
-		t.Fatal("expected pending=true")
+	schedule, onError := r.reconcile(context.Background())
+	if schedule != reconcileImmediately {
+		t.Fatalf("expected immediate reconcile, got %v", schedule)
 	}
 	if onError {
 		t.Fatal("expected no error")
@@ -405,14 +405,14 @@ func TestReconcile_AllApplied(t *testing.T) {
 
 	r := newTestReconciler(cfg)
 
-	hasPending, onError := r.reconcile(context.Background())
+	schedule, onError := r.reconcile(context.Background())
 	// When all configs are applied, SelectConfig returns the last one (which is Applied),
 	// so it will try to re-process it (transition to InProgress).
 	// This is expected behavior for the "re-apply last config" case.
 	if onError {
 		t.Fatal("expected no error")
 	}
-	_ = hasPending // The exact value depends on the code path; we just ensure no error.
+	_ = schedule // The exact value depends on the code path; we just ensure no error.
 }
 
 // --- Start tests ---

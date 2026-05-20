@@ -88,12 +88,12 @@ func TestClusterReconciler_HandleNew_CreatesObjectsAndSetsInitializing(t *testin
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	requeue, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !requeue {
-		t.Fatal("expected requeue=true after creating objects")
+	if schedule != reconcileImmediately {
+		t.Fatalf("expected immediate reconcile, got %v", schedule)
 	}
 
 	// Verify status transitioned to Initializing
@@ -119,13 +119,12 @@ func TestClusterReconciler_HandleInitializing_WaitsForPods(t *testing.T) {
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
 	// No StatefulSet exists yet, so AllPodsReady will return error (StatefulSet not found)
-	requeue, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
 
 	// Should get an error because StatefulSet doesn't exist
 	if err == nil {
-		// OR requeue=true because pods aren't ready (depending on implementation)
-		// In our implementation, AllPodsReady tries to GET the StatefulSet and fails
-		_ = requeue
+		// In our implementation, AllPodsReady tries to GET the StatefulSet and fails.
+		_ = schedule
 	}
 }
 
@@ -141,12 +140,12 @@ func TestClusterReconciler_HandleReady_NoOp(t *testing.T) {
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	requeue, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if requeue {
-		t.Fatal("expected requeue=false for Ready state")
+	if schedule != reconcileAfterInterval {
+		t.Fatalf("expected interval reconcile, got %v", schedule)
 	}
 }
 
@@ -162,12 +161,12 @@ func TestClusterReconciler_UnhandledStatus(t *testing.T) {
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	requeue, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if requeue {
-		t.Fatal("expected requeue=false for unhandled status")
+	if schedule != reconcileAfterInterval {
+		t.Fatalf("expected interval reconcile, got %v", schedule)
 	}
 }
 
@@ -351,12 +350,12 @@ func TestClusterReconciler_HandleInitializing_NotReady(t *testing.T) {
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	requeue, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !requeue {
-		t.Fatal("expected requeue=true while waiting for pods")
+	if schedule != reconcileAfterInterval {
+		t.Fatalf("expected interval reconcile while waiting for pods, got %v", schedule)
 	}
 }
 

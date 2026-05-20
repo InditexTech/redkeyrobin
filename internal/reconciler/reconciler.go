@@ -20,6 +20,13 @@ const (
 	ClusterLabel = "redkey.inditex.dev/cluster"
 )
 
+type reconcileSchedule uint8
+
+const (
+	reconcileAfterInterval reconcileSchedule = iota
+	reconcileImmediately
+)
+
 // Reconciler implements the polling reconciliation loop for a single RedkeyCluster.
 // It periodically lists RedkeyClusterConfig CRs and processes them sequentially.
 type Reconciler struct {
@@ -52,15 +59,16 @@ func (r *Reconciler) Start(ctx context.Context) error {
 	r.logger.Info("Starting reconciliation loop", "interval", r.interval)
 
 	// Run an initial reconciliation immediately
-	hasPending, onError := r.reconcile(ctx)
+	schedule, onError := r.reconcile(ctx)
 
 	for {
-		// Adaptive timing: loop immediately if there are pending configs, otherwise wait
 		var waitDuration time.Duration
-		if hasPending {
-			waitDuration = 0
-		} else if onError {
+		if onError {
 			waitDuration = r.intervalOnError
+		} else if schedule == reconcileImmediately {
+			waitDuration = 0
+		} else if schedule == reconcileAfterInterval {
+			waitDuration = 10 * time.Second
 		} else {
 			waitDuration = r.interval
 		}
@@ -70,23 +78,23 @@ func (r *Reconciler) Start(ctx context.Context) error {
 			r.logger.Info("Context cancelled, stopping reconciler")
 			return nil
 		case <-time.After(waitDuration):
-			hasPending, onError = r.reconcile(ctx)
+			schedule, onError = r.reconcile(ctx)
 		}
 	}
 }
 
-// reconcile performs a single reconciliation cycle. It returns true for pendingConfigs if there are
-// pending configs that need processing (signaling the loop to re-poll immediately). It returns true
-// for onError if an error occurred.
-func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onError bool) {
+// reconcile performs a single reconciliation cycle.
+// schedule controls whether the next loop should run immediately or after the configured interval.
+// onError applies the error interval regardless of the returned schedule.
+func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule, onError bool) {
 	previousConfig, targetConfig, err := r.selectConfig(ctx)
 	if err != nil {
 		r.logger.Error("Failed to select RedkeyClusterConfig", "error", err)
-		return false, true
+		return reconcileAfterInterval, true
 	}
 	if targetConfig == nil {
 		r.logger.Info("No actionable RedkeyClusterConfig found")
-		return false, false
+		return reconcileAfterInterval, false
 	}
 
 	// Log information about the target and previous configurations.
@@ -113,7 +121,7 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 			"sequence", targetConfig.Spec.Sequence,
 			"configPhase", targetConfig.Status.ConfigPhase,
 		)
-		return false, true
+		return reconcileAfterInterval, true
 	}
 
 	// Apply Robin configuration from the target or applied config.
@@ -128,39 +136,39 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 			r.logger.Error("Failed to set ConfigPhase to InProgress",
 				"name", targetConfig.Name, "error", err)
 			// We'll retry on the next cycle.
-			return true, true
+			return reconcileAfterInterval, true
 		}
 		r.logger.Info("Starting configuration",
 			"name", targetConfig.Name,
 			"sequence", targetConfig.Spec.Sequence,
 		)
-		requeue, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
 		if err != nil {
 			r.logger.Error("Cluster reconciliation error", "error", err)
-			return requeue, true
+			return schedule, true
 		}
-		return requeue, false
+		return schedule, false
 	case redisv1.ConfigPhaseInProgress:
 		// Resume an already in progress config.
 		r.logger.Info("Resuming in-progress configuration",
 			"name", targetConfig.Name,
 			"sequence", targetConfig.Spec.Sequence,
 		)
-		requeue, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
 		if err != nil {
 			r.logger.Error("Cluster reconciliation error", "error", err)
-			return requeue, true
+			return schedule, true
 		}
-		return requeue, false
+		return schedule, false
 	case redisv1.ConfigPhaseApplied:
 		// No new config to apply, do a full check of the Redkey Cluster.
 		r.logger.Info("Configuration already applied, performing full cluster check")
-		requeue, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
 		if err != nil {
 			r.logger.Error("Cluster health check error", "error", err)
-			return requeue, true
+			return schedule, true
 		}
-		return requeue, false
+		return schedule, false
 	default:
 		// This should never happen due to the earlier validation, but we check again just in case.
 		r.logger.Error("Configuration with unknown phase detected",
@@ -168,7 +176,7 @@ func (r *Reconciler) reconcile(ctx context.Context) (pendingConfigs bool, onErro
 			"sequence", targetConfig.Spec.Sequence,
 			"configPhase", targetConfig.Status.ConfigPhase,
 		)
-		return false, true
+		return reconcileAfterInterval, true
 	}
 }
 

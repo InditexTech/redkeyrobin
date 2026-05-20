@@ -45,8 +45,9 @@ func NewClusterReconciler(c client.Client, clusterName, namespace string, runtim
 }
 
 // ReconcileCluster processes the cluster creation/configuration state machine.
-// It returns requeue=true if the reconciler should re-poll immediately.
-func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, config *redisv1.RedkeyClusterConfig) (requeue bool, err error) {
+// It returns whether the outer reconciliation loop should run immediately again
+// or wait for the configured interval.
+func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, config *redisv1.RedkeyClusterConfig) (schedule reconcileSchedule, err error) {
 	switch config.Status.Status {
 	case "":
 		// New cluster: ensure K8s objects and set status to Initializing.
@@ -62,51 +63,51 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, config *redis
 		return cr.handleReady(ctx, config)
 	default:
 		cr.logger.Info("Unhandled cluster status, skipping", "status", config.Status.Status)
-		return false, nil
+		return reconcileAfterInterval, nil
 	}
 }
 
 // handleNew ensures Kubernetes objects exist and transitions to Initializing.
-func (cr *ClusterReconciler) handleNew(ctx context.Context, config *redisv1.RedkeyClusterConfig) (bool, error) {
+func (cr *ClusterReconciler) handleNew(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
 	cr.logger.Info("New cluster detected, creating Kubernetes objects")
 
 	owner, err := cr.getOwner(ctx)
 	if err != nil {
-		return false, fmt.Errorf("getting owner RedkeyCluster: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("getting owner RedkeyCluster: %w", err)
 	}
 
 	password, err := kubernetes.GetRedisPassword(ctx, cr.client, config.Spec.Auth.SecretName, cr.namespace)
 	if err != nil {
-		return false, fmt.Errorf("getting Redis password: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("getting Redis password: %w", err)
 	}
 	cr.runtimeConfig.SetAuthSecret(config.Spec.Auth.SecretName)
 
 	if err := kubernetes.EnsureClusterObjects(ctx, cr.client, config, owner, password); err != nil {
-		return false, fmt.Errorf("ensuring cluster objects: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("ensuring cluster objects: %w", err)
 	}
 
 	// Transition to Initializing
 	if err := cr.updateClusterStatus(ctx, config, redisv1.ClusterStatusInitializing); err != nil {
-		return false, err
+		return reconcileAfterInterval, err
 	}
 
 	cr.logger.Info("Kubernetes objects created, status set to Initializing")
-	return true, nil
+	return reconcileImmediately, nil
 }
 
 // handleInitializing waits for all pods to be ready, then inits nodes.
-func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *redisv1.RedkeyClusterConfig) (bool, error) {
+func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
 	expectedReplicas := config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary)
 
 	ready, err := kubernetes.AllPodsReady(ctx, cr.client, cr.clusterName, cr.namespace, expectedReplicas)
 	if err != nil {
-		return false, fmt.Errorf("checking pod readiness: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("checking pod readiness: %w", err)
 	}
 
 	if !ready {
 		cr.logger.Info("Waiting for all pods to be ready",
 			"expected", expectedReplicas)
-		return true, nil
+		return reconcileAfterInterval, nil
 	}
 
 	cr.logger.Info("All pods ready, initializing nodes")
@@ -115,7 +116,7 @@ func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *red
 	password := cr.getPassword(ctx, config)
 	nodes, err := cr.initNodes(ctx, config, password)
 	if err != nil {
-		return false, fmt.Errorf("initializing nodes: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("initializing nodes: %w", err)
 	}
 	defer closeNodes(nodes)
 
@@ -123,24 +124,24 @@ func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *red
 	if len(nodes) < int(expectedReplicas) {
 		cr.logger.Info("Not all nodes could be initialized, will retry",
 			"initialized", len(nodes), "expected", expectedReplicas)
-		return true, nil
+		return reconcileAfterInterval, nil
 	}
 
 	// Transition to Configuring
 	if err := cr.updateClusterStatus(ctx, config, redisv1.ClusterStatusConfiguring); err != nil {
-		return false, err
+		return reconcileAfterInterval, err
 	}
 
 	cr.logger.Info("All nodes initialized, status set to Configuring")
-	return true, nil
+	return reconcileImmediately, nil
 }
 
 // handleConfiguring performs cluster formation: meet, assign slots, set replicas.
-func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redisv1.RedkeyClusterConfig) (bool, error) {
+func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
 	password := cr.getPassword(ctx, config)
 	nodes, err := cr.initNodes(ctx, config, password)
 	if err != nil {
-		return false, fmt.Errorf("initializing nodes for configuration: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("initializing nodes for configuration: %w", err)
 	}
 	defer closeNodes(nodes)
 
@@ -148,20 +149,20 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 	if len(nodes) < expectedTotal {
 		cr.logger.Info("Not all nodes available for configuration, will retry",
 			"available", len(nodes), "expected", expectedTotal)
-		return true, nil
+		return reconcileAfterInterval, nil
 	}
 
 	// Step 1: Meet all nodes
 	if err := cr.meetNodes(ctx, nodes); err != nil {
 		cr.logger.Error("Failed to meet nodes", "error", err)
-		return true, nil // retry on next cycle
+		return reconcileAfterInterval, nil
 	}
 
 	// Step 2: Assign slots to primaries
 	primaries := nodes[:config.Spec.Primaries]
 	if err := cr.assignSlots(ctx, primaries); err != nil {
 		cr.logger.Error("Failed to assign slots", "error", err)
-		return true, nil // retry on next cycle
+		return reconcileAfterInterval, nil
 	}
 
 	// Step 3: Set replicas
@@ -169,7 +170,7 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 		replicas := nodes[config.Spec.Primaries:]
 		if err := cr.setReplicas(ctx, primaries, replicas, config.Spec.ReplicasPerPrimary); err != nil {
 			cr.logger.Error("Failed to set replicas", "error", err)
-			return true, nil // retry on next cycle
+			return reconcileAfterInterval, nil
 		}
 	}
 
@@ -177,19 +178,19 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 	clusterOK, err := cr.verifyCluster(ctx, nodes[0])
 	if err != nil {
 		cr.logger.Error("Failed to verify cluster", "error", err)
-		return true, nil
+		return reconcileAfterInterval, nil
 	}
 	if !clusterOK {
 		cr.logger.Info("Cluster not yet converged, will retry")
-		return true, nil
+		return reconcileAfterInterval, nil
 	}
 
 	// Success: transition to Ready and set ConfigPhase to Applied
 	if err := cr.updateClusterStatus(ctx, config, redisv1.ClusterStatusReady); err != nil {
-		return false, err
+		return reconcileAfterInterval, err
 	}
 	if err := cr.setConfigPhaseApplied(ctx, config); err != nil {
-		return false, err
+		return reconcileAfterInterval, err
 	}
 
 	// Update node topology in status
@@ -199,14 +200,14 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 	}
 
 	cr.logger.Info("Cluster formation complete, status set to Ready")
-	return false, nil
+	return reconcileAfterInterval, nil
 }
 
 // handleReady performs a health check on the ready cluster.
-func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyClusterConfig) (bool, error) {
+func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
 	// Health checks will be performed here in the future using the health.Checker.
 	// For now, this is a no-op placeholder.
-	return false, nil
+	return reconcileAfterInterval, nil
 }
 
 // --- Node operations ---
