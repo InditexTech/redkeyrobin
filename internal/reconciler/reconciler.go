@@ -67,8 +67,6 @@ func (r *Reconciler) Start(ctx context.Context) error {
 			waitDuration = r.intervalOnError
 		} else if schedule == reconcileImmediately {
 			waitDuration = 0
-		} else if schedule == reconcileAfterInterval {
-			waitDuration = 10 * time.Second
 		} else {
 			waitDuration = r.interval
 		}
