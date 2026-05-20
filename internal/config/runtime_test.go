@@ -20,6 +20,12 @@ func TestNewRuntimeConfig_Defaults(t *testing.T) {
 	if rc.ReconcilerInterval() != 30*time.Second {
 		t.Fatalf("expected reconciler interval 30s, got %v", rc.ReconcilerInterval())
 	}
+	if rc.ReconcilerIntervalOnError() != 10*time.Second {
+		t.Fatalf("expected reconciler error interval 10s, got %v", rc.ReconcilerIntervalOnError())
+	}
+	if rc.ReconcilerIntervalOnWait() != 10*time.Second {
+		t.Fatalf("expected reconciler wait interval 10s, got %v", rc.ReconcilerIntervalOnWait())
+	}
 	if rc.MetricsInterval() != 60*time.Second {
 		t.Fatalf("expected metrics interval 60s, got %v", rc.MetricsInterval())
 	}
@@ -43,13 +49,21 @@ func TestSetFromRobinConfig_Nil(t *testing.T) {
 	if rc.ReconcilerInterval() != 30*time.Second {
 		t.Fatalf("expected default interval after nil config")
 	}
+	if rc.ReconcilerIntervalOnError() != 10*time.Second {
+		t.Fatalf("expected default error interval after nil config")
+	}
+	if rc.ReconcilerIntervalOnWait() != 10*time.Second {
+		t.Fatalf("expected default wait interval after nil config")
+	}
 }
 
 func TestSetFromRobinConfig_AllFields(t *testing.T) {
 	rc := NewRuntimeConfig()
 	cfg := &redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds: intPtr(5),
+			IntervalSeconds:        intPtr(5),
+			IntervalOnErrorSeconds: intPtr(7),
+			IntervalOnWaitSeconds:  intPtr(11),
 		},
 		Cluster: &redisv1.RobinConfigCluster{
 			ConnectionMaxRetries:     intPtr(3),
@@ -65,6 +79,12 @@ func TestSetFromRobinConfig_AllFields(t *testing.T) {
 
 	if rc.ReconcilerInterval() != 5*time.Second {
 		t.Fatalf("expected reconciler interval 5s, got %v", rc.ReconcilerInterval())
+	}
+	if rc.ReconcilerIntervalOnError() != 7*time.Second {
+		t.Fatalf("expected reconciler error interval 7s, got %v", rc.ReconcilerIntervalOnError())
+	}
+	if rc.ReconcilerIntervalOnWait() != 11*time.Second {
+		t.Fatalf("expected reconciler wait interval 11s, got %v", rc.ReconcilerIntervalOnWait())
 	}
 	if rc.MetricsInterval() != 15*time.Second {
 		t.Fatalf("expected metrics interval 15s, got %v", rc.MetricsInterval())
@@ -96,9 +116,42 @@ func TestSetFromRobinConfig_PartialFields(t *testing.T) {
 	if rc.ReconcilerInterval() != 10*time.Second {
 		t.Fatalf("expected reconciler interval 10s, got %v", rc.ReconcilerInterval())
 	}
+	if rc.ReconcilerIntervalOnError() != 10*time.Second {
+		t.Fatalf("expected default error interval, got %v", rc.ReconcilerIntervalOnError())
+	}
+	if rc.ReconcilerIntervalOnWait() != 10*time.Second {
+		t.Fatalf("expected default wait interval, got %v", rc.ReconcilerIntervalOnWait())
+	}
 	// Metrics should retain default.
 	if rc.MetricsInterval() != 60*time.Second {
 		t.Fatalf("expected default metrics interval, got %v", rc.MetricsInterval())
+	}
+}
+
+func TestSetFromRobinConfig_ResetsReconcilerIntervalsToBootstrap(t *testing.T) {
+	rc := NewRuntimeConfigWithReconcilerIntervals(13*time.Second, 17*time.Second, 19*time.Second)
+	rc.SetFromRobinConfig(&redisv1.RobinConfig{
+		Reconciler: &redisv1.RobinConfigReconciler{
+			IntervalSeconds:        intPtr(5),
+			IntervalOnErrorSeconds: intPtr(7),
+			IntervalOnWaitSeconds:  intPtr(11),
+		},
+	})
+
+	rc.SetFromRobinConfig(&redisv1.RobinConfig{
+		Reconciler: &redisv1.RobinConfigReconciler{
+			IntervalSeconds: intPtr(23),
+		},
+	})
+
+	if rc.ReconcilerInterval() != 23*time.Second {
+		t.Fatalf("expected reconciler interval 23s, got %v", rc.ReconcilerInterval())
+	}
+	if rc.ReconcilerIntervalOnError() != 17*time.Second {
+		t.Fatalf("expected bootstrap error interval 17s, got %v", rc.ReconcilerIntervalOnError())
+	}
+	if rc.ReconcilerIntervalOnWait() != 19*time.Second {
+		t.Fatalf("expected bootstrap wait interval 19s, got %v", rc.ReconcilerIntervalOnWait())
 	}
 }
 
@@ -215,6 +268,8 @@ func TestConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for range 100 {
 				_ = rc.ReconcilerInterval()
+				_ = rc.ReconcilerIntervalOnError()
+				_ = rc.ReconcilerIntervalOnWait()
 				_ = rc.MetricsInterval()
 				_ = rc.RedisInfoKeys()
 				_ = rc.ClusterConfig()

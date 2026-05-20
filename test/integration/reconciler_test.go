@@ -33,6 +33,18 @@ func stopReconcilerLoop(loopCancel context.CancelFunc, errCh <-chan error) {
 	Eventually(errCh, timeout, interval).Should(Receive(BeNil()))
 }
 
+func newTestRuntimeConfig() *config.RuntimeConfig {
+	return config.NewRuntimeConfigWithReconcilerIntervals(
+		50*time.Millisecond,
+		50*time.Millisecond,
+		50*time.Millisecond,
+	)
+}
+
+func newIntegrationReconciler(cluster string, rtConfig *config.RuntimeConfig) *reconciler.Reconciler {
+	return reconciler.NewReconciler(k8sClient, cluster, testNamespace, rtConfig)
+}
+
 var _ = Describe("Reconciler (integration)", func() {
 	AfterEach(func() {
 		cleanup()
@@ -43,7 +55,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			cfg1 := newConfig("rec-cycle-1", 1, "", 3, 1)
 			createAndSetPhase(cfg1, redisv1.ConfigPhasePending)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -71,7 +83,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			}
 			Expect(k8sClient.Create(ctx, cfg1)).To(Succeed())
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -86,7 +98,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			cfg1 := newConfig("rec-resume-1", 1, "", 3, 1)
 			createAndSetPhase(cfg1, redisv1.ConfigPhaseInProgress)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -107,7 +119,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			cfg3 := newConfig("rec-multi-3", 3, "", 7, 1)
 			createAndSetPhase(cfg3, redisv1.ConfigPhasePending)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -135,7 +147,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			cfg4 := newConfig("rec-sup-4", 4, "", 9, 2)
 			createAndSetPhase(cfg4, redisv1.ConfigPhasePending)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -170,7 +182,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, cfg3)).To(Succeed())
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -186,7 +198,7 @@ var _ = Describe("Reconciler (integration)", func() {
 		})
 
 		It("stops cleanly with no configs", func() {
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -205,7 +217,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			cfg3 := newConfig("rec-ip-3", 3, "", 7, 1)
 			createAndSetPhase(cfg3, redisv1.ConfigPhasePending)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 

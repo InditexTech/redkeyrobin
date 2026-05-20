@@ -27,18 +27,6 @@ func init() {
 	_ = redisv1.AddToScheme(clusterTestScheme)
 }
 
-func newTestClusterReconciler(objs ...metav1.Object) *ClusterReconciler {
-	var clientObjs []interface{}
-	_ = clientObjs // not used, we build directly
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(clusterTestScheme).
-		WithObjects(testOwnerCluster()).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
-		Build()
-	return NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
-}
-
 func testOwnerCluster() *redisv1.RedkeyCluster {
 	return &redisv1.RedkeyCluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -354,8 +342,8 @@ func TestClusterReconciler_HandleInitializing_NotReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if schedule != reconcileAfterInterval {
-		t.Fatalf("expected interval reconcile while waiting for pods, got %v", schedule)
+	if schedule != reconcileAfterWaitInterval {
+		t.Fatalf("expected wait reconcile while waiting for pods, got %v", schedule)
 	}
 }
 

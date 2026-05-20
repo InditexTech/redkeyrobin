@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	defaultReconcileInterval        = 30 * time.Second
-	defaultReconcileIntervalOnError = 10 * time.Second
+	defaultReconcileInterval        = time.Duration(robinconfig.DefaultReconcilerIntervalSeconds) * time.Second
+	defaultReconcileIntervalOnError = time.Duration(robinconfig.DefaultReconcilerIntervalOnErrorSeconds) * time.Second
+	defaultReconcileIntervalOnWait  = time.Duration(robinconfig.DefaultReconcilerIntervalOnWaitSeconds) * time.Second
 )
 
 var scheme = runtime.NewScheme()
@@ -43,12 +44,14 @@ func main() {
 	var metricsAddr string
 	var reconcileInterval time.Duration
 	var reconcileIntervalOnError = defaultReconcileIntervalOnError
+	var reconcileIntervalOnWait = defaultReconcileIntervalOnWait
 
 	flag.StringVar(&clusterName, "cluster-name", "", "Name of the RedkeyCluster this Robin instance manages (required)")
 	flag.StringVar(&namespace, "namespace", "", "Namespace of the RedkeyCluster (required)")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to")
 	flag.DurationVar(&reconcileInterval, "reconcile-interval", defaultReconcileInterval, "Polling interval for the reconciliation loop")
 	flag.DurationVar(&reconcileIntervalOnError, "reconcile-interval-on-error", defaultReconcileIntervalOnError, "Polling interval for the reconciliation loop when an error occurs")
+	flag.DurationVar(&reconcileIntervalOnWait, "reconcile-interval-on-wait", defaultReconcileIntervalOnWait, "Polling interval for the reconciliation loop while waiting for convergence")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -69,6 +72,7 @@ func main() {
 		"metricsAddr", metricsAddr,
 		"reconcileInterval", reconcileInterval,
 		"reconcileIntervalOnError", reconcileIntervalOnError,
+		"reconcileIntervalOnWait", reconcileIntervalOnWait,
 	)
 
 	// Build Kubernetes client
@@ -95,18 +99,29 @@ func main() {
 	errChan := make(chan error, 3)
 
 	// Create shared runtime configuration with defaults from CLI flags.
-	runtimeConfig := robinconfig.NewRuntimeConfig()
-	redkeyMetricsRegistry := metrics.NewResettableRegistry()
-	metricsGatherer := prometheus.Gatherers{prometheus.DefaultGatherer, redkeyMetricsRegistry}
+	runtimeConfig := robinconfig.NewRuntimeConfigWithReconcilerIntervals(
+		reconcileInterval,
+		reconcileIntervalOnError,
+		reconcileIntervalOnWait,
+	)
 
 	// Start the reconciliation loop
-	rec := reconciler.NewReconciler(k8sClient, clusterName, namespace, reconcileInterval, reconcileIntervalOnError, runtimeConfig)
+	rec := reconciler.NewReconciler(
+		k8sClient,
+		clusterName,
+		namespace,
+		runtimeConfig,
+	)
 	go func() {
 		if err := rec.Start(ctx); err != nil {
 			logger.Error("Error in reconciler", "error", err)
 			errChan <- err
 		}
 	}()
+
+	// Create the resettable metrics registry
+	redkeyMetricsRegistry := metrics.NewResettableRegistry()
+	metricsGatherer := prometheus.Gatherers{prometheus.DefaultGatherer, redkeyMetricsRegistry}
 
 	// Start the metrics collector (Redis INFO polling)
 	collector := metrics.NewCollector(runtimeConfig, clusterName, namespace, k8sClient, redkeyMetricsRegistry)

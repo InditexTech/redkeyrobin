@@ -174,7 +174,7 @@ func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrim
 	}
 
 	if replicasPerPrimary > 0 {
-		lines = append(lines, fmt.Sprintf("cluster-allow-reads-when-down yes"))
+		lines = append(lines, "cluster-allow-reads-when-down yes")
 	}
 
 	// Add user config

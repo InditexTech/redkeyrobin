@@ -14,8 +14,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/reconciler"
 )
 
 func intPtr(v int) *int { return &v }
@@ -41,7 +39,9 @@ var _ = Describe("Robin Config Application", func() {
 					Version:            "7.0",
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtr(5),
+							IntervalSeconds:        intPtr(5),
+							IntervalOnErrorSeconds: intPtr(3),
+							IntervalOnWaitSeconds:  intPtr(7),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
 							CollectionIntervalSeconds: intPtr(20),
@@ -63,8 +63,8 @@ var _ = Describe("Robin Config Application", func() {
 			Expect(k8sClient.Status().Update(ctx, cfg)).To(Succeed())
 
 			// Create RuntimeConfig and reconciler.
-			rtConfig := config.NewRuntimeConfig()
-			rec := reconciler.NewReconciler(k8sClient, robinCluster, testNamespace, 50*time.Millisecond, 50*time.Millisecond, rtConfig)
+			rtConfig := newTestRuntimeConfig()
+			rec := newIntegrationReconciler(robinCluster, rtConfig)
 
 			// Run reconciliation loop.
 			loopCancel, errCh := startReconcilerLoop(rec)
@@ -74,6 +74,12 @@ var _ = Describe("Robin Config Application", func() {
 			Eventually(func() time.Duration {
 				return rtConfig.ReconcilerInterval()
 			}, timeout, interval).Should(Equal(5 * time.Second))
+			Eventually(func() time.Duration {
+				return rtConfig.ReconcilerIntervalOnError()
+			}, timeout, interval).Should(Equal(3 * time.Second))
+			Eventually(func() time.Duration {
+				return rtConfig.ReconcilerIntervalOnWait()
+			}, timeout, interval).Should(Equal(7 * time.Second))
 
 			// Verify metrics config was also applied.
 			Expect(rtConfig.MetricsInterval()).To(Equal(20 * time.Second))
@@ -91,6 +97,95 @@ var _ = Describe("Robin Config Application", func() {
 
 			// Cleanup.
 			Expect(k8sClient.Delete(ctx, cfg)).To(Succeed())
+		})
+
+		It("should hot-reload reconciler error and wait intervals when a new config changes them", func() {
+			cfg1 := &redisv1.RedkeyClusterConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "robin-cfg-reconciler-a",
+					Namespace: testNamespace,
+					Labels:    map[string]string{clusterLabel: robinCluster},
+				},
+				Spec: redisv1.RedkeyClusterConfigSpec{
+					Sequence:           8,
+					Primaries:          3,
+					ReplicasPerPrimary: 1,
+					Ephemeral:          true,
+					Image:              "redis:7",
+					Version:            "7.0",
+					RobinConfig: &redisv1.RobinConfig{
+						Reconciler: &redisv1.RobinConfigReconciler{
+							IntervalSeconds:        intPtr(5),
+							IntervalOnErrorSeconds: intPtr(2),
+							IntervalOnWaitSeconds:  intPtr(4),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cfg1)).To(Succeed())
+			cfg1.Status = redisv1.RedkeyClusterConfigStatus{
+				ConfigPhase: redisv1.ConfigPhaseApplied,
+				Nodes:       map[string]*redisv1.RedisNode{},
+			}
+			Expect(k8sClient.Status().Update(ctx, cfg1)).To(Succeed())
+
+			rtConfig := newTestRuntimeConfig()
+			rec := newIntegrationReconciler(robinCluster, rtConfig)
+
+			loopCancel, errCh := startReconcilerLoop(rec)
+			defer stopReconcilerLoop(loopCancel, errCh)
+
+			Eventually(func() time.Duration {
+				return rtConfig.ReconcilerIntervalOnError()
+			}, timeout, interval).Should(Equal(2 * time.Second))
+			Eventually(func() time.Duration {
+				return rtConfig.ReconcilerIntervalOnWait()
+			}, timeout, interval).Should(Equal(4 * time.Second))
+
+			cfg2 := &redisv1.RedkeyClusterConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "robin-cfg-reconciler-b",
+					Namespace: testNamespace,
+					Labels:    map[string]string{clusterLabel: robinCluster},
+				},
+				Spec: redisv1.RedkeyClusterConfigSpec{
+					Sequence:           9,
+					Primaries:          3,
+					ReplicasPerPrimary: 1,
+					Ephemeral:          true,
+					Image:              "redis:7",
+					Version:            "7.0",
+					RobinConfig: &redisv1.RobinConfig{
+						Reconciler: &redisv1.RobinConfigReconciler{
+							IntervalSeconds:        intPtr(5),
+							IntervalOnErrorSeconds: intPtr(6),
+							IntervalOnWaitSeconds:  intPtr(8),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cfg2)).To(Succeed())
+			Eventually(func() error {
+				var latest redisv1.RedkeyClusterConfig
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &latest); err != nil {
+					return err
+				}
+				latest.Status = redisv1.RedkeyClusterConfigStatus{
+					ConfigPhase: redisv1.ConfigPhaseApplied,
+					Nodes:       map[string]*redisv1.RedisNode{},
+				}
+				return k8sClient.Status().Update(ctx, &latest)
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() time.Duration {
+				return rtConfig.ReconcilerIntervalOnError()
+			}, timeout, interval).Should(Equal(6 * time.Second))
+			Eventually(func() time.Duration {
+				return rtConfig.ReconcilerIntervalOnWait()
+			}, timeout, interval).Should(Equal(8 * time.Second))
+
+			Expect(k8sClient.Delete(ctx, cfg1)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, cfg2)).To(Succeed())
 		})
 
 		It("should update the runtime config from a Pending config when no previous exists", func() {
@@ -118,8 +213,8 @@ var _ = Describe("Robin Config Application", func() {
 			Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
 
 			// Create RuntimeConfig and reconciler.
-			rtConfig := config.NewRuntimeConfig()
-			rec := reconciler.NewReconciler(k8sClient, robinCluster, testNamespace, 50*time.Millisecond, 50*time.Millisecond, rtConfig)
+			rtConfig := newTestRuntimeConfig()
+			rec := newIntegrationReconciler(robinCluster, rtConfig)
 
 			loopCancel, errCh := startReconcilerLoop(rec)
 			defer stopReconcilerLoop(loopCancel, errCh)
@@ -167,8 +262,8 @@ var _ = Describe("Robin Config Application", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, cfg)).To(Succeed())
 
-			rtConfig := config.NewRuntimeConfig()
-			rec := reconciler.NewReconciler(k8sClient, robinCluster, testNamespace, 50*time.Millisecond, 50*time.Millisecond, rtConfig)
+			rtConfig := newTestRuntimeConfig()
+			rec := newIntegrationReconciler(robinCluster, rtConfig)
 
 			loopCancel, errCh := startReconcilerLoop(rec)
 			defer stopReconcilerLoop(loopCancel, errCh)
@@ -212,8 +307,8 @@ var _ = Describe("Robin Config Application", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, cfg1)).To(Succeed())
 
-			rtConfig := config.NewRuntimeConfig()
-			rec := reconciler.NewReconciler(k8sClient, robinCluster, testNamespace, 50*time.Millisecond, 50*time.Millisecond, rtConfig)
+			rtConfig := newTestRuntimeConfig()
+			rec := newIntegrationReconciler(robinCluster, rtConfig)
 
 			loopCancel, errCh := startReconcilerLoop(rec)
 			defer stopReconcilerLoop(loopCancel, errCh)
@@ -298,8 +393,8 @@ var _ = Describe("Robin Config Application", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, cfg1)).To(Succeed())
 
-			rtConfig := config.NewRuntimeConfig()
-			rec := reconciler.NewReconciler(k8sClient, robinCluster, testNamespace, 50*time.Millisecond, 50*time.Millisecond, rtConfig)
+			rtConfig := newTestRuntimeConfig()
+			rec := newIntegrationReconciler(robinCluster, rtConfig)
 
 			loopCancel, errCh := startReconcilerLoop(rec)
 			defer stopReconcilerLoop(loopCancel, errCh)

@@ -107,7 +107,7 @@ func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *red
 	if !ready {
 		cr.logger.Info("Waiting for all pods to be ready",
 			"expected", expectedReplicas)
-		return reconcileAfterInterval, nil
+		return reconcileAfterWaitInterval, nil
 	}
 
 	cr.logger.Info("All pods ready, initializing nodes")
@@ -124,7 +124,7 @@ func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *red
 	if len(nodes) < int(expectedReplicas) {
 		cr.logger.Info("Not all nodes could be initialized, will retry",
 			"initialized", len(nodes), "expected", expectedReplicas)
-		return reconcileAfterInterval, nil
+		return reconcileAfterWaitInterval, nil
 	}
 
 	// Transition to Configuring
@@ -149,20 +149,20 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 	if len(nodes) < expectedTotal {
 		cr.logger.Info("Not all nodes available for configuration, will retry",
 			"available", len(nodes), "expected", expectedTotal)
-		return reconcileAfterInterval, nil
+		return reconcileAfterWaitInterval, nil
 	}
 
 	// Step 1: Meet all nodes
 	if err := cr.meetNodes(ctx, nodes); err != nil {
 		cr.logger.Error("Failed to meet nodes", "error", err)
-		return reconcileAfterInterval, nil
+		return reconcileAfterWaitInterval, nil
 	}
 
 	// Step 2: Assign slots to primaries
 	primaries := nodes[:config.Spec.Primaries]
 	if err := cr.assignSlots(ctx, primaries); err != nil {
 		cr.logger.Error("Failed to assign slots", "error", err)
-		return reconcileAfterInterval, nil
+		return reconcileAfterWaitInterval, nil
 	}
 
 	// Step 3: Set replicas
@@ -170,7 +170,7 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 		replicas := nodes[config.Spec.Primaries:]
 		if err := cr.setReplicas(ctx, primaries, replicas, config.Spec.ReplicasPerPrimary); err != nil {
 			cr.logger.Error("Failed to set replicas", "error", err)
-			return reconcileAfterInterval, nil
+			return reconcileAfterWaitInterval, nil
 		}
 	}
 
@@ -178,11 +178,11 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 	clusterOK, err := cr.verifyCluster(ctx, nodes[0])
 	if err != nil {
 		cr.logger.Error("Failed to verify cluster", "error", err)
-		return reconcileAfterInterval, nil
+		return reconcileAfterWaitInterval, nil
 	}
 	if !clusterOK {
 		cr.logger.Info("Cluster not yet converged, will retry")
-		return reconcileAfterInterval, nil
+		return reconcileAfterWaitInterval, nil
 	}
 
 	// Success: transition to Ready and set ConfigPhase to Applied

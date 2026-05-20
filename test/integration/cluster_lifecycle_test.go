@@ -17,8 +17,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/reconciler"
 )
 
 var _ = Describe("Cluster Lifecycle (integration)", func() {
@@ -76,7 +74,7 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 			createAndSetPhase(cfg, redisv1.ConfigPhasePending)
 
 			// Start reconciler
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -135,7 +133,7 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 			cfg.Spec.Ephemeral = true
 			createAndSetPhase(cfg, redisv1.ConfigPhasePending)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -173,7 +171,7 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 			cfg.Spec.Ephemeral = true
 			createAndSetPhase(cfg, redisv1.ConfigPhasePending)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
@@ -227,7 +225,7 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 			cfg.Spec.Auth.SecretName = "redis-auth"
 			createAndSetPhase(cfg, redisv1.ConfigPhasePending)
 
-			rec := reconciler.NewReconciler(k8sClient, clusterName, testNamespace, 50*time.Millisecond, 50*time.Millisecond, config.NewRuntimeConfig())
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
 			loopCancel, errCh := startReconcilerLoop(rec)
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 

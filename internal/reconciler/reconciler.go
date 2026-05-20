@@ -24,6 +24,7 @@ type reconcileSchedule uint8
 
 const (
 	reconcileAfterInterval reconcileSchedule = iota
+	reconcileAfterWaitInterval
 	reconcileImmediately
 )
 
@@ -35,19 +36,25 @@ type Reconciler struct {
 	namespace         string
 	interval          time.Duration
 	intervalOnError   time.Duration
+	intervalOnWait    time.Duration
 	runtimeConfig     *config.RuntimeConfig
 	clusterReconciler *ClusterReconciler
 	logger            *slog.Logger
 }
 
 // NewReconciler creates a new Reconciler.
-func NewReconciler(c client.Client, clusterName, namespace string, interval time.Duration, intervalOnError time.Duration, runtimeConfig *config.RuntimeConfig) *Reconciler {
+func NewReconciler(c client.Client, clusterName, namespace string, runtimeConfig *config.RuntimeConfig) *Reconciler {
+	if runtimeConfig == nil {
+		runtimeConfig = config.NewRuntimeConfig()
+	}
+
 	return &Reconciler{
 		client:            c,
 		clusterName:       clusterName,
 		namespace:         namespace,
-		interval:          interval,
-		intervalOnError:   intervalOnError,
+		interval:          runtimeConfig.ReconcilerInterval(),
+		intervalOnError:   runtimeConfig.ReconcilerIntervalOnError(),
+		intervalOnWait:    runtimeConfig.ReconcilerIntervalOnWait(),
 		runtimeConfig:     runtimeConfig,
 		clusterReconciler: NewClusterReconciler(c, clusterName, namespace, runtimeConfig),
 		logger:            slog.Default().With("component", "reconciler", "cluster", clusterName),
@@ -56,33 +63,45 @@ func NewReconciler(c client.Client, clusterName, namespace string, interval time
 
 // Start begins the polling reconciliation loop. It blocks until the context is cancelled.
 func (r *Reconciler) Start(ctx context.Context) error {
-	r.logger.Info("Starting reconciliation loop", "interval", r.interval)
+	r.logger.Info(
+		"Starting reconciliation loop",
+		"interval", r.interval,
+		"intervalOnError", r.intervalOnError,
+		"intervalOnWait", r.intervalOnWait,
+	)
 
 	// Run an initial reconciliation immediately
 	schedule, onError := r.reconcile(ctx)
 
 	for {
-		var waitDuration time.Duration
-		if onError {
-			waitDuration = r.intervalOnError
-		} else if schedule == reconcileImmediately {
-			waitDuration = 0
-		} else {
-			waitDuration = r.interval
-		}
-
 		select {
 		case <-ctx.Done():
 			r.logger.Info("Context cancelled, stopping reconciler")
 			return nil
-		case <-time.After(waitDuration):
+		case <-time.After(r.nextWaitDuration(schedule, onError)):
 			schedule, onError = r.reconcile(ctx)
 		}
 	}
 }
 
+func (r *Reconciler) nextWaitDuration(schedule reconcileSchedule, onError bool) time.Duration {
+	if onError {
+		return r.intervalOnError
+	}
+
+	switch schedule {
+	case reconcileImmediately:
+		return 0
+	case reconcileAfterWaitInterval:
+		return r.intervalOnWait
+	default:
+		return r.interval
+	}
+}
+
 // reconcile performs a single reconciliation cycle.
-// schedule controls whether the next loop should run immediately or after the configured interval.
+// schedule controls whether the next loop should run immediately or after the
+// idle/wait configured interval.
 // onError applies the error interval regardless of the returned schedule.
 func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule, onError bool) {
 	previousConfig, targetConfig, err := r.selectConfig(ctx)
@@ -205,14 +224,24 @@ func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyClusterConfig, previ
 		}
 	}
 
-	if effectiveConfig.Spec.RobinConfig != nil {
-		r.runtimeConfig.SetFromRobinConfig(effectiveConfig.Spec.RobinConfig)
-		// Update reconciler interval from the runtime config.
-		newInterval := r.runtimeConfig.ReconcilerInterval()
-		if newInterval != r.interval {
-			r.logger.Info("Updating reconciler interval", "old", r.interval, "new", newInterval)
-			r.interval = newInterval
-		}
+	r.runtimeConfig.SetFromRobinConfig(effectiveConfig.Spec.RobinConfig)
+
+	newInterval := r.runtimeConfig.ReconcilerInterval()
+	if newInterval != r.interval {
+		r.logger.Info("Updating reconciler interval", "old", r.interval, "new", newInterval)
+		r.interval = newInterval
+	}
+
+	newIntervalOnError := r.runtimeConfig.ReconcilerIntervalOnError()
+	if newIntervalOnError != r.intervalOnError {
+		r.logger.Info("Updating reconciler error interval", "old", r.intervalOnError, "new", newIntervalOnError)
+		r.intervalOnError = newIntervalOnError
+	}
+
+	newIntervalOnWait := r.runtimeConfig.ReconcilerIntervalOnWait()
+	if newIntervalOnWait != r.intervalOnWait {
+		r.logger.Info("Updating reconciler wait interval", "old", r.intervalOnWait, "new", newIntervalOnWait)
+		r.intervalOnWait = newIntervalOnWait
 	}
 
 	// Update topology for node discovery (always from the effective config).

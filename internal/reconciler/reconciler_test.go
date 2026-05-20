@@ -45,7 +45,7 @@ func newTestReconciler(objs ...client.Object) *Reconciler {
 		WithObjects(objs...).
 		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
 		Build()
-	return NewReconciler(fakeClient, "test-cluster", "default", 5*time.Second, 2*time.Second, config.NewRuntimeConfig())
+	return NewReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfigWithReconcilerIntervals(5*time.Second, 2*time.Second, 10*time.Second))
 }
 
 func testRedkeyCluster() *redisv1.RedkeyCluster {
@@ -89,7 +89,7 @@ func makeConfigWithLabels(name string, seq int, phase string, primaries, replica
 
 func TestNewReconciler(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
-	r := NewReconciler(fakeClient, "my-cluster", "ns-1", 10*time.Second, 3*time.Second, config.NewRuntimeConfig())
+	r := NewReconciler(fakeClient, "my-cluster", "ns-1", config.NewRuntimeConfigWithReconcilerIntervals(10*time.Second, 3*time.Second, 7*time.Second))
 
 	if r.clusterName != "my-cluster" {
 		t.Fatalf("expected clusterName 'my-cluster', got '%s'", r.clusterName)
@@ -103,11 +103,49 @@ func TestNewReconciler(t *testing.T) {
 	if r.intervalOnError != 3*time.Second {
 		t.Fatalf("expected intervalOnError 3s, got %v", r.intervalOnError)
 	}
+	if r.intervalOnWait != 7*time.Second {
+		t.Fatalf("expected intervalOnWait 7s, got %v", r.intervalOnWait)
+	}
 	if r.client == nil {
 		t.Fatal("expected non-nil client")
 	}
 	if r.logger == nil {
 		t.Fatal("expected non-nil logger")
+	}
+}
+
+func TestNewReconciler_CreatesDefaultRuntimeConfigWhenNil(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+	r := NewReconciler(fakeClient, "my-cluster", "ns-1", nil)
+
+	if r.runtimeConfig == nil {
+		t.Fatal("expected runtimeConfig to be initialized")
+	}
+	if r.interval != 30*time.Second {
+		t.Fatalf("expected default interval 30s, got %v", r.interval)
+	}
+	if r.intervalOnError != 10*time.Second {
+		t.Fatalf("expected default intervalOnError 10s, got %v", r.intervalOnError)
+	}
+	if r.intervalOnWait != 10*time.Second {
+		t.Fatalf("expected default intervalOnWait 10s, got %v", r.intervalOnWait)
+	}
+}
+
+func TestNextWaitDuration(t *testing.T) {
+	r := newTestReconciler()
+
+	if got := r.nextWaitDuration(reconcileImmediately, false); got != 0 {
+		t.Fatalf("expected immediate wait duration 0, got %v", got)
+	}
+	if got := r.nextWaitDuration(reconcileAfterInterval, false); got != 5*time.Second {
+		t.Fatalf("expected idle wait duration 5s, got %v", got)
+	}
+	if got := r.nextWaitDuration(reconcileAfterWaitInterval, false); got != 10*time.Second {
+		t.Fatalf("expected wait-state duration 10s, got %v", got)
+	}
+	if got := r.nextWaitDuration(reconcileAfterInterval, true); got != 2*time.Second {
+		t.Fatalf("expected error wait duration 2s, got %v", got)
 	}
 }
 
@@ -490,11 +528,13 @@ func TestApplySupersedingStatus_Success(t *testing.T) {
 
 // --- applyRobinConfig tests ---
 
-func TestApplyRobinConfig_UpdatesReconcilerInterval(t *testing.T) {
+func TestApplyRobinConfig_UpdatesReconcilerIntervals(t *testing.T) {
 	cfg := makeConfigWithLabels("cfg-interval", 1, redisv1.ConfigPhaseApplied, 3, 1)
 	cfg.Spec.RobinConfig = &redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds: intPtr(20),
+			IntervalSeconds:        intPtr(20),
+			IntervalOnErrorSeconds: intPtr(3),
+			IntervalOnWaitSeconds:  intPtr(9),
 		},
 	}
 
@@ -510,9 +550,21 @@ func TestApplyRobinConfig_UpdatesReconcilerInterval(t *testing.T) {
 	if r.runtimeConfig.ReconcilerInterval() != 20*time.Second {
 		t.Fatalf("expected runtimeConfig interval 20s, got %v", r.runtimeConfig.ReconcilerInterval())
 	}
+	if r.runtimeConfig.ReconcilerIntervalOnError() != 3*time.Second {
+		t.Fatalf("expected runtimeConfig intervalOnError 3s, got %v", r.runtimeConfig.ReconcilerIntervalOnError())
+	}
+	if r.runtimeConfig.ReconcilerIntervalOnWait() != 9*time.Second {
+		t.Fatalf("expected runtimeConfig intervalOnWait 9s, got %v", r.runtimeConfig.ReconcilerIntervalOnWait())
+	}
 	// Reconciler's own interval field should be updated.
 	if r.interval != 20*time.Second {
 		t.Fatalf("expected r.interval 20s, got %v", r.interval)
+	}
+	if r.intervalOnError != 3*time.Second {
+		t.Fatalf("expected r.intervalOnError 3s, got %v", r.intervalOnError)
+	}
+	if r.intervalOnWait != 9*time.Second {
+		t.Fatalf("expected r.intervalOnWait 9s, got %v", r.intervalOnWait)
 	}
 }
 
@@ -550,7 +602,9 @@ func TestApplyRobinConfig_UsesPreviousWhenTargetIsPending(t *testing.T) {
 	prev := makeConfigWithLabels("cfg-prev", 1, redisv1.ConfigPhaseApplied, 3, 1)
 	prev.Spec.RobinConfig = &redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds: intPtr(15),
+			IntervalSeconds:        intPtr(15),
+			IntervalOnErrorSeconds: intPtr(4),
+			IntervalOnWaitSeconds:  intPtr(6),
 		},
 	}
 	prev.Spec.Auth = redisv1.RedisAuth{SecretName: "prev-secret"}
@@ -559,7 +613,9 @@ func TestApplyRobinConfig_UsesPreviousWhenTargetIsPending(t *testing.T) {
 	target := makeConfigWithLabels("cfg-target", 2, redisv1.ConfigPhasePending, 5, 2)
 	target.Spec.RobinConfig = &redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds: intPtr(99),
+			IntervalSeconds:        intPtr(99),
+			IntervalOnErrorSeconds: intPtr(8),
+			IntervalOnWaitSeconds:  intPtr(12),
 		},
 	}
 	target.Spec.Auth = redisv1.RedisAuth{SecretName: "target-secret"}
@@ -571,18 +627,41 @@ func TestApplyRobinConfig_UsesPreviousWhenTargetIsPending(t *testing.T) {
 	if r.runtimeConfig.ReconcilerInterval() != 15*time.Second {
 		t.Fatalf("expected interval from previous (15s), got %v", r.runtimeConfig.ReconcilerInterval())
 	}
+	if r.runtimeConfig.ReconcilerIntervalOnError() != 4*time.Second {
+		t.Fatalf("expected error interval from previous (4s), got %v", r.runtimeConfig.ReconcilerIntervalOnError())
+	}
+	if r.runtimeConfig.ReconcilerIntervalOnWait() != 6*time.Second {
+		t.Fatalf("expected wait interval from previous (6s), got %v", r.runtimeConfig.ReconcilerIntervalOnWait())
+	}
 	if r.runtimeConfig.AuthSecret() != "prev-secret" {
 		t.Fatalf("expected auth secret from previous, got %q", r.runtimeConfig.AuthSecret())
 	}
 }
 
-func TestApplyRobinConfig_NilRobinConfigDoesNotPanic(t *testing.T) {
+func TestApplyRobinConfig_NilRobinConfigResetsIntervalsToBootstrap(t *testing.T) {
 	cfg := makeConfigWithLabels("cfg-norobin", 1, redisv1.ConfigPhaseApplied, 3, 1)
-	// RobinConfig is nil.
+	cfgWithIntervals := makeConfigWithLabels("cfg-with-intervals", 2, redisv1.ConfigPhaseApplied, 3, 1)
+	cfgWithIntervals.Spec.RobinConfig = &redisv1.RobinConfig{
+		Reconciler: &redisv1.RobinConfigReconciler{
+			IntervalSeconds:        intPtr(21),
+			IntervalOnErrorSeconds: intPtr(8),
+			IntervalOnWaitSeconds:  intPtr(13),
+		},
+	}
 
-	r := newTestReconciler(cfg)
-	// Should not panic. Topology and auth should still be set.
+	r := newTestReconciler(cfg, cfgWithIntervals)
+	r.applyRobinConfig(cfgWithIntervals, nil)
 	r.applyRobinConfig(cfg, nil)
+
+	if r.interval != 5*time.Second {
+		t.Fatalf("expected bootstrap interval 5s, got %v", r.interval)
+	}
+	if r.intervalOnError != 2*time.Second {
+		t.Fatalf("expected bootstrap intervalOnError 2s, got %v", r.intervalOnError)
+	}
+	if r.intervalOnWait != 10*time.Second {
+		t.Fatalf("expected bootstrap intervalOnWait 10s, got %v", r.intervalOnWait)
+	}
 
 	topo := r.runtimeConfig.AppliedTopology()
 	if topo.Primaries != 3 || topo.ReplicasPerPrimary != 1 {

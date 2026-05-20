@@ -73,7 +73,7 @@ make run                                 # runs Robin locally
 make run CLUSTER_NAME=mycluster NAMESPACE=mynamespace
 ```
 
-Robin requires `--cluster-name` and `--namespace`. It also exposes `--metrics-bind-address`, `--reconcile-interval`, and `--reconcile-interval-on-error`.
+Robin requires `--cluster-name` and `--namespace`. It also exposes `--metrics-bind-address`, `--reconcile-interval`, `--reconcile-interval-on-error`, and `--reconcile-interval-on-wait`.
 
 ### Container image
 
@@ -153,7 +153,7 @@ make test-all
 
 - A Robin process is scoped to one `RedkeyCluster`.
 - The reconciliation loop polls `RedkeyClusterConfig` objects in sequence and should remain idempotent.
-- State transitions that can continue synchronously may trigger an immediate re-poll, but waiting states (for example pods becoming Ready or cluster convergence) must use the configured interval; idle and error states use their respective configured intervals.
+- State transitions that can continue synchronously may trigger an immediate re-poll, but waiting states (for example pods becoming Ready or cluster convergence) must use the configured wait interval; idle and error states use their respective configured intervals.
 - Changes to CRD types come from the operator repository, not from Robin directly; keep the local module replacement aligned with the sibling checkout.
 - REUSE compliance is required: every source file must have an `SPDX-FileCopyrightText` and `SPDX-License-Identifier` header.
 

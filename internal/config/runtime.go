@@ -14,6 +14,10 @@ import (
 const (
 	// DefaultReconcilerIntervalSeconds is the default reconciliation loop interval.
 	DefaultReconcilerIntervalSeconds = 30
+	// DefaultReconcilerIntervalOnErrorSeconds is the default reconciliation loop interval after errors.
+	DefaultReconcilerIntervalOnErrorSeconds = 10
+	// DefaultReconcilerIntervalOnWaitSeconds is the default reconciliation loop interval while waiting.
+	DefaultReconcilerIntervalOnWaitSeconds = 10
 	// DefaultMetricsIntervalSeconds is the default metrics collection interval.
 	DefaultMetricsIntervalSeconds = 60
 	// DefaultConnectionMaxRetries is the default number of connection retries.
@@ -60,39 +64,73 @@ type Topology struct {
 // It is safe for concurrent access by the reconciler (writer) and the metrics
 // collector (reader).
 type RuntimeConfig struct {
-	mu                       sync.RWMutex
-	reconcilerInterval       time.Duration
-	metricsInterval          time.Duration
-	redisInfoKeys            []string
-	metricsLabels            map[string]string
-	connectionMaxRetries     int
-	connectionBackOffSeconds int
-	topology                 Topology
-	authSecret               string
+	mu                               sync.RWMutex
+	bootstrapReconcilerInterval      time.Duration
+	bootstrapReconcilerIntervalError time.Duration
+	bootstrapReconcilerIntervalWait  time.Duration
+	reconcilerInterval               time.Duration
+	reconcilerIntervalOnError        time.Duration
+	reconcilerIntervalOnWait         time.Duration
+	metricsInterval                  time.Duration
+	redisInfoKeys                    []string
+	metricsLabels                    map[string]string
+	connectionMaxRetries             int
+	connectionBackOffSeconds         int
+	topology                         Topology
+	authSecret                       string
 }
 
 // NewRuntimeConfig creates a RuntimeConfig with default values.
 func NewRuntimeConfig() *RuntimeConfig {
+	return NewRuntimeConfigWithReconcilerIntervals(
+		time.Duration(DefaultReconcilerIntervalSeconds)*time.Second,
+		time.Duration(DefaultReconcilerIntervalOnErrorSeconds)*time.Second,
+		time.Duration(DefaultReconcilerIntervalOnWaitSeconds)*time.Second,
+	)
+}
+
+// NewRuntimeConfigWithReconcilerIntervals creates a RuntimeConfig using the
+// provided reconciliation intervals as bootstrap defaults.
+func NewRuntimeConfigWithReconcilerIntervals(interval, intervalOnError, intervalOnWait time.Duration) *RuntimeConfig {
 	return &RuntimeConfig{
-		reconcilerInterval:       time.Duration(DefaultReconcilerIntervalSeconds) * time.Second,
-		metricsInterval:          time.Duration(DefaultMetricsIntervalSeconds) * time.Second,
-		redisInfoKeys:            append([]string{}, DefaultRedisInfoKeys...),
-		connectionMaxRetries:     DefaultConnectionMaxRetries,
-		connectionBackOffSeconds: DefaultConnectionBackOffSeconds,
+		bootstrapReconcilerInterval:      interval,
+		bootstrapReconcilerIntervalError: intervalOnError,
+		bootstrapReconcilerIntervalWait:  intervalOnWait,
+		reconcilerInterval:               interval,
+		reconcilerIntervalOnError:        intervalOnError,
+		reconcilerIntervalOnWait:         intervalOnWait,
+		metricsInterval:                  time.Duration(DefaultMetricsIntervalSeconds) * time.Second,
+		redisInfoKeys:                    append([]string{}, DefaultRedisInfoKeys...),
+		connectionMaxRetries:             DefaultConnectionMaxRetries,
+		connectionBackOffSeconds:         DefaultConnectionBackOffSeconds,
 	}
 }
 
 // SetFromRobinConfig updates the runtime configuration from a RobinConfig obtained
-// from a RedkeyClusterConfig resource. Nil fields are left unchanged (preserving defaults).
+// from a RedkeyClusterConfig resource. Reconciler intervals fall back to their
+// bootstrap defaults when omitted from the CR.
 func (rc *RuntimeConfig) SetFromRobinConfig(cfg *redisv1.RobinConfig) {
-	if cfg == nil {
-		return
-	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
-	if cfg.Reconciler != nil && cfg.Reconciler.IntervalSeconds != nil {
-		rc.reconcilerInterval = time.Duration(*cfg.Reconciler.IntervalSeconds) * time.Second
+	rc.reconcilerInterval = rc.bootstrapReconcilerInterval
+	rc.reconcilerIntervalOnError = rc.bootstrapReconcilerIntervalError
+	rc.reconcilerIntervalOnWait = rc.bootstrapReconcilerIntervalWait
+
+	if cfg == nil {
+		return
+	}
+
+	if cfg.Reconciler != nil {
+		if cfg.Reconciler.IntervalSeconds != nil {
+			rc.reconcilerInterval = time.Duration(*cfg.Reconciler.IntervalSeconds) * time.Second
+		}
+		if cfg.Reconciler.IntervalOnErrorSeconds != nil {
+			rc.reconcilerIntervalOnError = time.Duration(*cfg.Reconciler.IntervalOnErrorSeconds) * time.Second
+		}
+		if cfg.Reconciler.IntervalOnWaitSeconds != nil {
+			rc.reconcilerIntervalOnWait = time.Duration(*cfg.Reconciler.IntervalOnWaitSeconds) * time.Second
+		}
 	}
 	if cfg.Metrics != nil {
 		if cfg.Metrics.CollectionIntervalSeconds != nil {
@@ -124,6 +162,20 @@ func (rc *RuntimeConfig) ReconcilerInterval() time.Duration {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
 	return rc.reconcilerInterval
+}
+
+// ReconcilerIntervalOnError returns the current reconciliation interval after errors.
+func (rc *RuntimeConfig) ReconcilerIntervalOnError() time.Duration {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	return rc.reconcilerIntervalOnError
+}
+
+// ReconcilerIntervalOnWait returns the current reconciliation interval while waiting.
+func (rc *RuntimeConfig) ReconcilerIntervalOnWait() time.Duration {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	return rc.reconcilerIntervalOnWait
 }
 
 // MetricsInterval returns the current metrics collection interval.
