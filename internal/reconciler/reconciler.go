@@ -84,6 +84,7 @@ func (r *Reconciler) Start(ctx context.Context) error {
 	}
 }
 
+// Return the corresponding wait duration depending on the scheduling required and if we had any error.
 func (r *Reconciler) nextWaitDuration(schedule reconcileSchedule, onError bool) time.Duration {
 	if onError {
 		return r.intervalOnError
