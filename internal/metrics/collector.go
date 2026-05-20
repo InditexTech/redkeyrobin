@@ -49,6 +49,10 @@ type Collector struct {
 	cachedPassword   string
 	cachedAuthSecret string
 	passwordLoaded   bool
+
+	metricsLabelsLoaded bool
+	metricsLabels       map[string]string
+	metricsLabelKeys    []string
 }
 
 type clusterHealthChecker interface {
@@ -94,6 +98,7 @@ func (c *Collector) Start(ctx context.Context) error {
 
 // collect performs a single metrics collection cycle across all cluster nodes.
 func (c *Collector) collect(ctx context.Context) {
+	c.reconcileMetricsLabelSchema()
 	redisInfoKeys := c.runtimeConfig.RedisInfoKeys()
 
 	password, err := c.getPassword(ctx)
@@ -177,6 +182,70 @@ func (c *Collector) buildCommonMetadataTags() map[string]string {
 		tags[k] = v
 	}
 	return tags
+}
+
+func (c *Collector) reconcileMetricsLabelSchema() {
+	currentLabels := c.runtimeConfig.MetricsLabels()
+	currentKeys := sortedMetricsLabelKeys(currentLabels)
+
+	if !c.metricsLabelsLoaded {
+		c.metricsLabelsLoaded = true
+		c.metricsLabels = currentLabels
+		c.metricsLabelKeys = currentKeys
+		return
+	}
+
+	if !slices.Equal(c.metricsLabelKeys, currentKeys) {
+		if c.manager != nil {
+			if c.manager.ResetRegistry() {
+				c.logMetricsLabelChange("Reset RedKey metrics registry after metrics label keys changed", currentKeys)
+			} else {
+				c.manager.ResetMetrics()
+				if c.logger != nil {
+					c.logger.Warn("Metrics label keys changed but registry is not resettable; keeping existing metric label schema", "oldKeys", c.metricsLabelKeys, "newKeys", currentKeys)
+				}
+			}
+		}
+		c.metricsLabels = currentLabels
+		c.metricsLabelKeys = currentKeys
+		return
+	}
+
+	if !equalStringMaps(c.metricsLabels, currentLabels) {
+		if c.manager != nil {
+			c.manager.ResetMetrics()
+		}
+		c.logMetricsLabelChange("Reset RedKey metric values after metrics label values changed", currentKeys)
+		c.metricsLabels = currentLabels
+	}
+}
+
+func (c *Collector) logMetricsLabelChange(message string, newKeys []string) {
+	if c.logger == nil {
+		return
+	}
+	c.logger.Info(message, "oldKeys", c.metricsLabelKeys, "newKeys", newKeys)
+}
+
+func sortedMetricsLabelKeys(labels map[string]string) []string {
+	keys := make([]string, 0, len(labels))
+	for key := range labels {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func equalStringMaps(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, aValue := range a {
+		if b[key] != aValue {
+			return false
+		}
+	}
+	return true
 }
 
 // collectNode collects INFO ALL from a single Redis node and updates metrics.

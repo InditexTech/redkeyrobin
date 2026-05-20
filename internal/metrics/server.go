@@ -11,19 +11,30 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server is a Prometheus metrics HTTP server.
 type Server struct {
 	bindAddr string
+	gatherer prometheus.Gatherer
 	logger   *slog.Logger
 }
 
 // NewServer creates a new metrics Server.
 func NewServer(bindAddr string) *Server {
+	return NewServerWithGatherer(bindAddr, prometheus.DefaultGatherer)
+}
+
+// NewServerWithGatherer creates a new metrics Server using the supplied gatherer.
+func NewServerWithGatherer(bindAddr string, gatherer prometheus.Gatherer) *Server {
+	if gatherer == nil {
+		gatherer = prometheus.DefaultGatherer
+	}
 	return &Server{
 		bindAddr: bindAddr,
+		gatherer: gatherer,
 		logger:   slog.Default().With("component", "metrics-server"),
 	}
 }
@@ -32,7 +43,7 @@ func NewServer(bindAddr string) *Server {
 // then performs a graceful shutdown.
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/metrics", promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{}))
 
 	srv := &http.Server{
 		Addr:              s.bindAddr,

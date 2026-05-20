@@ -725,6 +725,111 @@ func TestCollector_MetricsLabelsAppearOnMetrics(t *testing.T) {
 	}
 }
 
+func TestCollector_MetricsLabelKeyChangeResetsRegistry(t *testing.T) {
+	rtConfig := config.NewRuntimeConfig()
+	rtConfig.SetFromRobinConfig(&redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			MetricsLabels: map[string]string{"env": "staging"},
+		},
+	})
+
+	reg := NewResettableRegistry()
+	collector := &Collector{
+		runtimeConfig: rtConfig,
+		clusterName:   "test-cluster",
+		namespace:     "default",
+		manager:       NewMetricsManager(reg),
+		logger:        slog.Default(),
+	}
+
+	collector.reconcileMetricsLabelSchema()
+	collector.processSingleMetric("connected_clients", "1", collector.buildNodeTags("test-cluster-0"))
+
+	rtConfig.SetFromRobinConfig(&redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			MetricsLabels: map[string]string{"region": "eu"},
+		},
+	})
+	collector.reconcileMetricsLabelSchema()
+	collector.processSingleMetric("connected_clients", "2", collector.buildNodeTags("test-cluster-0"))
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather: %v", err)
+	}
+
+	family := metricFamilyByName(families, "redkey_connected_clients")
+	if family == nil {
+		t.Fatal("metric redkey_connected_clients not found")
+	}
+	if len(family.GetMetric()) != 1 {
+		t.Fatalf("expected exactly 1 metric after registry reset, got %d", len(family.GetMetric()))
+	}
+
+	metric := family.GetMetric()[0]
+	labels := metricLabels(metric)
+	if _, exists := labels["env"]; exists {
+		t.Fatalf("expected env label to be absent after key change, got labels %v", labels)
+	}
+	if labels["region"] != "eu" {
+		t.Fatalf("expected region=eu, got labels %v", labels)
+	}
+	if value := metric.GetGauge().GetValue(); value != 2 {
+		t.Fatalf("expected gauge value 2, got %f", value)
+	}
+}
+
+func TestCollector_MetricsLabelValueChangeResetsMetricValuesOnly(t *testing.T) {
+	rtConfig := config.NewRuntimeConfig()
+	rtConfig.SetFromRobinConfig(&redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			MetricsLabels: map[string]string{"env": "staging"},
+		},
+	})
+
+	reg := NewResettableRegistry()
+	collector := &Collector{
+		runtimeConfig: rtConfig,
+		clusterName:   "test-cluster",
+		namespace:     "default",
+		manager:       NewMetricsManager(reg),
+		logger:        slog.Default(),
+	}
+
+	collector.reconcileMetricsLabelSchema()
+	collector.processSingleMetric("connected_clients", "1", collector.buildNodeTags("test-cluster-0"))
+
+	rtConfig.SetFromRobinConfig(&redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			MetricsLabels: map[string]string{"env": "prod"},
+		},
+	})
+	collector.reconcileMetricsLabelSchema()
+	collector.processSingleMetric("connected_clients", "2", collector.buildNodeTags("test-cluster-0"))
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather: %v", err)
+	}
+
+	family := metricFamilyByName(families, "redkey_connected_clients")
+	if family == nil {
+		t.Fatal("metric redkey_connected_clients not found")
+	}
+	if len(family.GetMetric()) != 1 {
+		t.Fatalf("expected exactly 1 metric after value change reset, got %d", len(family.GetMetric()))
+	}
+
+	metric := family.GetMetric()[0]
+	labels := metricLabels(metric)
+	if labels["env"] != "prod" {
+		t.Fatalf("expected env=prod, got labels %v", labels)
+	}
+	if value := metric.GetGauge().GetValue(); value != 2 {
+		t.Fatalf("expected gauge value 2, got %f", value)
+	}
+}
+
 func TestCollector_StringMetricExposedAsGaugeMinus1(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	rtConfig := config.NewRuntimeConfig()

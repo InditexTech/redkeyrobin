@@ -14,17 +14,23 @@ import (
 )
 
 // MetricsManager handles dynamic Prometheus gauge registration and updates.
-// Metrics are registered lazily on first use with variable label sets.
+// Metrics are registered lazily on first use; later updates reuse the same
+// label keys because Prometheus requires a fixed label set per metric.
 type MetricsManager struct {
 	mu       sync.RWMutex
-	metrics  map[string]*prometheus.GaugeVec
+	metrics  map[string]*managedMetric
 	registry prometheus.Registerer
+}
+
+type managedMetric struct {
+	gauge     *prometheus.GaugeVec
+	labelKeys []string
 }
 
 // NewMetricsManager creates a MetricsManager using the given registerer.
 func NewMetricsManager(registry prometheus.Registerer) *MetricsManager {
 	return &MetricsManager{
-		metrics:  make(map[string]*prometheus.GaugeVec),
+		metrics:  make(map[string]*managedMetric),
 		registry: registry,
 	}
 }
@@ -57,24 +63,25 @@ func (m *MetricsManager) UpdateDynamicMetric(
 	fullName := metricName(name)
 
 	m.mu.RLock()
-	g, exists := m.metrics[fullName]
+	metric, exists := m.metrics[fullName]
 	m.mu.RUnlock()
 
 	if !exists {
 		m.mu.Lock()
 		// Double-check after acquiring write lock.
-		if g, exists = m.metrics[fullName]; !exists {
-			g = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		if metric, exists = m.metrics[fullName]; !exists {
+			g := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 				Name: fullName,
 				Help: fmt.Sprintf("Redis dynamic metric: %s", name),
 			}, sortedKeys)
 			m.registry.MustRegister(g)
-			m.metrics[fullName] = g
+			metric = &managedMetric{gauge: g, labelKeys: sortedKeys}
+			m.metrics[fullName] = metric
 		}
 		m.mu.Unlock()
 	}
 
-	g.With(mergedLabels).Set(value)
+	metric.gauge.With(labelsForKeys(mergedLabels, metric.labelKeys)).Set(value)
 }
 
 // UpdateDynamicMetricWithTime registers or updates a dynamic metric with SetToCurrentTime.
@@ -84,38 +91,51 @@ func (m *MetricsManager) UpdateDynamicMetricWithTime(
 	labelKeys []string,
 ) {
 	fullName := metricName(name)
+	sortedKeys := normalizeLabelKeys(labelKeys)
 
 	m.mu.RLock()
-	g, exists := m.metrics[fullName]
+	metric, exists := m.metrics[fullName]
 	m.mu.RUnlock()
 
 	if !exists {
 		m.mu.Lock()
-		if g, exists = m.metrics[fullName]; !exists {
-			g = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		if metric, exists = m.metrics[fullName]; !exists {
+			g := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 				Name: fullName,
 				Help: fmt.Sprintf("Redis dynamic metric: %s", name),
-			}, labelKeys)
+			}, sortedKeys)
 			m.registry.MustRegister(g)
-			m.metrics[fullName] = g
+			metric = &managedMetric{gauge: g, labelKeys: sortedKeys}
+			m.metrics[fullName] = metric
 		}
 		m.mu.Unlock()
 	}
 
-	labelMap := make(prometheus.Labels, len(labelKeys))
-	for _, k := range labelKeys {
-		labelMap[k] = labels[k]
-	}
-	g.With(labelMap).SetToCurrentTime()
+	metric.gauge.With(labelsForKeys(labels, metric.labelKeys)).SetToCurrentTime()
 }
 
 // ResetMetrics resets all registered metric vectors.
 func (m *MetricsManager) ResetMetrics() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for _, g := range m.metrics {
-		g.Reset()
+	for _, metric := range m.metrics {
+		metric.gauge.Reset()
 	}
+}
+
+// ResetRegistry resets the underlying registry and clears registered metric
+// descriptors. It returns false when the registerer cannot be reset.
+func (m *MetricsManager) ResetRegistry() bool {
+	resetter, ok := m.registry.(interface{ Reset() })
+	if !ok {
+		return false
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	resetter.Reset()
+	m.metrics = make(map[string]*managedMetric)
+	return true
 }
 
 // mergeLabels merges two label maps and returns the combined map with sorted keys.
@@ -135,4 +155,28 @@ func mergeLabels(a, b map[string]string) (prometheus.Labels, []string) {
 	sort.Strings(keys)
 
 	return merged, keys
+}
+
+func normalizeLabelKeys(keys []string) []string {
+	normalized := append([]string{}, keys...)
+	sort.Strings(normalized)
+
+	write := 0
+	for _, key := range normalized {
+		if write > 0 && normalized[write-1] == key {
+			continue
+		}
+		normalized[write] = key
+		write++
+	}
+
+	return normalized[:write]
+}
+
+func labelsForKeys(labels map[string]string, labelKeys []string) prometheus.Labels {
+	labelMap := make(prometheus.Labels, len(labelKeys))
+	for _, k := range labelKeys {
+		labelMap[k] = labels[k]
+	}
+	return labelMap
 }

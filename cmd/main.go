@@ -96,6 +96,8 @@ func main() {
 
 	// Create shared runtime configuration with defaults from CLI flags.
 	runtimeConfig := robinconfig.NewRuntimeConfig()
+	redkeyMetricsRegistry := metrics.NewResettableRegistry()
+	metricsGatherer := prometheus.Gatherers{prometheus.DefaultGatherer, redkeyMetricsRegistry}
 
 	// Start the reconciliation loop
 	rec := reconciler.NewReconciler(k8sClient, clusterName, namespace, reconcileInterval, reconcileIntervalOnError, runtimeConfig)
@@ -107,7 +109,7 @@ func main() {
 	}()
 
 	// Start the metrics collector (Redis INFO polling)
-	collector := metrics.NewCollector(runtimeConfig, clusterName, namespace, k8sClient, prometheus.DefaultRegisterer)
+	collector := metrics.NewCollector(runtimeConfig, clusterName, namespace, k8sClient, redkeyMetricsRegistry)
 	go func() {
 		if err := collector.Start(ctx); err != nil {
 			logger.Error("Error in metrics collector", "error", err)
@@ -116,7 +118,7 @@ func main() {
 	}()
 
 	// Start the metrics HTTP server (Prometheus endpoint)
-	metricsSrv := metrics.NewServer(metricsAddr)
+	metricsSrv := metrics.NewServerWithGatherer(metricsAddr, metricsGatherer)
 	go func() {
 		if err := metricsSrv.Start(ctx); err != nil {
 			logger.Error("Error in metrics server", "error", err)
