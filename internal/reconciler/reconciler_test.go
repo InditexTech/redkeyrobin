@@ -5,7 +5,10 @@
 package reconciler
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -796,6 +799,55 @@ func TestApplyRobinConfig_MetricsLabelsUpdateOnConfigChange(t *testing.T) {
 	// "team" should no longer be present (was never set in cfg2).
 	if _, exists := got["team"]; exists {
 		t.Fatalf("expected 'team' label to be absent, but it exists")
+	}
+}
+
+func TestApplyRobinConfig_LogsMetricsAndClusterConfigChanges(t *testing.T) {
+	cfg1 := makeConfigWithLabels("cfg-runtime-v1", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	cfg1.Spec.Auth = redisv1.RedisAuth{SecretName: "secret-v1"}
+	cfg1.Spec.RobinConfig = &redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			CollectionIntervalSeconds: intPtr(30),
+			RedisInfoKeys:             []string{"keyspace_hits"},
+			MetricsLabels:             map[string]string{"env": "staging"},
+		},
+		Cluster: &redisv1.RobinConfigCluster{
+			ConnectionMaxRetries:     intPtr(3),
+			ConnectionBackOffSeconds: intPtr(5),
+		},
+	}
+
+	cfg2 := makeConfigWithLabels("cfg-runtime-v2", 2, redisv1.ConfigPhaseApplied, 5, 2)
+	cfg2.Spec.Auth = redisv1.RedisAuth{SecretName: "secret-v2"}
+	cfg2.Spec.RobinConfig = &redisv1.RobinConfig{
+		Metrics: &redisv1.RobinConfigMetrics{
+			CollectionIntervalSeconds: intPtr(45),
+			RedisInfoKeys:             []string{"connected_clients", "used_memory_rss"},
+			MetricsLabels:             map[string]string{"env": "prod", "region": "eu"},
+		},
+		Cluster: &redisv1.RobinConfigCluster{
+			ConnectionMaxRetries:     intPtr(7),
+			ConnectionBackOffSeconds: intPtr(9),
+		},
+	}
+
+	r := newTestReconciler(cfg1, cfg2)
+	r.applyRobinConfig(cfg1, nil)
+
+	var logBuffer bytes.Buffer
+	r.logger = slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+	r.applyRobinConfig(cfg2, cfg1)
+
+	logOutput := logBuffer.String()
+	if !strings.Contains(logOutput, "Metrics configuration changed") {
+		t.Fatalf("expected metrics change log, got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, "Cluster configuration changed") {
+		t.Fatalf("expected cluster change log, got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, "config=cfg-runtime-v2") {
+		t.Fatalf("expected effective config name in log, got %q", logOutput)
 	}
 }
 

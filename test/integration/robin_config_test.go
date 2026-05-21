@@ -18,6 +18,15 @@ import (
 
 func intPtr(v int) *int { return &v }
 
+func setAppliedReadyStatus(cfg *redisv1.RedkeyClusterConfig) {
+	cfg.Status = redisv1.RedkeyClusterConfigStatus{
+		ConfigPhase: redisv1.ConfigPhaseApplied,
+		Status:      redisv1.ClusterStatusReady,
+		Nodes:       map[string]*redisv1.RedisNode{},
+	}
+	Expect(k8sClient.Status().Update(ctx, cfg)).To(Succeed())
+}
+
 var _ = Describe("Robin Config Application", func() {
 	const robinCluster = "robin-cfg-cluster"
 
@@ -55,12 +64,7 @@ var _ = Describe("Robin Config Application", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
-			// Set status separately via status subresource.
-			cfg.Status = redisv1.RedkeyClusterConfigStatus{
-				ConfigPhase: redisv1.ConfigPhaseApplied,
-				Nodes:       map[string]*redisv1.RedisNode{},
-			}
-			Expect(k8sClient.Status().Update(ctx, cfg)).To(Succeed())
+			setAppliedReadyStatus(cfg)
 
 			// Create RuntimeConfig and reconciler.
 			rtConfig := newTestRuntimeConfig()
@@ -123,11 +127,7 @@ var _ = Describe("Robin Config Application", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, cfg1)).To(Succeed())
-			cfg1.Status = redisv1.RedkeyClusterConfigStatus{
-				ConfigPhase: redisv1.ConfigPhaseApplied,
-				Nodes:       map[string]*redisv1.RedisNode{},
-			}
-			Expect(k8sClient.Status().Update(ctx, cfg1)).To(Succeed())
+			setAppliedReadyStatus(cfg1)
 
 			rtConfig := newTestRuntimeConfig()
 			rec := newIntegrationReconciler(robinCluster, rtConfig)
@@ -172,6 +172,7 @@ var _ = Describe("Robin Config Application", func() {
 				}
 				latest.Status = redisv1.RedkeyClusterConfigStatus{
 					ConfigPhase: redisv1.ConfigPhaseApplied,
+					Status:      redisv1.ClusterStatusReady,
 					Nodes:       map[string]*redisv1.RedisNode{},
 				}
 				return k8sClient.Status().Update(ctx, &latest)
@@ -189,6 +190,23 @@ var _ = Describe("Robin Config Application", func() {
 		})
 
 		It("should update the runtime config from a Pending config when no previous exists", func() {
+			owner := &redisv1.RedkeyCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      robinCluster,
+					Namespace: testNamespace,
+				},
+				Spec: redisv1.RedkeyClusterSpec{
+					Primaries:          6,
+					ReplicasPerPrimary: 0,
+					Ephemeral:          true,
+					Image:              "redis:7",
+				},
+			}
+			Expect(k8sClient.Create(ctx, owner)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, owner)
+			})
+
 			// Create a Pending config with RobinConfig (no status set = reconciler will init to Pending).
 			cfg := &redisv1.RedkeyClusterConfig{
 				ObjectMeta: metav1.ObjectMeta{
@@ -256,11 +274,7 @@ var _ = Describe("Robin Config Application", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
-			cfg.Status = redisv1.RedkeyClusterConfigStatus{
-				ConfigPhase: redisv1.ConfigPhaseApplied,
-				Nodes:       map[string]*redisv1.RedisNode{},
-			}
-			Expect(k8sClient.Status().Update(ctx, cfg)).To(Succeed())
+			setAppliedReadyStatus(cfg)
 
 			rtConfig := newTestRuntimeConfig()
 			rec := newIntegrationReconciler(robinCluster, rtConfig)
@@ -301,11 +315,7 @@ var _ = Describe("Robin Config Application", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, cfg1)).To(Succeed())
-			cfg1.Status = redisv1.RedkeyClusterConfigStatus{
-				ConfigPhase: redisv1.ConfigPhaseApplied,
-				Nodes:       map[string]*redisv1.RedisNode{},
-			}
-			Expect(k8sClient.Status().Update(ctx, cfg1)).To(Succeed())
+			setAppliedReadyStatus(cfg1)
 
 			rtConfig := newTestRuntimeConfig()
 			rec := newIntegrationReconciler(robinCluster, rtConfig)
@@ -348,6 +358,7 @@ var _ = Describe("Robin Config Application", func() {
 				}
 				latest.Status = redisv1.RedkeyClusterConfigStatus{
 					ConfigPhase: redisv1.ConfigPhaseApplied,
+					Status:      redisv1.ClusterStatusReady,
 					Nodes:       map[string]*redisv1.RedisNode{},
 				}
 				return k8sClient.Status().Update(ctx, &latest)
@@ -387,11 +398,7 @@ var _ = Describe("Robin Config Application", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, cfg1)).To(Succeed())
-			cfg1.Status = redisv1.RedkeyClusterConfigStatus{
-				ConfigPhase: redisv1.ConfigPhaseApplied,
-				Nodes:       map[string]*redisv1.RedisNode{},
-			}
-			Expect(k8sClient.Status().Update(ctx, cfg1)).To(Succeed())
+			setAppliedReadyStatus(cfg1)
 
 			rtConfig := newTestRuntimeConfig()
 			rec := newIntegrationReconciler(robinCluster, rtConfig)
@@ -434,6 +441,7 @@ var _ = Describe("Robin Config Application", func() {
 				}
 				latest.Status = redisv1.RedkeyClusterConfigStatus{
 					ConfigPhase: redisv1.ConfigPhaseApplied,
+					Status:      redisv1.ClusterStatusReady,
 					Nodes:       map[string]*redisv1.RedisNode{},
 				}
 				return k8sClient.Status().Update(ctx, &latest)

@@ -7,6 +7,7 @@ package reconciler
 import (
 	"context"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,6 +41,20 @@ type Reconciler struct {
 	runtimeConfig     *config.RuntimeConfig
 	clusterReconciler *ClusterReconciler
 	logger            *slog.Logger
+}
+
+// metricsRuntimeSnapshot captures the relevant parts of the runtime configuration related to metrics, for comparison and logging purposes.
+type metricsRuntimeSnapshot struct {
+	CollectionInterval time.Duration
+	RedisInfoKeys      []string
+	MetricsLabels      map[string]string
+}
+
+// clusterRuntimeSnapshot captures the relevant parts of the runtime configuration related to cluster connection and topology, for comparison and logging purposes.
+type clusterRuntimeSnapshot struct {
+	Connection config.ClusterConfig
+	Topology   config.Topology
+	AuthSecret string
 }
 
 // NewReconciler creates a new Reconciler.
@@ -256,6 +271,24 @@ func (r *Reconciler) copyPreviousClusterStatus(ctx context.Context, targetConfig
 	return nil
 }
 
+// currentMetricsRuntimeSnapshot returns a snapshot of the current runtime configuration relevant to metrics collection, for comparison and logging purposes.
+func (r *Reconciler) currentMetricsRuntimeSnapshot() metricsRuntimeSnapshot {
+	return metricsRuntimeSnapshot{
+		CollectionInterval: r.runtimeConfig.MetricsInterval(),
+		RedisInfoKeys:      r.runtimeConfig.RedisInfoKeys(),
+		MetricsLabels:      r.runtimeConfig.MetricsLabels(),
+	}
+}
+
+// currentClusterRuntimeSnapshot returns a snapshot of the current runtime configuration relevant to cluster connection and topology, for comparison and logging purposes.
+func (r *Reconciler) currentClusterRuntimeSnapshot() clusterRuntimeSnapshot {
+	return clusterRuntimeSnapshot{
+		Connection: r.runtimeConfig.ClusterConfig(),
+		Topology:   r.runtimeConfig.AppliedTopology(),
+		AuthSecret: r.runtimeConfig.AuthSecret(),
+	}
+}
+
 // applyRobinConfig reads the RobinConfig from the effective configuration and
 // updates the shared RuntimeConfig so that other components (metrics collector,
 // reconciler interval) pick up the changes.
@@ -283,20 +316,24 @@ func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyClusterConfig, previ
 		}
 	}
 
+	// Keep a snapshot of the current runtime configuration for comparison and logging purposes after we update it from the RobinConfig.
+	oldMetricsConfig := r.currentMetricsRuntimeSnapshot()
+	oldClusterConfig := r.currentClusterRuntimeSnapshot()
+
+	// Update the runtime configuration from the effective RobinConfig.
 	r.runtimeConfig.SetFromRobinConfig(effectiveConfig.Spec.RobinConfig)
 
+	// Apply reconciler intervals so that they take effect immediately.
 	newInterval := r.runtimeConfig.ReconcilerInterval()
 	if newInterval != r.interval {
 		r.logger.Info("Updating reconciler interval", "old", r.interval, "new", newInterval)
 		r.interval = newInterval
 	}
-
 	newIntervalOnError := r.runtimeConfig.ReconcilerIntervalOnError()
 	if newIntervalOnError != r.intervalOnError {
 		r.logger.Info("Updating reconciler error interval", "old", r.intervalOnError, "new", newIntervalOnError)
 		r.intervalOnError = newIntervalOnError
 	}
-
 	newIntervalOnWait := r.runtimeConfig.ReconcilerIntervalOnWait()
 	if newIntervalOnWait != r.intervalOnWait {
 		r.logger.Info("Updating reconciler wait interval", "old", r.intervalOnWait, "new", newIntervalOnWait)
@@ -308,4 +345,24 @@ func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyClusterConfig, previ
 
 	// Update auth secret name so the metrics collector can read the password.
 	r.runtimeConfig.SetAuthSecret(effectiveConfig.Spec.Auth.SecretName)
+
+	// Log any changes in Metrics and Cluster configuration for observability.
+	newMetricsConfig := r.currentMetricsRuntimeSnapshot()
+	if !reflect.DeepEqual(oldMetricsConfig, newMetricsConfig) {
+		r.logger.Info("Metrics configuration changed",
+			"config", effectiveConfig.Name,
+			"sequence", effectiveConfig.Spec.Sequence,
+			"old", oldMetricsConfig,
+			"new", newMetricsConfig,
+		)
+	}
+	newClusterConfig := r.currentClusterRuntimeSnapshot()
+	if !reflect.DeepEqual(oldClusterConfig, newClusterConfig) {
+		r.logger.Info("Cluster configuration changed",
+			"config", effectiveConfig.Name,
+			"sequence", effectiveConfig.Spec.Sequence,
+			"old", oldClusterConfig,
+			"new", newClusterConfig,
+		)
+	}
 }
