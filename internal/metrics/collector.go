@@ -98,6 +98,7 @@ func (c *Collector) Start(ctx context.Context) error {
 
 // collect performs a single metrics collection cycle across all cluster nodes.
 func (c *Collector) collect(ctx context.Context) {
+	start := time.Now()
 	c.reconcileMetricsLabelSchema()
 	redisInfoKeys := c.runtimeConfig.RedisInfoKeys()
 
@@ -113,18 +114,27 @@ func (c *Collector) collect(ctx context.Context) {
 		return
 	}
 
+	c.logger.Info("Starting metrics collection cycle", "nodes", len(nodes), "infoKeys", len(redisInfoKeys))
+
+	collectedNodes := 0
+	failedNodes := 0
 	if len(redisInfoKeys) == 0 {
 		c.logger.Debug("No Redis INFO keys configured, skipping node INFO collection")
 	} else {
 		for _, node := range nodes {
 			if err := c.collectNode(ctx, node, password, redisInfoKeys); err != nil {
 				c.logger.Warn("Failed to collect metrics from node", "node", node.name, "error", err)
+				failedNodes++
+			} else {
+				collectedNodes++
 			}
 		}
 	}
 
 	// Collect cluster-level metrics regardless of INFO key selection.
 	c.collectClusterMetrics(ctx, nodes, password)
+
+	c.logger.Info("Metrics collection cycle completed", "duration", time.Since(start).String(), "collectedNodes", collectedNodes, "failedNodes", failedNodes)
 }
 
 // nodeInfo represents a discovered Redis node.
