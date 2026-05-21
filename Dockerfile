@@ -23,7 +23,7 @@ WORKDIR /redis-client
 RUN apt update && apt upgrade -y && apt install -y git
 
 # Define the desired Redis client version
-ARG REDIS_CLIENT_VERSION=8.2.3
+ARG REDIS_CLIENT_VERSION=8.6.3
 
 # Clone the Redis repository, checkout the desired version and build redis-cli
 RUN git clone https://github.com/redis/redis.git && \
@@ -40,11 +40,10 @@ WORKDIR /app
 # Copy Go module files and download dependencies first for better caching
 COPY go.mod go.sum ./
 
-# Copy the operator module for the local replace directive
-COPY ../redkeyoperator /redkeyoperator
-
-# Update the replace directive to point to the copied operator source
-RUN go mod edit -replace github.com/inditextech/redkeyoperator=/redkeyoperator && \
+# Clone the operator from the remote branch and use it as a local replace
+ARG OPERATOR_BRANCH=feature/change-to-coordinator-architecture
+RUN git clone --branch ${OPERATOR_BRANCH} --depth 1 https://github.com/InditexTech/redkeyoperator.git /redkeyoperator && \
+    go mod edit -replace github.com/inditextech/redkeyoperator=/redkeyoperator && \
     go mod download
 
 # Copy the entire source code
