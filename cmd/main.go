@@ -18,6 +18,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 	robinconfig "github.com/inditextech/redkeyrobin/internal/config"
@@ -128,7 +129,8 @@ func main() {
 
 	// Create the resettable metrics registry
 	redkeyMetricsRegistry := metrics.NewResettableRegistry()
-	metricsGatherer := prometheus.Gatherers{prometheus.DefaultGatherer, redkeyMetricsRegistry}
+	// controller-runtime's Registry already includes go/process collectors and rest_client_requests_total
+	metricsGatherer := prometheus.Gatherers{crmetrics.Registry, redkeyMetricsRegistry}
 
 	// Start the metrics collector (Redis INFO polling)
 	collector := metrics.NewCollector(runtimeConfig, clusterName, namespace, k8sClient, redkeyMetricsRegistry)
