@@ -38,9 +38,44 @@ Today, Robin focuses on orchestration of `RedkeyClusterConfig` progression rathe
 
 ---
 
+## Repository Layout
+
+Key paths to understand before changing code:
+
+- `cmd/main.go`: process entrypoint, flag parsing, startup wiring.
+- `internal/config/`: shared runtime configuration consumed by the process.
+- `internal/health/`: health/readiness endpoints and related plumbing.
+- `internal/kubernetes/`: Kubernetes client helpers and cluster interactions.
+- `internal/metrics/`: Prometheus collection and export logic.
+- `internal/reconciler/`: config selection, state transitions, and reconciliation loop.
+- `internal/redis/`: Redis connectivity, INFO/CLUSTER parsing, and helpers.
+- `test/integration/`: envtest-based integration coverage.
+
+Operational assumptions:
+
+- Robin is a single-cluster runtime: one process instance is scoped to one `RedkeyCluster`.
+- The sibling checkout at `../redkeyoperator` is part of the expected local layout and provides the CRD/API types used by this module.
+- Integration tests load CRDs from `../redkeyoperator/config/crd/bases`.
+
+---
+
 ## Build Commands
 
 All common operations are driven by `make`. Tools that are not yet present are downloaded automatically into `bin/`.
+
+This repository does not use Maven. There is no `pom.xml` or `mvnw` in Robin, so agents must not suggest `mvn` commands here. If an external workflow or template expects Maven goals/phases, use the following equivalents.
+
+### Maven goal equivalents
+
+| Maven goal or phase | Robin command | Notes |
+| ------------------- | ------------- | ----- |
+| `mvn validate` | `make tidy && make fmt && make vet && make lint` | Closest pre-test validation sequence. |
+| `mvn test` | `make test` | Unit tests only. Generates `cover.out`. |
+| `mvn failsafe:integration-test` | `make test-integration` | Runs envtest-based integration tests. |
+| `mvn failsafe:verify` | `make test-integration` | Same integration suite; there is no separate Maven-style verify step. |
+| `mvn verify` | `make lint && make test-all` | Preferred full local quality gate. |
+| `mvn package` | `make build` | Produces `bin/robin`. |
+| `mvn install` | not applicable | No Maven-style local artifact install phase exists. |
 
 ### Prerequisites (installed manually)
 
@@ -85,11 +120,13 @@ make docker-buildx             # cross-platform build (linux/amd64 + linux/arm64
 
 Override the image tag with `IMG=<registry>/<name>:<tag>`.
 
-### Full CI verification
+### Fast verification
 
 ```shell
-make verify      # tidy + fmt + vet + build + test
+make verify      # tidy + fmt + vet + build + test (unit tests only)
 ```
+
+`make verify` is useful as a quick preflight, but it does not execute `make test-integration`. For the full local gate, use `make lint && make test-all`.
 
 ---
 
@@ -97,14 +134,25 @@ make verify      # tidy + fmt + vet + build + test
 
 ### Mandatory validation for every change
 
-For every change in this repository, before considering the task complete, run:
+For code changes in this repository, before considering the task complete, run:
 
 ```shell
 make lint
 make test-all
 ```
 
-This requirement is mandatory even if the change is small.
+Use `make verify` as a fast pre-check when iterating locally, but do not treat it as a replacement for `make test-all`.
+
+If a change only touches documentation or agent instructions, executable validation may be skipped when there is nothing meaningful to compile or run; in that case, keep the edit limited and consistent with the Makefile and repository layout.
+
+### Recommended validation flows
+
+```shell
+make test                     # fast unit-only loop while iterating
+make test-integration         # envtest coverage for reconciler/runtime behavior
+make lint && make test-all    # preferred full local gate before handing off
+make build                    # optional final binary build check
+```
 
 ### Unit tests
 
@@ -115,7 +163,7 @@ make test
 Runs unit tests for all packages except `e2e` and `test/integration`. Generates a coverage profile at `cover.out`.
 
 ```shell
-make coverage    # opens HTML coverage report from cover.out
+make coverage    # generates coverage.html from cover.out
 ```
 
 ### Integration tests (envtest)
@@ -133,6 +181,8 @@ Integration tests use CRDs from the sibling operator repository at `../redkeyope
 ```shell
 make test-all
 ```
+
+There is currently no dedicated e2e target in this repository. Treat `make test-all` as the highest-fidelity automated suite available inside Robin itself.
 
 ---
 
