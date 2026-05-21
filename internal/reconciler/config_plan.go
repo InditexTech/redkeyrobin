@@ -31,6 +31,16 @@ func (r *Reconciler) selectConfig(ctx context.Context) (previousConfig *redisv1.
 		return nil, nil, nil
 	}
 
+	// Log current state
+	for _, cfg := range configs {
+		r.logger.Info("Found RedkeyClusterConfig",
+			"name", cfg.Name,
+			"sequence", cfg.Spec.Sequence,
+			"configPhase", cfg.Status.ConfigPhase,
+			"status", cfg.Status.Status,
+		)
+	}
+
 	// Initialise status for configs that were just created by the Operator and
 	// therefore have no status set yet (ConfigPhase is empty). Robin owns the
 	// status subresource, so it is responsible for writing the initial phase.
@@ -42,16 +52,6 @@ func (r *Reconciler) selectConfig(ctx context.Context) (previousConfig *redisv1.
 				// Continue with the rest; we'll retry on the next cycle.
 			}
 		}
-	}
-
-	// Log current state
-	for _, cfg := range configs {
-		r.logger.Info("Found RedkeyClusterConfig",
-			"name", cfg.Name,
-			"sequence", cfg.Spec.Sequence,
-			"configPhase", cfg.Status.ConfigPhase,
-			"status", cfg.Status.Status,
-		)
 	}
 
 	// Select the next configuration to process.

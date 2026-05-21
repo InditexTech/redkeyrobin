@@ -453,6 +453,73 @@ func TestReconcile_AllApplied(t *testing.T) {
 	_ = schedule // The exact value depends on the code path; we just ensure no error.
 }
 
+func TestCopyPreviousStatus_DeepCopiesReferenceFieldsPreservesTargetConfigPhaseAndPersists(t *testing.T) {
+	target := makeConfigWithLabels("cfg-target", 2, redisv1.ConfigPhasePending, 3, 1)
+	previous := makeConfigWithLabels("cfg-previous", 1, redisv1.ConfigPhaseApplied, 3, 1)
+	lastUpdatedAt := metav1.Now()
+
+	previous.Status = redisv1.RedkeyClusterConfigStatus{
+		ConfigPhase: redisv1.ConfigPhaseApplied,
+		Status:      redisv1.ClusterStatusReady,
+		Nodes: map[string]*redisv1.RedisNode{
+			"node-0": {Role: "primary", IP: "10.0.0.1"},
+		},
+		Conditions: []metav1.Condition{{
+			Type:   "Ready",
+			Status: metav1.ConditionTrue,
+			Reason: "Stable",
+		}},
+		LastUpdatedAt: &lastUpdatedAt,
+	}
+	r := newTestReconciler(target, previous)
+
+	var fetchedTarget redisv1.RedkeyClusterConfig
+	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(target), &fetchedTarget); err != nil {
+		t.Fatalf("failed to get target config: %v", err)
+	}
+
+	var fetchedPrevious redisv1.RedkeyClusterConfig
+	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(previous), &fetchedPrevious); err != nil {
+		t.Fatalf("failed to get previous config: %v", err)
+	}
+
+	if err := r.copyPreviousClusterStatus(context.Background(), &fetchedTarget, &fetchedPrevious); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if fetchedTarget.Status.Status != previous.Status.Status {
+		t.Fatalf("expected status %q, got %q", previous.Status.Status, fetchedTarget.Status.Status)
+	}
+	if fetchedTarget.Status.ConfigPhase != redisv1.ConfigPhasePending {
+		t.Fatalf("expected target ConfigPhase to remain %q, got %q", redisv1.ConfigPhasePending, fetchedTarget.Status.ConfigPhase)
+	}
+
+	var persisted redisv1.RedkeyClusterConfig
+	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(target), &persisted); err != nil {
+		t.Fatalf("failed to get persisted target config: %v", err)
+	}
+	if persisted.Status.Status != previous.Status.Status {
+		t.Fatalf("expected persisted status %q, got %q", previous.Status.Status, persisted.Status.Status)
+	}
+	if persisted.Status.ConfigPhase != redisv1.ConfigPhasePending {
+		t.Fatalf("expected persisted ConfigPhase %q, got %q", redisv1.ConfigPhasePending, persisted.Status.ConfigPhase)
+	}
+
+	fetchedTarget.Status.Nodes["node-0"].Role = "replica"
+	fetchedTarget.Status.Conditions[0].Reason = "Changed"
+	fetchedTarget.Status.LastUpdatedAt.Time = fetchedTarget.Status.LastUpdatedAt.Time.Add(time.Second)
+
+	if fetchedPrevious.Status.Nodes["node-0"].Role != "primary" {
+		t.Fatalf("expected previous node role to remain 'primary', got %q", fetchedPrevious.Status.Nodes["node-0"].Role)
+	}
+	if fetchedPrevious.Status.Conditions[0].Reason != "Stable" {
+		t.Fatalf("expected previous condition reason to remain 'Stable', got %q", fetchedPrevious.Status.Conditions[0].Reason)
+	}
+	if fetchedPrevious.Status.LastUpdatedAt.Time.Equal(fetchedTarget.Status.LastUpdatedAt.Time) {
+		t.Fatal("expected LastUpdatedAt to be copied independently")
+	}
+}
+
 // --- Start tests ---
 
 func TestStart_CancelledContextStops(t *testing.T) {

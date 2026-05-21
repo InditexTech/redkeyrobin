@@ -71,15 +71,20 @@ func (r *Reconciler) Start(ctx context.Context) error {
 	)
 
 	// Run an initial reconciliation immediately
+	r.logger.Info("Starting reconciliation cycle")
 	schedule, onError := r.reconcile(ctx)
+	r.logger.Info("Finished reconciliation cycle", "nextSchedule", schedule, "onError", onError)
 
+	// Enter the reconciliation loop, scheduling the next run based on the result of the previous reconciliation.
 	for {
 		select {
 		case <-ctx.Done():
 			r.logger.Info("Context cancelled, stopping reconciler")
 			return nil
 		case <-time.After(r.nextWaitDuration(schedule, onError)):
+			r.logger.Info("Starting reconciliation cycle")
 			schedule, onError = r.reconcile(ctx)
+			r.logger.Info("Finished reconciliation cycle", "nextSchedule", schedule, "onError", onError)
 		}
 	}
 }
@@ -160,7 +165,17 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 			"name", targetConfig.Name,
 			"sequence", targetConfig.Spec.Sequence,
 		)
-		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+
+		// Copy previousConfig cluster status to targetConfig so that we have the latest status available when applying Robin configuration.
+		if err := r.copyPreviousClusterStatus(ctx, targetConfig, previousConfig); err != nil {
+			r.logger.Error("Failed to persist copied status from previous configuration",
+				"name", targetConfig.Name,
+				"error", err,
+			)
+			return reconcileAfterInterval, true
+		}
+
+		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig, previousConfig)
 		if err != nil {
 			r.logger.Error("Cluster reconciliation error", "error", err)
 			return schedule, true
@@ -172,7 +187,7 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 			"name", targetConfig.Name,
 			"sequence", targetConfig.Spec.Sequence,
 		)
-		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig, previousConfig)
 		if err != nil {
 			r.logger.Error("Cluster reconciliation error", "error", err)
 			return schedule, true
@@ -181,7 +196,7 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 	case redisv1.ConfigPhaseApplied:
 		// No new config to apply, do a full check of the Redkey Cluster.
 		r.logger.Info("Configuration already applied, performing full cluster check")
-		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig)
+		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig, previousConfig)
 		if err != nil {
 			r.logger.Error("Cluster health check error", "error", err)
 			return schedule, true
@@ -196,6 +211,27 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 		)
 		return reconcileAfterInterval, true
 	}
+}
+
+// copyPreviousClusterStatus copies the previous Status into the target configuration, preserving the target ConfigPhase and persisting the result.
+func (r *Reconciler) copyPreviousClusterStatus(ctx context.Context, targetConfig, previousConfig *redisv1.RedkeyClusterConfig) error {
+	if targetConfig == nil || previousConfig == nil {
+		return nil
+	}
+
+	targetConfigPhase := targetConfig.Status.ConfigPhase
+	targetConfig.Status = *previousConfig.Status.DeepCopy()
+	targetConfig.Status.ConfigPhase = targetConfigPhase
+	if err := r.client.Status().Update(ctx, targetConfig); err != nil {
+		return err
+	}
+	r.logger.Debug("Copied status from previous configuration to target configuration",
+		"targetName", targetConfig.Name,
+		"previousName", previousConfig.Name,
+		"statusPhase", targetConfig.Status.Status,
+		"configPhase", targetConfig.Status.ConfigPhase,
+	)
+	return nil
 }
 
 // applyRobinConfig reads the RobinConfig from the effective configuration and

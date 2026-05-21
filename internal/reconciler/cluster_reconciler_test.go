@@ -76,7 +76,7 @@ func TestClusterReconciler_HandleNew_CreatesObjectsAndSetsInitializing(t *testin
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestClusterReconciler_HandleInitializing_WaitsForPods(t *testing.T) {
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
 	// No StatefulSet exists yet, so AllPodsReady will return error (StatefulSet not found)
-	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg, nil)
 
 	// Should get an error because StatefulSet doesn't exist
 	if err == nil {
@@ -128,7 +128,7 @@ func TestClusterReconciler_HandleReady_NoOp(t *testing.T) {
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestClusterReconciler_UnhandledStatus(t *testing.T) {
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestClusterReconciler_HandleInitializing_PodsReady_ButNoPodsFound(t *testin
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
 	// Pods are "ready" per STS status, but initNodes will fail because no pods exist
-	_, err := cr.ReconcileCluster(context.Background(), cfg)
+	_, err := cr.ReconcileCluster(context.Background(), cfg, nil)
 	if err == nil {
 		t.Fatal("expected error when no pods have IPs")
 	}
@@ -338,7 +338,7 @@ func TestClusterReconciler_HandleInitializing_NotReady(t *testing.T) {
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 
-	schedule, err := cr.ReconcileCluster(context.Background(), cfg)
+	schedule, err := cr.ReconcileCluster(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

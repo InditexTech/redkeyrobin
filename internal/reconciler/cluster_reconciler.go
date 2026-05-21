@@ -47,22 +47,25 @@ func NewClusterReconciler(c client.Client, clusterName, namespace string, runtim
 // ReconcileCluster processes the cluster creation/configuration state machine.
 // It returns whether the outer reconciliation loop should run immediately again
 // or wait for the configured interval.
-func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, config *redisv1.RedkeyClusterConfig) (schedule reconcileSchedule, err error) {
-	switch config.Status.Status {
+func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (schedule reconcileSchedule, err error) {
+	switch targetConfig.Status.Status {
 	case "":
-		// New cluster: ensure K8s objects and set status to Initializing.
-		return cr.handleNew(ctx, config)
+		if previousConfig == nil {
+			// New cluster: ensure K8s objects and set status to Initializing.
+			return cr.handleNew(ctx, targetConfig)
+		}
+		return reconcileAfterInterval, nil
 	case redisv1.ClusterStatusInitializing:
 		// Waiting for pods to be ready, then init nodes.
-		return cr.handleInitializing(ctx, config)
+		return cr.handleInitializing(ctx, targetConfig)
 	case redisv1.ClusterStatusConfiguring:
 		// Cluster formation: meet, assign slots, set replicas.
-		return cr.handleConfiguring(ctx, config)
+		return cr.handleConfiguring(ctx, targetConfig)
 	case redisv1.ClusterStatusReady:
 		// Cluster is ready, perform health check.
-		return cr.handleReady(ctx, config)
+		return cr.handleReady(ctx, targetConfig)
 	default:
-		cr.logger.Info("Unhandled cluster status, skipping", "status", config.Status.Status)
+		cr.logger.Info("Unhandled cluster status, skipping", "status", targetConfig.Status.Status)
 		return reconcileAfterInterval, nil
 	}
 }
