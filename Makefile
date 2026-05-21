@@ -138,11 +138,15 @@ clean: ## Clean de build artifacts, installed tools, Go cache and generated file
 build: ##	Build program binary
 	go build -o bin/robin cmd/main.go
 
+# By default, Robin will be run with info log level. To run Robin with debug log level, set the LOG_DEBUG variable to true:
+# - make run LOG_DEBUG=true
+LOG_DEBUG ?= false
+
 NAMESPACE ?= redkey-operator
 CLUSTER_NAME ?= redkeycluster-sample
 .PHONY: run
 run: ##	Execute the program locally
-	go run ./cmd/main.go --cluster-name=$(CLUSTER_NAME) --namespace=$(NAMESPACE)
+	go run ./cmd/main.go --cluster-name=$(CLUSTER_NAME) --namespace=$(NAMESPACE) $(if $(filter true,$(LOG_DEBUG)),--log-level=debug)
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

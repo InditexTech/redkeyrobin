@@ -42,6 +42,7 @@ func main() {
 	var clusterName string
 	var namespace string
 	var metricsAddr string
+	var logLevel string
 	var reconcileInterval time.Duration
 	var reconcileIntervalOnError = defaultReconcileIntervalOnError
 	var reconcileIntervalOnWait = defaultReconcileIntervalOnWait
@@ -49,12 +50,18 @@ func main() {
 	flag.StringVar(&clusterName, "cluster-name", "", "Name of the RedkeyCluster this Robin instance manages (required)")
 	flag.StringVar(&namespace, "namespace", "", "Namespace of the RedkeyCluster (required)")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to")
+	flag.StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
 	flag.DurationVar(&reconcileInterval, "reconcile-interval", defaultReconcileInterval, "Polling interval for the reconciliation loop")
 	flag.DurationVar(&reconcileIntervalOnError, "reconcile-interval-on-error", defaultReconcileIntervalOnError, "Polling interval for the reconciliation loop when an error occurs")
 	flag.DurationVar(&reconcileIntervalOnWait, "reconcile-interval-on-wait", defaultReconcileIntervalOnWait, "Polling interval for the reconciliation loop while waiting for convergence")
 	flag.Parse()
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	var slogLevel slog.Level
+	if err := slogLevel.UnmarshalText([]byte(logLevel)); err != nil {
+		slog.Error("Invalid log level", "value", logLevel, "error", err)
+		os.Exit(1)
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slogLevel}))
 	slog.SetDefault(logger)
 
 	if clusterName == "" {
