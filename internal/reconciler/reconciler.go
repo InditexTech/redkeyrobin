@@ -147,11 +147,10 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 		return reconcileAfterInterval, true
 	}
 
-	// Apply Robin configuration from the target or applied config.
-	r.applyRobinConfig(targetConfig, previousConfig)
-
 	// From here, we start processing Redkey Cluster configuration and health checks.
 	// We decide what to do based on the phase of the target configuration.
+	var scheduleRequired reconcileSchedule
+	var onReconcilingError bool
 	switch targetConfig.Status.ConfigPhase {
 	case redisv1.ConfigPhasePending:
 		// Start applying a new config.
@@ -159,7 +158,9 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 			r.logger.Error("Failed to set ConfigPhase to InProgress",
 				"name", targetConfig.Name, "error", err)
 			// We'll retry on the next cycle.
-			return reconcileAfterInterval, true
+			scheduleRequired = reconcileAfterInterval
+			onReconcilingError = true
+			break
 		}
 		r.logger.Info("Starting configuration",
 			"name", targetConfig.Name,
@@ -172,15 +173,20 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 				"name", targetConfig.Name,
 				"error", err,
 			)
-			return reconcileAfterInterval, true
+			scheduleRequired = reconcileAfterInterval
+			onReconcilingError = true
+			break
 		}
 
 		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig, previousConfig)
 		if err != nil {
 			r.logger.Error("Cluster reconciliation error", "error", err)
-			return schedule, true
+			scheduleRequired = schedule
+			onReconcilingError = true
+			break
 		}
-		return schedule, false
+		scheduleRequired = schedule
+		onReconcilingError = false
 	case redisv1.ConfigPhaseInProgress:
 		// Resume an already in progress config.
 		r.logger.Info("Resuming in-progress configuration",
@@ -190,18 +196,24 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig, previousConfig)
 		if err != nil {
 			r.logger.Error("Cluster reconciliation error", "error", err)
-			return schedule, true
+			scheduleRequired = schedule
+			onReconcilingError = true
+			break
 		}
-		return schedule, false
+		scheduleRequired = schedule
+		onReconcilingError = false
 	case redisv1.ConfigPhaseApplied:
 		// No new config to apply, do a full check of the Redkey Cluster.
 		r.logger.Info("Configuration already applied, performing full cluster check")
 		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig, previousConfig)
 		if err != nil {
 			r.logger.Error("Cluster health check error", "error", err)
-			return schedule, true
+			scheduleRequired = schedule
+			onReconcilingError = true
+			break
 		}
-		return schedule, false
+		scheduleRequired = schedule
+		onReconcilingError = false
 	default:
 		// This should never happen due to the earlier validation, but we check again just in case.
 		r.logger.Error("Configuration with unknown phase detected",
@@ -209,8 +221,18 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 			"sequence", targetConfig.Spec.Sequence,
 			"configPhase", targetConfig.Status.ConfigPhase,
 		)
-		return reconcileAfterInterval, true
+		scheduleRequired = reconcileAfterInterval
+		onReconcilingError = true
 	}
+
+	// Apply Robin configuration from the target or actually applied config.
+	// This is the right place to do it, after we've operated the cluster. The config phase could have been
+	// updated to Applied, so we can apply the new Robin configuration.
+	if !onReconcilingError {
+		r.applyRobinConfig(targetConfig, previousConfig)
+	}
+
+	return scheduleRequired, onReconcilingError
 }
 
 // copyPreviousClusterStatus copies the previous Status into the target configuration, preserving the target ConfigPhase and persisting the result.
