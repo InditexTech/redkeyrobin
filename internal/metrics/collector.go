@@ -53,6 +53,15 @@ type Collector struct {
 	metricsLabelsLoaded bool
 	metricsLabels       map[string]string
 	metricsLabelKeys    []string
+
+	// nodeClients caches Redis clients by node address to avoid creating/destroying
+	// connections every collection cycle. Clients are reconciled when nodes change.
+	nodeClients         map[string]*redis.Client
+	nodeClientsPassword string
+
+	// lastClusterNodeIDs tracks node IDs from the previous cycle to detect
+	// when the node set changes (triggering a metric reset).
+	lastClusterNodeIDs []string
 }
 
 type clusterHealthChecker interface {
@@ -84,6 +93,8 @@ func NewCollector(
 func (c *Collector) Start(ctx context.Context) error {
 	c.logger.Info("Starting metrics collector")
 
+	defer c.closeAllClients()
+
 	for {
 		interval := c.runtimeConfig.MetricsInterval()
 		select {
@@ -113,6 +124,10 @@ func (c *Collector) collect(ctx context.Context) {
 		c.logger.Debug("No nodes discovered, skipping collection")
 		return
 	}
+
+	// Reconcile client pool: close clients for nodes that no longer exist
+	// and invalidate if password changed.
+	c.reconcileClientPool(nodes, password)
 
 	c.logger.Info("Starting metrics collection cycle", "nodes", len(nodes), "infoKeys", len(redisInfoKeys))
 
@@ -173,6 +188,78 @@ func (c *Collector) discoverNodes() []nodeInfo {
 		nodes = append(nodes, nodeInfo{name: pod.Name, addr: addr})
 	}
 	return nodes
+}
+
+// reconcileClientPool closes cached clients for nodes that disappeared or when
+// the password has changed, ensuring we don't hold stale connections.
+func (c *Collector) reconcileClientPool(currentNodes []nodeInfo, password string) {
+	if c.nodeClients == nil {
+		c.nodeClients = make(map[string]*redis.Client)
+		c.nodeClientsPassword = password
+		return
+	}
+
+	// If password changed, close all cached clients.
+	if c.nodeClientsPassword != password {
+		c.closeAllClients()
+		c.nodeClients = make(map[string]*redis.Client)
+		c.nodeClientsPassword = password
+		return
+	}
+
+	// Build set of current node addresses.
+	currentAddrs := make(map[string]struct{}, len(currentNodes))
+	for _, node := range currentNodes {
+		currentAddrs[node.addr] = struct{}{}
+	}
+
+	// Close clients for nodes that no longer exist.
+	for addr, rc := range c.nodeClients {
+		if _, exists := currentAddrs[addr]; !exists {
+			if err := rc.Close(); err != nil {
+				c.logger.Debug("Error closing stale Redis client", "addr", addr, "error", err)
+			}
+			delete(c.nodeClients, addr)
+		}
+	}
+}
+
+// getOrCreateClient returns a cached Redis client for the given address,
+// creating a new one if necessary.
+func (c *Collector) getOrCreateClient(addr, password string) *redis.Client {
+	if c.nodeClients == nil {
+		c.nodeClients = make(map[string]*redis.Client)
+		c.nodeClientsPassword = password
+	}
+	if rc, exists := c.nodeClients[addr]; exists {
+		return rc
+	}
+	rc := redis.NewClient(addr, password)
+	c.nodeClients[addr] = rc
+	return rc
+}
+
+// discardClient closes and removes a cached client (e.g. after a connection error).
+func (c *Collector) discardClient(addr string) {
+	if c.nodeClients == nil {
+		return
+	}
+	if rc, exists := c.nodeClients[addr]; exists {
+		if err := rc.Close(); err != nil {
+			c.logger.Debug("Error closing discarded Redis client", "addr", addr, "error", err)
+		}
+		delete(c.nodeClients, addr)
+	}
+}
+
+// closeAllClients closes all cached Redis clients.
+func (c *Collector) closeAllClients() {
+	for addr, rc := range c.nodeClients {
+		if err := rc.Close(); err != nil {
+			c.logger.Debug("Error closing Redis client on shutdown", "addr", addr, "error", err)
+		}
+	}
+	c.nodeClients = nil
 }
 
 // buildNodeTags builds the base label map for a given node, including metadata labels.
@@ -259,16 +346,22 @@ func equalStringMaps(a, b map[string]string) bool {
 }
 
 // collectNode collects INFO ALL from a single Redis node and updates metrics.
-func (c *Collector) collectNode(ctx context.Context, node nodeInfo, password string, infoKeys []string) error {
-	rc := redis.NewClient(node.addr, password)
-	defer func() {
-		if err := rc.Close(); err != nil {
-			c.logger.Debug("Error closing Redis client", "node", node.name, "error", err)
-		}
-	}()
+const (
+	// nodeOperationTimeout is the maximum time to wait for a single Redis operation
+	// during metrics collection. Prevents indefinite blocking on slow nodes.
+	nodeOperationTimeout = 10 * time.Second
+)
 
-	raw, err := rc.GetInfo(ctx)
+func (c *Collector) collectNode(ctx context.Context, node nodeInfo, password string, infoKeys []string) error {
+	rc := c.getOrCreateClient(node.addr, password)
+
+	opCtx, cancel := context.WithTimeout(ctx, nodeOperationTimeout)
+	defer cancel()
+
+	raw, err := rc.GetInfo(opCtx)
 	if err != nil {
+		// On connection error, discard the cached client so it's recreated next cycle.
+		c.discardClient(node.addr)
 		return err
 	}
 
@@ -407,25 +500,51 @@ func (c *Collector) toHealthNodes(nodes []nodeInfo) []health.Node {
 	return healthNodes
 }
 
-// processClusterInfo exposes CLUSTER INFO fields as metrics with SetToCurrentTime.
+// processClusterInfo exposes CLUSTER INFO fields as metrics.
+// Numeric fields are exposed as individual gauge values (not as labels)
+// to avoid creating unbounded time series when counter values change each cycle.
 func (c *Collector) processClusterInfo(info *redis.ClusterInfo) {
 	tags := c.buildCommonMetadataTags()
 
-	// Expose all raw CLUSTER INFO fields as labels on a single metric.
+	// Expose stable string fields as a single info-style metric with labels.
+	infoTags := make(map[string]string, len(tags)+1)
+	for k, v := range tags {
+		infoTags[k] = v
+	}
+	infoTags["cluster_state"] = info.State
+
+	infoLabelKeys := make([]string, 0, len(infoTags))
+	for k := range infoTags {
+		infoLabelKeys = append(infoLabelKeys, k)
+	}
+	c.manager.UpdateDynamicMetricWithTime("cluster_info", infoTags, infoLabelKeys)
+
+	// Expose numeric CLUSTER INFO fields as individual metrics.
 	for k, v := range info.Raw() {
-		tags[k] = v
+		if floatVal, err := strconv.ParseFloat(v, 64); err == nil {
+			c.manager.UpdateDynamicMetric("cluster_info_"+strings.ReplaceAll(k, "-", "_"), tags, nil, floatVal)
+		}
 	}
-
-	labelKeys := make([]string, 0, len(tags))
-	for k := range tags {
-		labelKeys = append(labelKeys, k)
-	}
-
-	c.manager.UpdateDynamicMetricWithTime("cluster_metrics", tags, labelKeys)
 }
 
 // processClusterNodes exposes per-node information from CLUSTER NODES.
+// Only resets the metric when node labels change, avoiding unnecessary
+// object allocation on stable clusters.
 func (c *Collector) processClusterNodes(nodes []redis.ClusterNode) {
+	// Build a fingerprint of all node label values to detect changes.
+	currentIDs := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		// Include all label-relevant fields in the fingerprint.
+		currentIDs = append(currentIDs, node.ID+"|"+node.IP+"|"+node.Flags+"|"+node.Slots+"|"+node.Primary+"|"+node.State)
+	}
+	slices.Sort(currentIDs)
+
+	if !slices.Equal(c.lastClusterNodeIDs, currentIDs) {
+		// Node labels changed: reset to discard stale entries.
+		c.manager.ResetMetricByName("nodes_metrics")
+		c.lastClusterNodeIDs = currentIDs
+	}
+
 	for _, node := range nodes {
 		tags := c.buildCommonMetadataTags()
 		tags["nodeId"] = node.ID

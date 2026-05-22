@@ -123,6 +123,19 @@ func (m *MetricsManager) ResetMetrics() {
 	}
 }
 
+// ResetMetricByName resets a single metric vector by its raw name,
+// removing all label combinations. This prevents stale time series from
+// accumulating when label values (e.g. node state) change between cycles.
+func (m *MetricsManager) ResetMetricByName(name string) {
+	fullName := metricName(name)
+	m.mu.RLock()
+	metric, exists := m.metrics[fullName]
+	m.mu.RUnlock()
+	if exists {
+		metric.gauge.Reset()
+	}
+}
+
 // ResetRegistry resets the underlying registry and clears registered metric
 // descriptors. It returns false when the registerer cannot be reset.
 func (m *MetricsManager) ResetRegistry() bool {

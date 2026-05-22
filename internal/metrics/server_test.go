@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/inditextech/redkeyrobin/internal/config"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -31,7 +32,7 @@ func freePort(t *testing.T) int {
 }
 
 func TestNewServer(t *testing.T) {
-	s := NewServer(":9090")
+	s := NewServer(":9090", nil, nil)
 	if s.bindAddr != ":9090" {
 		t.Fatalf("expected bindAddr ':9090', got '%s'", s.bindAddr)
 	}
@@ -46,7 +47,7 @@ func TestNewServer(t *testing.T) {
 func TestServer_ServesMetrics(t *testing.T) {
 	port := freePort(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	s := NewServer(addr)
+	s := NewServer(addr, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -102,7 +103,7 @@ func TestServer_ServesCustomGatherer(t *testing.T) {
 
 	port := freePort(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	s := NewServerWithGatherer(addr, reg)
+	s := NewServer(addr, reg, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -174,7 +175,7 @@ func TestCombinedGathererIncludesDefaultAndRedKeyMetrics(t *testing.T) {
 func TestServer_GracefulShutdown(t *testing.T) {
 	port := freePort(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	s := NewServer(addr)
+	s := NewServer(addr, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -209,4 +210,83 @@ func TestServer_GracefulShutdown(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected connection error after shutdown")
 	}
+}
+
+func TestServer_PprofEnabled(t *testing.T) {
+	port := freePort(t)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	rc := config.NewRuntimeConfig()
+	rc.SetProfilingEnabled(true)
+	s := NewServer(addr, nil, rc)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(ctx)
+	}()
+
+	// Wait for server to be ready
+	for i := 0; i < 20; i++ {
+		_, err := http.Get(fmt.Sprintf("http://%s/metrics", addr))
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/debug/pprof/", addr))
+	if err != nil {
+		t.Fatalf("failed to reach pprof endpoint: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from /debug/pprof/, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read pprof response: %v", err)
+	}
+	if !strings.Contains(string(body), "heap") {
+		t.Fatal("expected pprof index to contain 'heap'")
+	}
+}
+
+func TestServer_PprofDisabled(t *testing.T) {
+	port := freePort(t)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	rc := config.NewRuntimeConfig()
+	rc.SetProfilingEnabled(false)
+	s := NewServer(addr, nil, rc)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(ctx)
+	}()
+
+	// Wait for server to be ready
+	for i := 0; i < 20; i++ {
+		_, err := http.Get(fmt.Sprintf("http://%s/metrics", addr))
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/debug/pprof/", addr))
+	if err != nil {
+		t.Fatalf("failed to reach server: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 from /debug/pprof/ when disabled, got %d", resp.StatusCode)
+	}
+	_ = errCh
 }

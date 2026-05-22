@@ -44,6 +44,7 @@ func main() {
 	var namespace string
 	var metricsAddr string
 	var logLevel string
+	var enablePprof bool
 	var reconcileInterval time.Duration
 	var reconcileIntervalOnError = defaultReconcileIntervalOnError
 	var reconcileIntervalOnWait = defaultReconcileIntervalOnWait
@@ -52,6 +53,7 @@ func main() {
 	flag.StringVar(&namespace, "namespace", "", "Namespace of the RedkeyCluster (required)")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
+	flag.BoolVar(&enablePprof, "enable-pprof", false, "Enable pprof profiling endpoints on the metrics server (do not use in production unless debugging)")
 	flag.DurationVar(&reconcileInterval, "reconcile-interval", defaultReconcileInterval, "Polling interval for the reconciliation loop")
 	flag.DurationVar(&reconcileIntervalOnError, "reconcile-interval-on-error", defaultReconcileIntervalOnError, "Polling interval for the reconciliation loop when an error occurs")
 	flag.DurationVar(&reconcileIntervalOnWait, "reconcile-interval-on-wait", defaultReconcileIntervalOnWait, "Polling interval for the reconciliation loop while waiting for convergence")
@@ -78,6 +80,7 @@ func main() {
 		"cluster", clusterName,
 		"namespace", namespace,
 		"metricsAddr", metricsAddr,
+		"enablePprof", enablePprof,
 		"reconcileInterval", reconcileInterval,
 		"reconcileIntervalOnError", reconcileIntervalOnError,
 		"reconcileIntervalOnWait", reconcileIntervalOnWait,
@@ -113,6 +116,11 @@ func main() {
 		reconcileIntervalOnWait,
 	)
 
+	// Set bootstrap profiling state from CLI flag. This will be overridden
+	// by the RedkeyClusterConfig CRD profiling.enabled field once the
+	// reconciler reads the config, allowing hot-toggle without pod restart.
+	runtimeConfig.SetProfilingEnabled(enablePprof)
+
 	// Start the reconciliation loop
 	rec := reconciler.NewReconciler(
 		k8sClient,
@@ -141,8 +149,11 @@ func main() {
 		}
 	}()
 
-	// Start the metrics HTTP server (Prometheus endpoint)
-	metricsSrv := metrics.NewServerWithGatherer(metricsAddr, metricsGatherer)
+	// Start the metrics HTTP server (Prometheus endpoint + hot-togglable pprof).
+	// Pprof endpoints are gated by RuntimeConfig.ProfilingEnabled() which is
+	// updated by the reconciler from the RedkeyClusterConfig CRD. This allows
+	// enabling/disabling profiling at runtime without restarting the pod.
+	metricsSrv := metrics.NewServer(metricsAddr, metricsGatherer, runtimeConfig)
 	go func() {
 		if err := metricsSrv.Start(ctx); err != nil {
 			logger.Error("Error in metrics server", "error", err)

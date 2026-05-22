@@ -68,6 +68,11 @@ type Checker struct {
 	logger       *slog.Logger
 	newClient    ClientFactory
 	probeTimeout time.Duration
+
+	// clients caches cluster clients by address to avoid creating/destroying
+	// connections every health check cycle.
+	clients         map[string]ClusterClient
+	clientsPassword string
 }
 
 // NewChecker creates a reusable cluster health checker.
@@ -85,6 +90,7 @@ func NewChecker(logger *slog.Logger, newClient ClientFactory, probeTimeout time.
 		logger:       logger,
 		newClient:    newClient,
 		probeTimeout: probeTimeout,
+		clients:      make(map[string]ClusterClient),
 	}
 }
 
@@ -94,6 +100,8 @@ func (c *Checker) Check(ctx context.Context, nodes []Node, password string) (*Re
 	if len(nodes) == 0 {
 		return report, fmt.Errorf("no nodes provided for cluster health check")
 	}
+
+	c.reconcileClients(nodes, password)
 
 	seed, err := c.selectSeed(ctx, nodes, password)
 	if err != nil {
@@ -113,6 +121,65 @@ func (c *Checker) Check(ctx context.Context, nodes []Node, password string) (*Re
 	report.Healthy = report.MembershipOK && report.SlotsCoveredOK && report.BalancedOK && report.ClusterCheckOK
 
 	return report, seed.partialErr
+}
+
+// reconcileClients closes cached clients for nodes that disappeared or when the
+// password has changed, ensuring we don't hold stale connections.
+func (c *Checker) reconcileClients(currentNodes []Node, password string) {
+	// If password changed, close all cached clients.
+	if c.clientsPassword != password {
+		c.CloseAll()
+		c.clients = make(map[string]ClusterClient)
+		c.clientsPassword = password
+		return
+	}
+
+	// Build set of current node addresses.
+	currentAddrs := make(map[string]struct{}, len(currentNodes))
+	for _, node := range currentNodes {
+		currentAddrs[node.Addr] = struct{}{}
+	}
+
+	// Close clients for nodes that no longer exist.
+	for addr, client := range c.clients {
+		if _, exists := currentAddrs[addr]; !exists {
+			if err := client.Close(); err != nil {
+				c.logger.Debug("Error closing stale health check client", "addr", addr, "error", err)
+			}
+			delete(c.clients, addr)
+		}
+	}
+}
+
+// getOrCreateClient returns a cached client for the given address,
+// creating a new one if necessary.
+func (c *Checker) getOrCreateClient(addr, password string) ClusterClient {
+	if client, exists := c.clients[addr]; exists {
+		return client
+	}
+	client := c.newClient(addr, password)
+	c.clients[addr] = client
+	return client
+}
+
+// discardClient closes and removes a cached client (e.g. after a connection error).
+func (c *Checker) discardClient(addr string) {
+	if client, exists := c.clients[addr]; exists {
+		if err := client.Close(); err != nil {
+			c.logger.Debug("Error closing discarded health check client", "addr", addr, "error", err)
+		}
+		delete(c.clients, addr)
+	}
+}
+
+// CloseAll closes all cached clients. Should be called on shutdown.
+func (c *Checker) CloseAll() {
+	for addr, client := range c.clients {
+		if err := client.Close(); err != nil {
+			c.logger.Debug("Error closing health check client on shutdown", "addr", addr, "error", err)
+		}
+		delete(c.clients, addr)
+	}
 }
 
 type seedProbe struct {
@@ -157,23 +224,20 @@ func (c *Checker) selectSeed(ctx context.Context, nodes []Node, password string)
 }
 
 func (c *Checker) probeNode(ctx context.Context, addr, password string) (*seedProbe, error) {
-	client := c.newClient(addr, password)
-	defer func() {
-		if err := client.Close(); err != nil {
-			c.logger.Debug("Error closing Redis client during health check", "addr", addr, "error", err)
-		}
-	}()
+	client := c.getOrCreateClient(addr, password)
 
 	probeCtx, cancel := context.WithTimeout(ctx, c.probeTimeout)
 	defer cancel()
 
 	clusterInfo, err := client.GetClusterInfo(probeCtx)
 	if err != nil {
+		c.discardClient(addr)
 		return nil, err
 	}
 
 	clusterNodes, err := client.GetClusterNodes(probeCtx)
 	if err != nil {
+		c.discardClient(addr)
 		return nil, err
 	}
 
@@ -199,14 +263,12 @@ func (c *Checker) checkMembership(ctx context.Context, nodes []Node, password st
 	}
 
 	for _, node := range nodes {
-		client := c.newClient(node.Addr, password)
+		client := c.getOrCreateClient(node.Addr, password)
 		probeCtx, cancel := context.WithTimeout(ctx, c.probeTimeout)
 		clusterNodes, err := client.GetClusterNodes(probeCtx)
 		cancel()
-		if closeErr := client.Close(); closeErr != nil {
-			c.logger.Debug("Error closing Redis client during membership check", "addr", node.Addr, "error", closeErr)
-		}
 		if err != nil {
+			c.discardClient(node.Addr)
 			c.logger.Debug("Membership check failed to read CLUSTER NODES", "addr", node.Addr, "error", err)
 			return false
 		}

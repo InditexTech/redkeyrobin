@@ -9,41 +9,59 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"time"
 
+	"github.com/inditextech/redkeyrobin/internal/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Server is a Prometheus metrics HTTP server.
+// Server is a Prometheus metrics HTTP server with optional hot-togglable pprof
+// profiling endpoints.
 type Server struct {
-	bindAddr string
-	gatherer prometheus.Gatherer
-	logger   *slog.Logger
+	bindAddr      string
+	gatherer      prometheus.Gatherer
+	runtimeConfig *config.RuntimeConfig
+	logger        *slog.Logger
 }
 
-// NewServer creates a new metrics Server.
-func NewServer(bindAddr string) *Server {
-	return NewServerWithGatherer(bindAddr, prometheus.DefaultGatherer)
-}
-
-// NewServerWithGatherer creates a new metrics Server using the supplied gatherer.
-func NewServerWithGatherer(bindAddr string, gatherer prometheus.Gatherer) *Server {
+// NewServer creates a metrics Server that reads profiling state from the shared
+// RuntimeConfig. Profiling can be toggled at runtime via the RedkeyClusterConfig
+// CRD without restarting the pod. Pass nil gatherer to use prometheus.DefaultGatherer.
+func NewServer(bindAddr string, gatherer prometheus.Gatherer, rc *config.RuntimeConfig) *Server {
 	if gatherer == nil {
 		gatherer = prometheus.DefaultGatherer
 	}
+	if rc == nil {
+		rc = config.NewRuntimeConfig()
+	}
 	return &Server{
-		bindAddr: bindAddr,
-		gatherer: gatherer,
-		logger:   slog.Default().With("component", "metrics-server"),
+		bindAddr:      bindAddr,
+		gatherer:      gatherer,
+		runtimeConfig: rc,
+		logger:        slog.Default().With("component", "metrics-server"),
 	}
 }
 
 // Start starts the metrics HTTP server. It blocks until the context is cancelled,
 // then performs a graceful shutdown.
+//
+// Pprof endpoints are always registered but gated by a middleware that checks
+// RuntimeConfig.ProfilingEnabled() on every request. This allows toggling
+// profiling at runtime without restarting the server.
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{}))
+
+	// Register pprof handlers behind a guard that checks runtime config.
+	// The pprofGuard middleware returns 404 when profiling is disabled,
+	// allowing hot enable/disable via the RedkeyClusterConfig CRD.
+	mux.HandleFunc("/debug/pprof/", s.pprofGuard(pprof.Index))
+	mux.HandleFunc("/debug/pprof/cmdline", s.pprofGuard(pprof.Cmdline))
+	mux.HandleFunc("/debug/pprof/profile", s.pprofGuard(pprof.Profile))
+	mux.HandleFunc("/debug/pprof/symbol", s.pprofGuard(pprof.Symbol))
+	mux.HandleFunc("/debug/pprof/trace", s.pprofGuard(pprof.Trace))
 
 	srv := &http.Server{
 		Addr:              s.bindAddr,
@@ -69,5 +87,18 @@ func (s *Server) Start(ctx context.Context) error {
 		return srv.Shutdown(shutdownCtx)
 	case err := <-errChan:
 		return err
+	}
+}
+
+// pprofGuard wraps a pprof handler and returns 404 when profiling is disabled.
+// It checks RuntimeConfig.ProfilingEnabled() (an atomic.Bool) on each request,
+// providing zero-cost hot-toggling without mutex contention or server restart.
+func (s *Server) pprofGuard(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.runtimeConfig.ProfilingEnabled() {
+			http.NotFound(w, r)
+			return
+		}
+		handler(w, r)
 	}
 }

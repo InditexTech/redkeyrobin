@@ -27,10 +27,16 @@ type Client struct {
 }
 
 // NewClient creates a new Redis client connected to the given address.
+// Pool is limited to a single connection since Robin uses clients sequentially.
 func NewClient(addr, password string) *Client {
 	opts := &goredis.Options{
-		Addr:     addr,
-		Password: password,
+		Addr:         addr,
+		Password:     password,
+		PoolSize:     1,
+		MaxIdleConns: 1,
+		DialTimeout:  5 * time.Second,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 5 * time.Second,
 	}
 	return &Client{
 		client:   goredis.NewClient(opts),

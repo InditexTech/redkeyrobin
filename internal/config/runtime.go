@@ -6,6 +6,7 @@ package config
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
@@ -78,6 +79,12 @@ type RuntimeConfig struct {
 	connectionBackOffSeconds         int
 	topology                         Topology
 	authSecret                       string
+
+	// profilingEnabled controls whether pprof endpoints are served.
+	// Uses atomic.Bool for lock-free reads from the HTTP handler hot path.
+	// Written by the reconciler when it reads the RedkeyClusterConfig,
+	// read by the metrics server on every request to /debug/pprof/*.
+	profilingEnabled atomic.Bool
 }
 
 // NewRuntimeConfig creates a RuntimeConfig with default values.
@@ -154,6 +161,14 @@ func (rc *RuntimeConfig) SetFromRobinConfig(cfg *redisv1.RobinConfig) {
 		if cfg.Cluster.ConnectionBackOffSeconds != nil {
 			rc.connectionBackOffSeconds = *cfg.Cluster.ConnectionBackOffSeconds
 		}
+	}
+
+	// Profiling toggle — uses atomic.Bool for lock-free reads from the HTTP
+	// handler. When the CRD field is nil (omitted), profiling defaults to off.
+	if cfg.Profiling != nil && cfg.Profiling.Enabled != nil {
+		rc.profilingEnabled.Store(*cfg.Profiling.Enabled)
+	} else {
+		rc.profilingEnabled.Store(false)
 	}
 }
 
@@ -245,4 +260,15 @@ func (rc *RuntimeConfig) MetricsLabels() map[string]string {
 		labels[k] = v
 	}
 	return labels
+}
+
+// ProfilingEnabled returns whether pprof profiling endpoints should be active.
+// This is safe to call from any goroutine without locking (uses atomic.Bool).
+func (rc *RuntimeConfig) ProfilingEnabled() bool {
+	return rc.profilingEnabled.Load()
+}
+
+// SetProfilingEnabled sets the profiling state. Used for bootstrap from CLI flags.
+func (rc *RuntimeConfig) SetProfilingEnabled(enabled bool) {
+	rc.profilingEnabled.Store(enabled)
 }
