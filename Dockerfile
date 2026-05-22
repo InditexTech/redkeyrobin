@@ -50,7 +50,7 @@ RUN git clone --branch ${OPERATOR_BRANCH} --depth 1 https://github.com/InditexTe
 COPY . .
 
 # Build the Go application with version information
-RUN go build -ldflags "-X main.version=0.1.0" -o robin ./cmd/
+RUN go build -ldflags "-X main.version=0.2.0" -o robin ./cmd/
 
 
 ### Final stage
