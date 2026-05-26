@@ -6,6 +6,7 @@ package redis
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 )
@@ -44,12 +45,9 @@ exit 1
 	defer func() { newRedisCLICommand = originalFactory }()
 
 	client := NewClient("127.0.0.1:6379", "")
-	result, err := client.ClusterFix(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.CommandCodeOutput != 1 {
-		t.Fatalf("expected exit code 1, got %d", result.CommandCodeOutput)
+	_, err := client.ClusterFix(context.Background())
+	if err == nil {
+		t.Fatal("expected error on non-zero exit code")
 	}
 }
 
@@ -91,5 +89,24 @@ exit 0
 	}
 	if result.CommandCodeOutput != 0 {
 		t.Fatalf("expected exit code 0, got %d", result.CommandCodeOutput)
+	}
+}
+
+func TestClient_ClusterFix_UsesClusterYes(t *testing.T) {
+	originalFactory := newRedisCLICommand
+	var seenArgs []string
+	newRedisCLICommand = func(ctx context.Context, args []string, env map[string]string) *RedisCLICommand {
+		seenArgs = append([]string(nil), args...)
+		return newCLICommand(ctx, "sh", []string{"-c", "echo ok; exit 0"}, env)
+	}
+	defer func() { newRedisCLICommand = originalFactory }()
+
+	client := NewClient("127.0.0.1:6379", "")
+	_, err := client.ClusterFix(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !slices.Contains(seenArgs, "--cluster-yes") {
+		t.Fatalf("expected --cluster-yes in args, got %v", seenArgs)
 	}
 }

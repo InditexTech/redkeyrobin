@@ -6,6 +6,7 @@ package reconciler
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,13 +105,78 @@ func TestHealthReconciler_RemediateClusterCheck_CLIError(t *testing.T) {
 
 	nodes := healthyNodes()
 	schedule, err := hr.Reconcile(context.Background(), nodes, "", 3, 0)
-	// ClusterFix returns a result even with exit code 1 (it's not an execution error)
-	// So remediation succeeds (the result is logged)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error on non-zero cluster fix exit code")
 	}
 	if schedule != reconcileAfterWaitInterval {
 		t.Fatalf("expected reconcileAfterWaitInterval, got %v", schedule)
+	}
+}
+
+func TestHealthReconciler_Reconcile_FixError_BlocksRebalance(t *testing.T) {
+	originalFactory := redis.ExportNewRedisCLICommand()
+	fixCalls := 0
+	rebalanceCalls := 0
+	redis.SetNewRedisCLICommand(func(ctx context.Context, args []string, env map[string]string) *redis.RedisCLICommand {
+		for i := 0; i < len(args)-1; i++ {
+			if args[i] == "--cluster" && args[i+1] == "fix" {
+				fixCalls++
+				return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo 'fix failed'; exit 1"}, env)
+			}
+			if args[i] == "--cluster" && args[i+1] == "rebalance" {
+				rebalanceCalls++
+				return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo 'rebalance'; exit 0"}, env)
+			}
+		}
+		return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo 'unexpected'; exit 0"}, env)
+	})
+	defer redis.SetNewRedisCLICommand(originalFactory)
+
+	// Cluster report: cluster check fails and balance also fails. Reconcile should attempt
+	// fix first and stop before rebalance if fix returns non-zero exit code.
+	unbalancedView := []redis.ClusterNode{
+		{ID: "id-1", IP: "10.0.0.1", Flags: "master", State: "connected", Slots: "0-100"},
+		{ID: "id-2", IP: "10.0.0.2", Flags: "master", State: "connected", Slots: "101-8200"},
+		{ID: "id-3", IP: "10.0.0.3", Flags: "master", State: "connected", Slots: "8201-16383"},
+	}
+
+	fakeClient := &fakeHealthClusterClient{
+		clusterInfo:  healthyInfo(),
+		clusterNodes: unbalancedView,
+		clusterCheck: &redis.ClusterCheckResult{
+			CommandCodeOutput: 1,
+			Errors:            []string{"Not all 16384 slots are covered by nodes."},
+		},
+	}
+
+	checkerFactory := func(addr, password string) health.ClusterClient {
+		return fakeClient
+	}
+	checker := health.NewChecker(nil, checkerFactory, 2*time.Second)
+
+	clientFactory := func(addr, password string) *redis.Client {
+		return redis.NewClient(addr, password)
+	}
+
+	rtConfig := config.NewRuntimeConfig()
+	hr := NewHealthReconciler(checker, clientFactory, rtConfig, nil)
+
+	nodes := healthyNodes()
+	schedule, err := hr.Reconcile(context.Background(), nodes, "", 3, 0)
+	if err == nil {
+		t.Fatal("expected reconciliation error when fix exits non-zero")
+	}
+	if !strings.Contains(err.Error(), "--cluster fix") {
+		t.Fatalf("expected fix error, got: %v", err)
+	}
+	if schedule != reconcileAfterWaitInterval {
+		t.Fatalf("expected reconcileAfterWaitInterval, got %v", schedule)
+	}
+	if fixCalls != 1 {
+		t.Fatalf("expected one fix invocation, got %d", fixCalls)
+	}
+	if rebalanceCalls != 0 {
+		t.Fatalf("expected no rebalance invocation after fix failure, got %d", rebalanceCalls)
 	}
 }
 

@@ -283,38 +283,38 @@ func TestClusterSetSlotStable_FailsOnClosedServer(t *testing.T) {
 
 func TestParseClusterNodesOutput_ExtractsIP(t *testing.T) {
 	tests := []struct {
-		name       string
-		line       string
-		wantIP     string
-		wantAddr   string
-		wantSlots  string
+		name      string
+		line      string
+		wantIP    string
+		wantAddr  string
+		wantSlots string
 	}{
 		{
-			name:     "normal address with cport",
-			line:     "abc123 10.244.0.45:6379@16379 master - 0 1716710000000 1 connected 0-5460",
-			wantIP:   "10.244.0.45",
-			wantAddr: "10.244.0.45:6379@16379",
+			name:      "normal address with cport",
+			line:      "abc123 10.244.0.45:6379@16379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:    "10.244.0.45",
+			wantAddr:  "10.244.0.45:6379@16379",
 			wantSlots: "0-5460",
 		},
 		{
-			name:     "address without cport",
-			line:     "abc123 10.244.0.45:6379 master - 0 1716710000000 1 connected 0-5460",
-			wantIP:   "10.244.0.45",
-			wantAddr: "10.244.0.45:6379",
+			name:      "address without cport",
+			line:      "abc123 10.244.0.45:6379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:    "10.244.0.45",
+			wantAddr:  "10.244.0.45:6379",
 			wantSlots: "0-5460",
 		},
 		{
-			name:     "empty IP with cport",
-			line:     "abc123 :6379@16379 master - 0 1716710000000 1 connected 0-5460",
-			wantIP:   "",
-			wantAddr: ":6379@16379",
+			name:      "empty IP with cport",
+			line:      "abc123 :6379@16379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:    "",
+			wantAddr:  ":6379@16379",
 			wantSlots: "0-5460",
 		},
 		{
-			name:     "empty IP without cport",
-			line:     "abc123 :6379 master - 0 1716710000000 1 connected",
-			wantIP:   "",
-			wantAddr: ":6379",
+			name:      "empty IP without cport",
+			line:      "abc123 :6379 master - 0 1716710000000 1 connected",
+			wantIP:    "",
+			wantAddr:  ":6379",
 			wantSlots: "",
 		},
 	}
