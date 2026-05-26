@@ -256,3 +256,84 @@ func TestGetInfo_Success(t *testing.T) {
 		t.Fatal("expected non-empty INFO response")
 	}
 }
+
+func TestClusterSetSlotStable_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterSetSlotStable(context.Background(), 100)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterSetSlotStable_FailsOnClosedServer(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	mr.Close()
+
+	err := c.ClusterSetSlotStable(context.Background(), 0)
+	if err == nil {
+		t.Fatal("expected error when server is closed")
+	}
+}
+
+func TestParseClusterNodesOutput_ExtractsIP(t *testing.T) {
+	tests := []struct {
+		name       string
+		line       string
+		wantIP     string
+		wantAddr   string
+		wantSlots  string
+	}{
+		{
+			name:     "normal address with cport",
+			line:     "abc123 10.244.0.45:6379@16379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:   "10.244.0.45",
+			wantAddr: "10.244.0.45:6379@16379",
+			wantSlots: "0-5460",
+		},
+		{
+			name:     "address without cport",
+			line:     "abc123 10.244.0.45:6379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:   "10.244.0.45",
+			wantAddr: "10.244.0.45:6379",
+			wantSlots: "0-5460",
+		},
+		{
+			name:     "empty IP with cport",
+			line:     "abc123 :6379@16379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:   "",
+			wantAddr: ":6379@16379",
+			wantSlots: "0-5460",
+		},
+		{
+			name:     "empty IP without cport",
+			line:     "abc123 :6379 master - 0 1716710000000 1 connected",
+			wantIP:   "",
+			wantAddr: ":6379",
+			wantSlots: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes := ParseClusterNodesOutput(tt.line)
+			if len(nodes) != 1 {
+				t.Fatalf("expected 1 node, got %d", len(nodes))
+			}
+			if nodes[0].IP != tt.wantIP {
+				t.Errorf("IP = %q, want %q", nodes[0].IP, tt.wantIP)
+			}
+			if nodes[0].Addr != tt.wantAddr {
+				t.Errorf("Addr = %q, want %q", nodes[0].Addr, tt.wantAddr)
+			}
+			if nodes[0].Slots != tt.wantSlots {
+				t.Errorf("Slots = %q, want %q", nodes[0].Slots, tt.wantSlots)
+			}
+		})
+	}
+}

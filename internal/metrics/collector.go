@@ -65,7 +65,7 @@ type Collector struct {
 }
 
 type clusterHealthChecker interface {
-	Check(ctx context.Context, nodes []health.Node, password string) (*health.Report, error)
+	Check(ctx context.Context, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (*health.Report, error)
 }
 
 // NewCollector creates a new metrics Collector.
@@ -464,7 +464,8 @@ func (c *Collector) collectClusterMetrics(ctx context.Context, nodes []nodeInfo,
 
 	c.ensureHealthChecker()
 
-	report, err := c.healthChecker.Check(ctx, c.toHealthNodes(nodes), password)
+	topology := c.runtimeConfig.AppliedTopology()
+	report, err := c.healthChecker.Check(ctx, c.toHealthNodes(nodes), password, int(topology.Primaries), int(topology.ReplicasPerPrimary))
 	if err != nil {
 		c.logger.Warn("Cluster health check reported errors", "error", err)
 	}

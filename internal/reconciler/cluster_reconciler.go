@@ -15,6 +15,7 @@ import (
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/health"
 	"github.com/inditextech/redkeyrobin/internal/kubernetes"
 	"github.com/inditextech/redkeyrobin/internal/redis"
 )
@@ -26,21 +27,41 @@ const (
 
 // ClusterReconciler handles the Redis cluster lifecycle state machine.
 type ClusterReconciler struct {
-	client        client.Client
-	clusterName   string
-	namespace     string
-	runtimeConfig *config.RuntimeConfig
-	logger        *slog.Logger
+	client           client.Client
+	clusterName      string
+	namespace        string
+	runtimeConfig    *config.RuntimeConfig
+	logger           *slog.Logger
+	healthReconciler *HealthReconciler
 }
 
 // NewClusterReconciler creates a new ClusterReconciler.
 func NewClusterReconciler(c client.Client, clusterName, namespace string, runtimeConfig *config.RuntimeConfig) *ClusterReconciler {
+	logger := slog.Default().With("component", "cluster-reconciler", "cluster", clusterName)
+
+	// Create health checker with redis client factory
+	healthClientFactory := func(addr, password string) health.ClusterClient {
+		return redis.NewClient(addr, password)
+	}
+	checker := health.NewChecker(
+		logger.With("subcomponent", "health-checker"),
+		healthClientFactory,
+		5*time.Second,
+	)
+
+	// Create health reconciler
+	redisClientFactory := func(addr, password string) *redis.Client {
+		return redis.NewClient(addr, password)
+	}
+	healthReconciler := NewHealthReconciler(checker, redisClientFactory, runtimeConfig, logger)
+
 	return &ClusterReconciler{
-		client:        c,
-		clusterName:   clusterName,
-		namespace:     namespace,
-		runtimeConfig: runtimeConfig,
-		logger:        slog.Default().With("component", "cluster-reconciler", "cluster", clusterName),
+		client:           c,
+		clusterName:      clusterName,
+		namespace:        namespace,
+		runtimeConfig:    runtimeConfig,
+		logger:           logger,
+		healthReconciler: healthReconciler,
 	}
 }
 
@@ -168,11 +189,22 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 		return reconcileAfterWaitInterval, nil
 	}
 
-	// Step 3: Set replicas
+	// Step 3: Verify gossip convergence before replication
 	if config.Spec.ReplicasPerPrimary > 0 {
+		converged, err := cr.checkGossipConvergence(ctx, nodes)
+		if err != nil {
+			cr.logger.Warn("Failed to check gossip convergence", "error", err)
+			return reconcileAfterWaitInterval, nil
+		}
+		if !converged {
+			cr.logger.Info("Gossip not yet converged, will retry before setting replicas")
+			return reconcileAfterWaitInterval, nil
+		}
+
+		// Step 4: Set replicas
 		replicas := nodes[config.Spec.Primaries:]
 		if err := cr.setReplicas(ctx, primaries, replicas, config.Spec.ReplicasPerPrimary); err != nil {
-			cr.logger.Error("Failed to set replicas", "error", err)
+			cr.logger.Warn("Failed to set replicas, will retry", "error", err)
 			return reconcileAfterWaitInterval, nil
 		}
 	}
@@ -208,9 +240,39 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 
 // handleReady performs a health check on the ready cluster.
 func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
-	// Health checks will be performed here in the future using the health.Checker.
-	// For now, this is a no-op placeholder.
-	return reconcileAfterInterval, nil
+	// Get fresh pod addresses from K8s
+	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
+	if err != nil {
+		return reconcileAfterInterval, fmt.Errorf("getting pod addresses for health check: %w", err)
+	}
+
+	// Build health node list from K8s pod state
+	totalNodes := int(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
+	nodes := make([]health.Node, 0, totalNodes)
+	for i := range totalNodes {
+		name := fmt.Sprintf("%s-%d", cr.clusterName, i)
+		addr, ok := podAddrs[name]
+		if !ok {
+			cr.logger.Warn("Pod not found for health check, skipping", "pod", name)
+			continue
+		}
+		nodes = append(nodes, health.Node{Name: name, Addr: addr})
+	}
+
+	if len(nodes) == 0 {
+		return reconcileAfterInterval, fmt.Errorf("no pods found for cluster health check")
+	}
+
+	// Get Redis password
+	password, err := kubernetes.GetRedisPassword(ctx, cr.client, config.Spec.Auth.SecretName, cr.namespace)
+	if err != nil {
+		cr.logger.Warn("Could not retrieve Redis password for health check", "error", err)
+		// Continue without password — it may not be configured
+	}
+
+	// Run health reconciliation
+	return cr.healthReconciler.Reconcile(ctx, nodes, password,
+		int(config.Spec.Primaries), int(config.Spec.ReplicasPerPrimary))
 }
 
 // --- Node operations ---
@@ -261,6 +323,39 @@ func (cr *ClusterReconciler) meetNodes(ctx context.Context, nodes []*redis.Node)
 	}
 	cr.logger.Info("All nodes introduced to each other", "count", len(nodes))
 	return nil
+}
+
+// checkGossipConvergence verifies that all nodes see every other node in their
+// CLUSTER NODES output. This ensures gossip has fully propagated after CLUSTER MEET
+// before attempting operations like CLUSTER REPLICATE that require node ID visibility.
+func (cr *ClusterReconciler) checkGossipConvergence(ctx context.Context, nodes []*redis.Node) (bool, error) {
+	expectedIDs := make(map[string]struct{}, len(nodes))
+	for _, n := range nodes {
+		expectedIDs[n.ID] = struct{}{}
+	}
+
+	for _, node := range nodes {
+		clusterNodes, err := node.Client().GetClusterNodes(ctx)
+		if err != nil {
+			return false, fmt.Errorf("getting cluster nodes from %s: %w", node.Name, err)
+		}
+
+		visibleIDs := make(map[string]struct{}, len(clusterNodes))
+		for _, cn := range clusterNodes {
+			visibleIDs[cn.ID] = struct{}{}
+		}
+
+		for id := range expectedIDs {
+			if _, ok := visibleIDs[id]; !ok {
+				cr.logger.Info("Node does not yet see all peers",
+					"node", node.Name, "missingNodeID", id)
+				return false, nil
+			}
+		}
+	}
+
+	cr.logger.Info("Gossip fully converged, all nodes visible to each other")
+	return true, nil
 }
 
 func (cr *ClusterReconciler) assignSlots(ctx context.Context, primaries []*redis.Node) error {

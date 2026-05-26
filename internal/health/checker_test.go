@@ -69,7 +69,7 @@ func TestChecker_CheckHealthyClusterWithSeedFallback(t *testing.T) {
 		},
 	}), 2*time.Second)
 
-	report, err := checker.Check(context.Background(), nodes, "")
+	report, err := checker.Check(context.Background(), nodes, "", 3, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestChecker_CheckFailsMembershipWhenNodeUnreachable(t *testing.T) {
 		nodes[2].Addr: {clusterNodesErr: errors.New("unreachable")},
 	}), 2*time.Second)
 
-	report, err := checker.Check(context.Background(), nodes, "")
+	report, err := checker.Check(context.Background(), nodes, "", 3, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestChecker_CheckFailsSlotCoverageOnGap(t *testing.T) {
 		nodes[2].Addr: {clusterInfo: healthyClusterInfo(), clusterNodes: gapView, clusterCheck: &redis.ClusterCheckResult{CommandCodeOutput: 0}},
 	}), 2*time.Second)
 
-	report, err := checker.Check(context.Background(), nodes, "")
+	report, err := checker.Check(context.Background(), nodes, "", 3, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestChecker_CheckFailsBalanceWhenPrimaryHasTooManySlots(t *testing.T) {
 		nodes[2].Addr: {clusterInfo: healthyClusterInfo(), clusterNodes: unbalancedView, clusterCheck: &redis.ClusterCheckResult{CommandCodeOutput: 0}},
 	}), 2*time.Second)
 
-	report, err := checker.Check(context.Background(), nodes, "")
+	report, err := checker.Check(context.Background(), nodes, "", 3, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestChecker_CheckFailsHealthyWhenClusterCheckFails(t *testing.T) {
 		nodes[2].Addr: {clusterInfo: healthyClusterInfo(), clusterNodes: views, clusterCheck: &redis.ClusterCheckResult{CommandCodeOutput: 1, Errors: []string{"problem"}}},
 	}), 2*time.Second)
 
-	report, err := checker.Check(context.Background(), nodes, "")
+	report, err := checker.Check(context.Background(), nodes, "", 3, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestChecker_CheckReturnsStructuralReportWhenClusterCheckErrors(t *testing.T
 		nodes[2].Addr: {clusterInfo: healthyClusterInfo(), clusterNodes: views, clusterCheckErr: errors.New("redis-cli unavailable")},
 	}), 2*time.Second)
 
-	report, err := checker.Check(context.Background(), nodes, "")
+	report, err := checker.Check(context.Background(), nodes, "", 3, 0)
 	if err == nil {
 		t.Fatal("expected partial error from cluster check execution failure")
 	}

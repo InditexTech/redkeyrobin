@@ -25,6 +25,12 @@ const (
 	DefaultConnectionMaxRetries = 10
 	// DefaultConnectionBackOffSeconds is the default backoff between connection retries.
 	DefaultConnectionBackOffSeconds = 10
+	// DefaultClusterCommandTimeoutSeconds is the default timeout for redis-cli cluster commands (fix, check).
+	DefaultClusterCommandTimeoutSeconds = 24
+	// DefaultRebalanceTimeoutSeconds is the default timeout for redis-cli --cluster rebalance.
+	DefaultRebalanceTimeoutSeconds = 120
+	// DefaultClusterMeetWaitSeconds is the default wait time after MEET/FORGET for gossip convergence.
+	DefaultClusterMeetWaitSeconds = 5
 )
 
 // DefaultRedisInfoKeys is the default list of Redis INFO keys to collect.
@@ -51,8 +57,11 @@ var DefaultRedisInfoKeys = []string{
 
 // ClusterConfig holds the cluster connection configuration.
 type ClusterConfig struct {
-	ConnectionMaxRetries     int
-	ConnectionBackOffSeconds int
+	ConnectionMaxRetries         int
+	ConnectionBackOffSeconds     int
+	ClusterCommandTimeoutSeconds int
+	ClusterMeetWaitSeconds       int
+	RebalanceTimeoutSeconds      int
 }
 
 // Topology holds the cluster topology parameters needed for node discovery.
@@ -77,6 +86,9 @@ type RuntimeConfig struct {
 	metricsLabels                    map[string]string
 	connectionMaxRetries             int
 	connectionBackOffSeconds         int
+	clusterCommandTimeout            time.Duration
+	rebalanceTimeout                 time.Duration
+	clusterMeetWait                  time.Duration
 	topology                         Topology
 	authSecret                       string
 
@@ -110,6 +122,9 @@ func NewRuntimeConfigWithReconcilerIntervals(interval, intervalOnError, interval
 		redisInfoKeys:                    append([]string{}, DefaultRedisInfoKeys...),
 		connectionMaxRetries:             DefaultConnectionMaxRetries,
 		connectionBackOffSeconds:         DefaultConnectionBackOffSeconds,
+		clusterCommandTimeout:            time.Duration(DefaultClusterCommandTimeoutSeconds) * time.Second,
+		rebalanceTimeout:                 time.Duration(DefaultRebalanceTimeoutSeconds) * time.Second,
+		clusterMeetWait:                  time.Duration(DefaultClusterMeetWaitSeconds) * time.Second,
 	}
 }
 
@@ -160,6 +175,15 @@ func (rc *RuntimeConfig) SetFromRobinConfig(cfg *redisv1.RobinConfig) {
 		}
 		if cfg.Cluster.ConnectionBackOffSeconds != nil {
 			rc.connectionBackOffSeconds = *cfg.Cluster.ConnectionBackOffSeconds
+		}
+		if cfg.Cluster.ClusterCommandTimeoutSeconds != nil {
+			rc.clusterCommandTimeout = time.Duration(*cfg.Cluster.ClusterCommandTimeoutSeconds) * time.Second
+		}
+		if cfg.Cluster.ClusterMeetWaitSeconds != nil {
+			rc.clusterMeetWait = time.Duration(*cfg.Cluster.ClusterMeetWaitSeconds) * time.Second
+		}
+		if cfg.Cluster.RebalanceTimeoutSeconds != nil {
+			rc.rebalanceTimeout = time.Duration(*cfg.Cluster.RebalanceTimeoutSeconds) * time.Second
 		}
 	}
 
@@ -212,9 +236,33 @@ func (rc *RuntimeConfig) ClusterConfig() ClusterConfig {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
 	return ClusterConfig{
-		ConnectionMaxRetries:     rc.connectionMaxRetries,
-		ConnectionBackOffSeconds: rc.connectionBackOffSeconds,
+		ConnectionMaxRetries:         rc.connectionMaxRetries,
+		ConnectionBackOffSeconds:     rc.connectionBackOffSeconds,
+		ClusterCommandTimeoutSeconds: int(rc.clusterCommandTimeout.Seconds()),
+		ClusterMeetWaitSeconds:       int(rc.clusterMeetWait.Seconds()),
+		RebalanceTimeoutSeconds:      int(rc.rebalanceTimeout.Seconds()),
 	}
+}
+
+// ClusterCommandTimeout returns the timeout for redis-cli cluster commands (fix, rebalance).
+func (rc *RuntimeConfig) ClusterCommandTimeout() time.Duration {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	return rc.clusterCommandTimeout
+}
+
+// RebalanceTimeout returns the timeout for redis-cli --cluster rebalance operations.
+func (rc *RuntimeConfig) RebalanceTimeout() time.Duration {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	return rc.rebalanceTimeout
+}
+
+// ClusterMeetWait returns the wait time after MEET/FORGET for gossip convergence.
+func (rc *RuntimeConfig) ClusterMeetWait() time.Duration {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	return rc.clusterMeetWait
 }
 
 // SetTopology updates the stored topology used for node discovery.

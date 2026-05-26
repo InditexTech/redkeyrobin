@@ -363,3 +363,37 @@ func TestMetricsLabels_NilDoesNotOverwrite(t *testing.T) {
 		t.Fatalf("expected labels preserved when nil, got %v", labels)
 	}
 }
+
+func TestRebalanceTimeout_Default(t *testing.T) {
+	rc := NewRuntimeConfig()
+	if rc.RebalanceTimeout() != 120*time.Second {
+		t.Fatalf("expected default rebalance timeout 120s, got %v", rc.RebalanceTimeout())
+	}
+}
+
+func TestRebalanceTimeout_SetFromRobinConfig(t *testing.T) {
+	rc := NewRuntimeConfig()
+	cfg := &redisv1.RobinConfig{
+		Cluster: &redisv1.RobinConfigCluster{
+			RebalanceTimeoutSeconds: intPtr(300),
+		},
+	}
+	rc.SetFromRobinConfig(cfg)
+	if rc.RebalanceTimeout() != 300*time.Second {
+		t.Fatalf("expected rebalance timeout 300s, got %v", rc.RebalanceTimeout())
+	}
+}
+
+func TestRebalanceTimeout_NilKeepsDefault(t *testing.T) {
+	rc := NewRuntimeConfig()
+	cfg := &redisv1.RobinConfig{
+		Cluster: &redisv1.RobinConfigCluster{
+			ConnectionMaxRetries: intPtr(5),
+		},
+	}
+	rc.SetFromRobinConfig(cfg)
+	// RebalanceTimeoutSeconds not set → should keep default
+	if rc.RebalanceTimeout() != 120*time.Second {
+		t.Fatalf("expected rebalance timeout to remain 120s, got %v", rc.RebalanceTimeout())
+	}
+}

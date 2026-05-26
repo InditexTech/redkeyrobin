@@ -52,11 +52,12 @@ type Report struct {
 	ClusterInfo  *redis.ClusterInfo
 	ClusterNodes []redis.ClusterNode
 
-	MembershipOK   bool
-	SlotsCoveredOK bool
-	BalancedOK     bool
-	ClusterCheckOK bool
-	Healthy        bool
+	MembershipOK    bool
+	SlotsCoveredOK  bool
+	ReplicaSpreadOK bool
+	BalancedOK      bool
+	ClusterCheckOK  bool
+	Healthy         bool
 
 	ClusterCheckErrors            []string
 	ClusterCheckWarnings          []string
@@ -95,7 +96,7 @@ func NewChecker(logger *slog.Logger, newClient ClientFactory, probeTimeout time.
 }
 
 // Check computes the current cluster health report.
-func (c *Checker) Check(ctx context.Context, nodes []Node, password string) (*Report, error) {
+func (c *Checker) Check(ctx context.Context, nodes []Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (*Report, error) {
 	report := &Report{ClusterCheckCommandOutputCode: defaultClusterCheckCode}
 	if len(nodes) == 0 {
 		return report, fmt.Errorf("no nodes provided for cluster health check")
@@ -117,8 +118,9 @@ func (c *Checker) Check(ctx context.Context, nodes []Node, password string) (*Re
 
 	report.MembershipOK = c.checkMembership(ctx, nodes, password, seed.clusterNodes)
 	report.SlotsCoveredOK = slotsCovered(seed.clusterNodes)
+	report.ReplicaSpreadOK = replicaSpreadOK(seed.clusterNodes, desiredPrimaries, desiredReplicasPerPrimary)
 	report.BalancedOK = balanced(seed.clusterNodes)
-	report.Healthy = report.MembershipOK && report.SlotsCoveredOK && report.BalancedOK && report.ClusterCheckOK
+	report.Healthy = report.MembershipOK && report.SlotsCoveredOK && report.ReplicaSpreadOK && report.BalancedOK && report.ClusterCheckOK
 
 	return report, seed.partialErr
 }
@@ -411,4 +413,62 @@ func slicesContains(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+// replicaSpreadOK validates that the cluster's replica topology is correct:
+// - The number of active primaries matches desiredPrimaries
+// - Each primary has exactly desiredReplicasPerPrimary replicas
+// - No replica points to another replica (no chaining)
+// - No replica points to an unknown primary (no orphans)
+func replicaSpreadOK(nodes []redis.ClusterNode, desiredPrimaries, desiredReplicasPerPrimary int) bool {
+	if desiredReplicasPerPrimary == 0 {
+		// No replicas expected; just verify no replicas exist.
+		for _, node := range nodes {
+			if isReplica(node) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Collect primaries and replicas.
+	primaryIDs := make(map[string]struct{})
+	var replicas []redis.ClusterNode
+	for _, node := range nodes {
+		if isPrimary(node) {
+			primaryIDs[node.ID] = struct{}{}
+		} else if isReplica(node) {
+			replicas = append(replicas, node)
+		}
+	}
+
+	// Check primary count matches desired.
+	if len(primaryIDs) != desiredPrimaries {
+		return false
+	}
+
+	// Count replicas per primary and validate assignments.
+	replicaCount := make(map[string]int)
+	for _, replica := range replicas {
+		primaryID := replica.Primary
+		// Orphaned replica: points to unknown primary.
+		if _, exists := primaryIDs[primaryID]; !exists {
+			return false
+		}
+		replicaCount[primaryID]++
+	}
+
+	// Each primary must have exactly desiredReplicasPerPrimary replicas.
+	for id := range primaryIDs {
+		if replicaCount[id] != desiredReplicasPerPrimary {
+			return false
+		}
+	}
+
+	return true
+}
+
+func isReplica(node redis.ClusterNode) bool {
+	flags := splitFlags(node.Flags)
+	return slicesContains(flags, "slave")
 }

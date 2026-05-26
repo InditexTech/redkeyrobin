@@ -978,7 +978,7 @@ type fakeHealthChecker struct {
 	password string
 }
 
-func (f *fakeHealthChecker) Check(_ context.Context, nodes []health.Node, password string) (*health.Report, error) {
+func (f *fakeHealthChecker) Check(_ context.Context, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (*health.Report, error) {
 	f.nodes = append([]health.Node(nil), nodes...)
 	f.password = password
 	return f.report, f.err

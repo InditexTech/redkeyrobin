@@ -128,9 +128,13 @@ func (c *Client) GetClusterNodes(ctx context.Context) ([]ClusterNode, error) {
 	if err != nil {
 		return nil, fmt.Errorf("CLUSTER NODES on %s: %w", c.addr, err)
 	}
+	return ParseClusterNodesOutput(result), nil
+}
 
+// ParseClusterNodesOutput parses the raw text output of CLUSTER NODES into a slice of ClusterNode.
+func ParseClusterNodesOutput(output string) []ClusterNode {
 	var nodes []ClusterNode
-	for _, line := range strings.Split(strings.TrimSpace(result), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -143,7 +147,7 @@ func (c *Client) GetClusterNodes(ctx context.Context) ([]ClusterNode, error) {
 		// addr format is ip:port@cport or ip:port
 		addr := parts[1]
 		ip := addr
-		if idx := strings.Index(addr, ":"); idx > 0 {
+		if idx := strings.Index(addr, ":"); idx >= 0 {
 			ip = addr[:idx]
 		}
 
@@ -169,7 +173,7 @@ func (c *Client) GetClusterNodes(ctx context.Context) ([]ClusterNode, error) {
 			Slots:    slots,
 		})
 	}
-	return nodes, nil
+	return nodes
 }
 
 // CheckConnection pings Redis with retry and backoff.
@@ -261,6 +265,15 @@ func (c *Client) ClusterForget(ctx context.Context, nodeID string) error {
 	err := c.client.ClusterForget(ctx, nodeID).Err()
 	if err != nil {
 		return fmt.Errorf("CLUSTER FORGET %s on %s: %w", nodeID, c.addr, err)
+	}
+	return nil
+}
+
+// ClusterSetSlotStable marks a slot as stable, clearing any importing/migrating state.
+func (c *Client) ClusterSetSlotStable(ctx context.Context, slot int) error {
+	err := c.client.Do(ctx, "CLUSTER", "SETSLOT", fmt.Sprintf("%d", slot), "STABLE").Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER SETSLOT %d STABLE on %s: %w", slot, c.addr, err)
 	}
 	return nil
 }
