@@ -153,7 +153,7 @@ run: ##	Execute the program locally
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: test-all ## Build docker image (uses `${IMG}` image name).
-	$(CONTAINER_TOOL) build -t ${IMG} --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} .
+	$(CONTAINER_TOOL) build -t ${IMG} --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} --no-cache .
 
 .PHONY: docker-push
 docker-push: ##	Push docker image (uses `${IMG}` image name).
