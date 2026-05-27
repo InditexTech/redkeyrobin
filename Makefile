@@ -173,16 +173,13 @@ docker-push: ##	Push docker image (uses `${IMG}` image name).
 # - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64
+PLATFORMS ?= linux/amd64,linux/arm64
 .PHONY: docker-buildx
 docker-buildx: test-all ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name redkeyoperator-builder
-	$(CONTAINER_TOOL) buildx use redkeyoperator-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm redkeyoperator-builder
-	rm Dockerfile.cross
+	- $(CONTAINER_TOOL) buildx create --name redkeyrobin-builder
+	$(CONTAINER_TOOL) buildx use redkeyrobin-builder
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) --tag ${IMG} .
+	- $(CONTAINER_TOOL) buildx rm redkeyrobin-builder
 
 
 ##@ Dependencies
