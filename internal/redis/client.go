@@ -277,3 +277,12 @@ func (c *Client) ClusterSetSlotStable(ctx context.Context, slot int) error {
 	}
 	return nil
 }
+
+// ClusterSetSlotNode assigns a slot to the given node, forcing configuration agreement.
+func (c *Client) ClusterSetSlotNode(ctx context.Context, slot int, nodeID string) error {
+	err := c.client.Do(ctx, "CLUSTER", "SETSLOT", fmt.Sprintf("%d", slot), "NODE", nodeID).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER SETSLOT %d NODE %s on %s: %w", slot, nodeID, c.addr, err)
+	}
+	return nil
+}

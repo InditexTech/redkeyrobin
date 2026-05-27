@@ -206,3 +206,116 @@ func TestMin(t *testing.T) {
 		t.Fatal("min(4,4) should be 4")
 	}
 }
+
+func TestHealthReconciler_RemediateClusterCheck_TriesAllNodes(t *testing.T) {
+	// Cluster check fails (exit code 1) → triggers remediateClusterCheck
+	clusterView := healthyClusterView()
+	fakeClient := &fakeHealthClusterClient{
+		clusterInfo:  healthyInfo(),
+		clusterNodes: clusterView,
+		clusterCheck: &redis.ClusterCheckResult{
+			CommandCodeOutput: 1,
+			Errors:            []string{"Nodes don't agree about configuration!"},
+		},
+	}
+
+	checkerFactory := func(addr, password string) health.ClusterClient {
+		return fakeClient
+	}
+	checker := health.NewChecker(nil, checkerFactory, 2*time.Second)
+
+	// Track which nodes were attempted
+	var fixAttempts []string
+
+	// First two nodes fail, third succeeds
+	redis.SetNewRedisCLICommand(func(ctx context.Context, args []string, env map[string]string) *redis.RedisCLICommand {
+		// Extract the address from args (--cluster fix <addr>)
+		for i, arg := range args {
+			if arg == "fix" && i+1 < len(args) {
+				fixAttempts = append(fixAttempts, args[i+1])
+			}
+		}
+		if len(fixAttempts) < 3 {
+			return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo fail; exit 1"}, env)
+		}
+		return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo ok; exit 0"}, env)
+	})
+	defer redis.SetNewRedisCLICommand(redis.ExportNewRedisCLICommand())
+
+	clientFactory := func(addr, password string) *redis.Client {
+		return redis.NewClient(addr, password)
+	}
+
+	rtConfig := config.NewRuntimeConfig()
+	hr := NewHealthReconciler(checker, clientFactory, rtConfig, nil)
+
+	nodes := healthyNodes()
+	schedule, err := hr.Reconcile(context.Background(), nodes, "", 3, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if schedule != reconcileAfterWaitInterval {
+		t.Fatalf("expected reconcileAfterWaitInterval, got %v", schedule)
+	}
+	if len(fixAttempts) != 3 {
+		t.Fatalf("expected 3 fix attempts, got %d", len(fixAttempts))
+	}
+}
+
+func TestHealthReconciler_RemediateClusterCheck_AllFailBlocksRebalance(t *testing.T) {
+	// All nodes fail cluster fix → pipeline continues to rebalance step
+	clusterView := []redis.ClusterNode{
+		{ID: "id-1", IP: "10.0.0.1", Flags: "master", State: "connected", Slots: "0-100"},
+		{ID: "id-2", IP: "10.0.0.2", Flags: "master", State: "connected", Slots: "101-8200"},
+		{ID: "id-3", IP: "10.0.0.3", Flags: "master", State: "connected", Slots: "8201-16383"},
+	}
+
+	fakeClient := &fakeHealthClusterClient{
+		clusterInfo:  healthyInfo(),
+		clusterNodes: clusterView,
+		clusterCheck: &redis.ClusterCheckResult{
+			CommandCodeOutput: 1,
+			Errors:            []string{"Nodes don't agree about configuration!"},
+		},
+	}
+
+	checkerFactory := func(addr, password string) health.ClusterClient {
+		return fakeClient
+	}
+	checker := health.NewChecker(nil, checkerFactory, 2*time.Second)
+
+	// All fix attempts fail → pipeline should stop (rebalance NOT called)
+	rebalanceCalls := 0
+	redis.SetNewRedisCLICommand(func(ctx context.Context, args []string, env map[string]string) *redis.RedisCLICommand {
+		for _, arg := range args {
+			if arg == "fix" {
+				return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo fail; exit 1"}, env)
+			}
+			if arg == "rebalance" {
+				rebalanceCalls++
+				return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo ok; exit 0"}, env)
+			}
+		}
+		return redis.NewCLICommandExported(ctx, "sh", []string{"-c", "echo ok; exit 0"}, env)
+	})
+	defer redis.SetNewRedisCLICommand(redis.ExportNewRedisCLICommand())
+
+	clientFactory := func(addr, password string) *redis.Client {
+		return redis.NewClient(addr, password)
+	}
+
+	rtConfig := config.NewRuntimeConfig()
+	hr := NewHealthReconciler(checker, clientFactory, rtConfig, nil)
+
+	nodes := healthyNodes()
+	schedule, err := hr.Reconcile(context.Background(), nodes, "", 3, 0)
+	if err == nil {
+		t.Fatal("expected error when fix fails on all nodes")
+	}
+	if schedule != reconcileAfterWaitInterval {
+		t.Fatalf("expected reconcileAfterWaitInterval, got %v", schedule)
+	}
+	if rebalanceCalls != 0 {
+		t.Fatalf("rebalance should NOT be called when fix fails on all nodes, got %d calls", rebalanceCalls)
+	}
+}

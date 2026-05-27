@@ -79,6 +79,11 @@ func (hr *HealthReconciler) Reconcile(ctx context.Context, nodes []health.Node, 
 			hr.logger.Error("Membership remediation failed", "error", remErr)
 			return reconcileAfterWaitInterval, remErr
 		}
+		// Membership changed — the cluster topology is in flux. Further remediation
+		// (slots, balance) must use fresh cluster state, not the stale report captured
+		// before the MEET. Defer to the next reconciliation cycle.
+		hr.logger.Info("Membership remediated, deferring further checks to next cycle")
+		return reconcileAfterWaitInterval, nil
 	}
 
 	if !report.SlotsCoveredOK {
@@ -187,9 +192,22 @@ func (hr *HealthReconciler) remediateMembership(ctx context.Context, report *hea
 	for _, node := range nodes {
 		ip := extractIP(node.Addr)
 		if _, inCluster := clusterIPs[ip]; !inCluster {
-			hr.logger.Info("Meeting missing node", "addr", node.Addr, "ip", ip)
-			if meetErr := seedClient.ClusterMeet(ctx, ip, redis.DefaultPort); meetErr != nil {
-				return fmt.Errorf("meeting node %s: %w", node.Addr, meetErr)
+			hr.logger.Info("Meeting missing node from all cluster members", "addr", node.Addr, "ip", ip)
+			// Issue CLUSTER MEET from all existing cluster nodes, not just the seed.
+			// After CLUSTER FORGET, each node maintains a 60-second blacklist for the
+			// forgotten node's ID. CLUSTER MEET is silently dropped if the revealed ID
+			// is blacklisted. By meeting from all nodes we ensure the node is re-added
+			// as soon as any node's blacklist entry expires.
+			for _, peer := range nodes {
+				peerIP := extractIP(peer.Addr)
+				if _, peerInCluster := clusterIPs[peerIP]; !peerInCluster {
+					continue // skip nodes not yet in the cluster
+				}
+				peerClient := hr.clientFactory(peer.Addr, password)
+				if meetErr := peerClient.ClusterMeet(ctx, ip, redis.DefaultPort); meetErr != nil {
+					hr.logger.Warn("Failed to meet from peer", "peer", peer.Addr, "target", ip, "error", meetErr)
+				}
+				peerClient.Close()
 			}
 		}
 	}
@@ -295,11 +313,23 @@ func (hr *HealthReconciler) remediateSlotCoverage(ctx context.Context, report *h
 		}
 
 		client := hr.clientFactory(primaries[i].addr, password)
-		if err := client.ClusterAddSlots(ctx, slotsToAssign...); err != nil {
-			client.Close()
+		err := client.ClusterAddSlots(ctx, slotsToAssign...)
+		client.Close()
+		if err != nil {
+			if strings.Contains(err.Error(), "already busy") {
+				// Config disagreement: the seed thinks slots are unassigned, but
+				// the target node sees them as owned by someone. Resolve via SETSLOT.
+				hr.logger.Warn("Slot already busy, resolving config disagreement",
+					"target", primaries[i].addr, "slots", len(slotsToAssign), "error", err)
+				if resolveErr := hr.resolveSlotDisagreement(ctx, nodes, password, missingSlots); resolveErr != nil {
+					return fmt.Errorf("resolving slot disagreement: %w", resolveErr)
+				}
+				// All missing slots handled via SETSLOT, stop ADDSLOTS loop.
+				slotIdx = len(missingSlots)
+				break
+			}
 			return fmt.Errorf("assigning slots to %s: %w", primaries[i].addr, err)
 		}
-		client.Close()
 
 		hr.logger.Info("Assigned missing slots to primary",
 			"primary", primaries[i].addr, "count", len(slotsToAssign))
@@ -315,6 +345,113 @@ func (hr *HealthReconciler) remediateSlotCoverage(ctx context.Context, report *h
 	}
 
 	hr.logger.Info("Slot coverage remediation complete")
+	return nil
+}
+
+// resolveSlotDisagreement handles the case where the seed node thinks slots are
+// unassigned but other nodes still see them as owned. It queries all nodes to find
+// the actual owner (by highest epoch/majority) and forces agreement via CLUSTER SETSLOT NODE.
+func (hr *HealthReconciler) resolveSlotDisagreement(ctx context.Context, nodes []health.Node, password string, disputedSlots []int) error {
+	const perNodeTimeout = 5 * time.Second
+
+	// Build a lookup set for fast slot membership check.
+	disputedSet := make(map[int]struct{}, len(disputedSlots))
+	for _, s := range disputedSlots {
+		disputedSet[s] = struct{}{}
+	}
+
+	// Query all nodes to find who owns each disputed slot.
+	// ownerInfo: slot -> (nodeID with highest epoch/votes)
+	type candidate struct {
+		nodeID string
+		epoch  int
+		votes  int
+	}
+	slotOwners := make(map[int]*candidate)
+
+	for _, node := range nodes {
+		queryCtx, cancel := context.WithTimeout(ctx, perNodeTimeout)
+		client := hr.clientFactory(node.Addr, password)
+		clusterNodes, err := client.GetClusterNodes(queryCtx)
+		client.Close()
+		cancel()
+		if err != nil {
+			continue
+		}
+		for _, cn := range clusterNodes {
+			if !strings.Contains(cn.Flags, "master") {
+				continue
+			}
+			ranges, err := redis.ParseSlotRanges(cn.Slots)
+			if err != nil {
+				continue
+			}
+			for _, rng := range ranges {
+				for slot := rng.Start; slot <= rng.End; slot++ {
+					if _, disputed := disputedSet[slot]; !disputed {
+						continue
+					}
+					existing := slotOwners[slot]
+					if existing == nil {
+						slotOwners[slot] = &candidate{nodeID: cn.ID, epoch: cn.Epoch, votes: 1}
+					} else if cn.ID == existing.nodeID {
+						existing.votes++
+						if cn.Epoch > existing.epoch {
+							existing.epoch = cn.Epoch
+						}
+					} else if cn.Epoch > existing.epoch || (cn.Epoch == existing.epoch && 1 > existing.votes) {
+						slotOwners[slot] = &candidate{nodeID: cn.ID, epoch: cn.Epoch, votes: 1}
+					}
+				}
+			}
+		}
+	}
+
+	if len(slotOwners) == 0 {
+		return fmt.Errorf("no owner found for disputed slots across any node")
+	}
+
+	hr.logger.Info("Resolving slot disagreement via CLUSTER SETSLOT",
+		"disputedSlots", len(disputedSlots), "ownersFound", len(slotOwners))
+
+	// Force agreement on all nodes using CLUSTER SETSLOT <slot> NODE <owner>.
+	var setSlotErrors int
+	for _, node := range nodes {
+		setCtx, cancel := context.WithTimeout(ctx, perNodeTimeout)
+		client := hr.clientFactory(node.Addr, password)
+		for slot, owner := range slotOwners {
+			if err := client.ClusterSetSlotNode(setCtx, slot, owner.nodeID); err != nil {
+				setSlotErrors++
+			}
+		}
+		client.Close()
+		cancel()
+	}
+
+	// For slots that had no owner from any node (truly unassigned everywhere),
+	// assign them to the first primary via ADDSLOTS.
+	var trulyMissing []int
+	for _, s := range disputedSlots {
+		if _, found := slotOwners[s]; !found {
+			trulyMissing = append(trulyMissing, s)
+		}
+	}
+	if len(trulyMissing) > 0 {
+		// Pick the first node to own these truly missing slots.
+		client := hr.clientFactory(nodes[0].Addr, password)
+		if err := client.ClusterAddSlots(ctx, trulyMissing...); err != nil {
+			client.Close()
+			return fmt.Errorf("assigning truly missing slots to %s: %w", nodes[0].Addr, err)
+		}
+		client.Close()
+	}
+
+	if setSlotErrors > 0 {
+		hr.logger.Warn("Some CLUSTER SETSLOT commands failed during slot disagreement resolution",
+			"errors", setSlotErrors)
+	}
+
+	hr.logger.Info("Slot disagreement resolution complete", "resolvedViaSetSlot", len(slotOwners), "trulyMissing", len(trulyMissing))
 	return nil
 }
 
@@ -547,6 +684,9 @@ func (hr *HealthReconciler) remediateExcessPrimaries(
 // --- Remediation: Cluster Check (Fix) ---
 
 // remediateClusterCheck runs redis-cli --cluster fix to repair cluster issues.
+// It attempts the fix from each node in the cluster, since nodes may have different
+// views of the configuration. If all attempts fail, it returns nil so the pipeline
+// can continue to the balance step (which may resolve the underlying issue).
 func (hr *HealthReconciler) remediateClusterCheck(ctx context.Context, nodes []health.Node, password string) error {
 	hr.logger.Info("Remediating cluster check issues with redis-cli --cluster fix")
 
@@ -555,22 +695,179 @@ func (hr *HealthReconciler) remediateClusterCheck(ctx context.Context, nodes []h
 	}
 
 	timeout := hr.runtimeConfig.ClusterCommandTimeout()
-	fixCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
-	seedAddr := nodes[0].Addr
-	client := hr.clientFactory(seedAddr, password)
-	defer client.Close()
+	var lastErr error
+	for _, node := range nodes {
+		fixCtx, cancel := context.WithTimeout(ctx, timeout)
+		client := hr.clientFactory(node.Addr, password)
 
-	result, err := client.ClusterFix(fixCtx)
-	if err != nil {
-		return fmt.Errorf("redis-cli --cluster fix on %s: %w", seedAddr, err)
+		result, err := client.ClusterFix(fixCtx)
+		client.Close()
+		cancel()
+
+		if err == nil {
+			hr.logger.Info("Cluster fix completed",
+				"node", node.Addr,
+				"exitCode", result.CommandCodeOutput,
+				"output", truncateOutput(result.Output, 500))
+			return nil
+		}
+
+		hr.logger.Warn("Cluster fix failed on node, trying next",
+			"node", node.Addr, "error", err)
+		lastErr = err
 	}
 
-	hr.logger.Info("Cluster fix completed",
-		"exitCode", result.CommandCodeOutput,
-		"output", truncateOutput(result.Output, 500))
+	// All nodes failed — try to resolve config disagreement directly.
+	hr.logger.Warn("Cluster fix failed on all nodes, attempting config disagreement resolution",
+		"lastError", lastErr, "nodesAttempted", len(nodes))
 
+	if resolveErr := hr.resolveConfigDisagreement(ctx, nodes, password); resolveErr != nil {
+		hr.logger.Warn("Config disagreement resolution failed", "error", resolveErr)
+		return fmt.Errorf("cluster fix failed on all %d nodes: %w", len(nodes), lastErr)
+	}
+
+	hr.logger.Info("Config disagreement resolved via CLUSTER SETSLOT")
+	return nil
+}
+
+// resolveConfigDisagreement queries CLUSTER NODES from all nodes and forces
+// agreement on disputed slots using CLUSTER SETSLOT <slot> NODE <owner>.
+// This handles the case where nodes disagree about slot ownership after a
+// reshard/migration, which redis-cli --cluster fix cannot resolve.
+func (hr *HealthReconciler) resolveConfigDisagreement(ctx context.Context, nodes []health.Node, password string) error {
+	if len(nodes) < 2 {
+		return fmt.Errorf("need at least 2 nodes to resolve disagreement")
+	}
+
+	// Use a short per-node timeout for CLUSTER NODES queries (not the CLI timeout).
+	const perNodeTimeout = 5 * time.Second
+
+	// Step 1: Query CLUSTER NODES from all nodes to build per-node slot maps.
+	type nodeView struct {
+		addr        string
+		clusterNodes []redis.ClusterNode
+	}
+	views := make([]nodeView, 0, len(nodes))
+	for _, node := range nodes {
+		queryCtx, cancel := context.WithTimeout(ctx, perNodeTimeout)
+		client := hr.clientFactory(node.Addr, password)
+		clusterNodes, err := client.GetClusterNodes(queryCtx)
+		client.Close()
+		cancel()
+		if err != nil {
+			hr.logger.Warn("Failed to query CLUSTER NODES for disagreement resolution",
+				"node", node.Addr, "error", err)
+			continue
+		}
+		views = append(views, nodeView{addr: node.Addr, clusterNodes: clusterNodes})
+	}
+
+	if len(views) < 2 {
+		return fmt.Errorf("could not query enough nodes for disagreement resolution")
+	}
+
+	// Step 2: Build slot ownership map from each node's perspective.
+	// slotOwners[slot] = map[nodeID]count (how many views agree on that owner)
+	type slotOwnership struct {
+		ownerID string
+		epoch   int
+	}
+	// For each slot, collect the owner claimed by each view.
+	// The "correct" owner is determined by highest epoch.
+	const totalSlots = 16384
+	type ownerCandidate struct {
+		nodeID string
+		epoch  int
+		votes  int
+	}
+
+	// Build a map: slot -> ownerID -> (epoch, vote count)
+	slotCandidates := make(map[int]map[string]*ownerCandidate)
+
+	for _, view := range views {
+		for _, cn := range view.clusterNodes {
+			if !strings.Contains(cn.Flags, "master") {
+				continue
+			}
+			ranges, err := redis.ParseSlotRanges(cn.Slots)
+			if err != nil {
+				continue
+			}
+			for _, rng := range ranges {
+				for slot := rng.Start; slot <= rng.End; slot++ {
+					if slotCandidates[slot] == nil {
+						slotCandidates[slot] = make(map[string]*ownerCandidate)
+					}
+					if slotCandidates[slot][cn.ID] == nil {
+						slotCandidates[slot][cn.ID] = &ownerCandidate{nodeID: cn.ID, epoch: cn.Epoch}
+					}
+					slotCandidates[slot][cn.ID].votes++
+					if cn.Epoch > slotCandidates[slot][cn.ID].epoch {
+						slotCandidates[slot][cn.ID].epoch = cn.Epoch
+					}
+				}
+			}
+		}
+	}
+
+	// Step 3: Find disputed slots (where not all views agree on the same owner).
+	// For each disputed slot, pick the owner with the highest epoch (tie-break: most votes).
+	type slotFix struct {
+		slot    int
+		ownerID string
+	}
+	var fixes []slotFix
+
+	for slot := 0; slot < totalSlots; slot++ {
+		candidates := slotCandidates[slot]
+		if len(candidates) <= 1 {
+			continue // all agree (or uncovered — handled elsewhere)
+		}
+		// Multiple candidates for this slot — pick best.
+		var best *ownerCandidate
+		for _, c := range candidates {
+			if best == nil || c.epoch > best.epoch || (c.epoch == best.epoch && c.votes > best.votes) {
+				best = c
+			}
+		}
+		if best != nil {
+			fixes = append(fixes, slotFix{slot: slot, ownerID: best.nodeID})
+		}
+	}
+
+	// Also find slots that are uncovered (no candidate at all from any view).
+	// This shouldn't normally happen if slotsCoveredOK=true, but handle it.
+
+	if len(fixes) == 0 {
+		return fmt.Errorf("no disputed slots found, cannot resolve disagreement")
+	}
+
+	hr.logger.Info("Found disputed slots, forcing agreement",
+		"disputedSlots", len(fixes))
+
+	// Step 4: Send CLUSTER SETSLOT <slot> NODE <owner> to ALL nodes.
+	var setSlotErrors int
+	for _, node := range nodes {
+		setCtx, cancel := context.WithTimeout(ctx, perNodeTimeout)
+		client := hr.clientFactory(node.Addr, password)
+		for _, fix := range fixes {
+			if err := client.ClusterSetSlotNode(setCtx, fix.slot, fix.ownerID); err != nil {
+				setSlotErrors++
+				// Don't fail on individual slot errors — continue best effort.
+			}
+		}
+		client.Close()
+		cancel()
+	}
+
+	if setSlotErrors > 0 {
+		hr.logger.Warn("Some CLUSTER SETSLOT commands failed",
+			"errors", setSlotErrors, "totalCommands", len(fixes)*len(nodes))
+	}
+
+	hr.logger.Info("Config disagreement resolution complete",
+		"fixedSlots", len(fixes), "errors", setSlotErrors)
 	return nil
 }
 

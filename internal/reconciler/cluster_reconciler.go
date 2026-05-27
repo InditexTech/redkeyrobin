@@ -85,6 +85,10 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 	case redisv1.ClusterStatusReady:
 		// Cluster is ready, perform health check.
 		return cr.handleReady(ctx, targetConfig)
+	case redisv1.ClusterStatusMaintenance:
+		// In maintenance mode, Robin should not perform any operations on the cluster.
+		cr.logger.Info("Cluster in maintenance mode, skipping reconciliation")
+		return reconcileAfterInterval, nil
 	default:
 		cr.logger.Info("Unhandled cluster status, skipping", "status", targetConfig.Status.Status)
 		return reconcileAfterInterval, nil
@@ -271,8 +275,22 @@ func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.Re
 	}
 
 	// Run health reconciliation
-	return cr.healthReconciler.Reconcile(ctx, nodes, password,
+	schedule, err := cr.healthReconciler.Reconcile(ctx, nodes, password,
 		int(config.Spec.Primaries), int(config.Spec.ReplicasPerPrimary))
+	if err != nil {
+		return schedule, err
+	}
+
+	// If the config is still InProgress and the cluster is healthy, mark it as Applied.
+	// This handles config-only changes (e.g. redis.conf update) where the cluster is already Ready.
+	if config.Status.ConfigPhase == redisv1.ConfigPhaseInProgress && schedule == reconcileAfterInterval {
+		if err := cr.setConfigPhaseApplied(ctx, config); err != nil {
+			return reconcileAfterInterval, err
+		}
+		cr.logger.Info("Config change verified healthy, marked as Applied", "name", config.Name)
+	}
+
+	return schedule, nil
 }
 
 // --- Node operations ---
