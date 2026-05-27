@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -37,13 +38,14 @@ RUN git clone https://github.com/redis/redis.git && \
 # Create a working directory for the application
 WORKDIR /app
 
+# Copy the sibling operator checkout provided as a named build context.
+COPY --from=redkeyoperator . /redkeyoperator
+
 # Copy Go module files and download dependencies first for better caching
 COPY go.mod go.sum ./
 
-# Clone the operator from the remote branch and use it as a local replace
-ARG OPERATOR_BRANCH=feature/change-to-coordinator-architecture
-RUN git clone --branch ${OPERATOR_BRANCH} --depth 1 https://github.com/InditexTech/redkeyoperator.git /redkeyoperator && \
-    go mod edit -replace github.com/inditextech/redkeyoperator=/redkeyoperator && \
+# Use the local operator checkout as a replace directive and download dependencies.
+RUN go mod edit -replace github.com/inditextech/redkeyoperator=/redkeyoperator && \
     go mod download
 
 # Copy the entire source code

@@ -745,7 +745,7 @@ func (hr *HealthReconciler) resolveConfigDisagreement(ctx context.Context, nodes
 
 	// Step 1: Query CLUSTER NODES from all nodes to build per-node slot maps.
 	type nodeView struct {
-		addr        string
+		addr         string
 		clusterNodes []redis.ClusterNode
 	}
 	views := make([]nodeView, 0, len(nodes))

@@ -30,6 +30,9 @@ REDIS_CLIENT_VERSION := 8.6.3
 # tools. (i.e. podman)
 CONTAINER_TOOL ?= docker
 
+# OPERATOR_DIR defines the sibling operator checkout used by the local image build.
+OPERATOR_DIR ?= ../redkeyoperator
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -152,8 +155,13 @@ run: ##	Execute the program locally
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: test-all ## Build docker image (uses `${IMG}` image name).
-	$(CONTAINER_TOOL) build -t ${IMG} --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} --no-cache .
+docker-build: test-all ## Build docker image using a sibling operator checkout (uses `${IMG}` image name).
+	DOCKER_BUILDKIT=1 $(CONTAINER_TOOL) build \
+		--build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) \
+		-t ${IMG} \
+		--build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} \
+		--build-arg GOLANG_VERSION=${GOLANG_VERSION} \
+		--no-cache .
 
 .PHONY: docker-push
 docker-push: ##	Push docker image (uses `${IMG}` image name).
@@ -172,7 +180,7 @@ docker-buildx: test-all ## Build and push docker image for the manager for cross
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name redkeyoperator-builder
 	$(CONTAINER_TOOL) buildx use redkeyoperator-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) --tag ${IMG} -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm redkeyoperator-builder
 	rm Dockerfile.cross
 
