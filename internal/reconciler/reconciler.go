@@ -193,6 +193,27 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 			break
 		}
 
+		// For an existing cluster with a new config, detect changes and determine
+		// the appropriate status transition before entering the state machine.
+		// This must happen after copyPreviousClusterStatus (which sets Status to Ready)
+		// because ReconcileCluster dispatches on Status.Status.
+		if previousConfig != nil {
+			schedule, err := r.clusterReconciler.handleConfigChange(ctx, targetConfig, previousConfig)
+			if err != nil {
+				r.logger.Error("Config change detection error", "error", err)
+				scheduleRequired = schedule
+				onReconcilingError = true
+				break
+			}
+			// If handleConfigChange marked as Applied (no cluster op needed), we're done.
+			if targetConfig.Status.ConfigPhase == redisv1.ConfigPhaseApplied {
+				scheduleRequired = schedule
+				onReconcilingError = false
+				break
+			}
+			// Status was updated (ScalingUp/Down/Upgrading), fall through to ReconcileCluster.
+		}
+
 		schedule, err := r.clusterReconciler.ReconcileCluster(ctx, targetConfig, previousConfig)
 		if err != nil {
 			r.logger.Error("Cluster reconciliation error", "error", err)

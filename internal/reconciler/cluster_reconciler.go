@@ -75,7 +75,8 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 			// New cluster: ensure K8s objects and set status to Initializing.
 			return cr.handleNew(ctx, targetConfig)
 		}
-		return reconcileAfterInterval, nil
+		// Existing cluster with a new config: detect changes and determine status transition.
+		return cr.handleConfigChange(ctx, targetConfig, previousConfig)
 	case redisv1.ClusterStatusInitializing:
 		// Waiting for pods to be ready, then init nodes.
 		return cr.handleInitializing(ctx, targetConfig)
@@ -84,7 +85,19 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 		return cr.handleConfiguring(ctx, targetConfig)
 	case redisv1.ClusterStatusReady:
 		// Cluster is ready, perform health check.
-		return cr.handleReady(ctx, targetConfig)
+		return cr.handleReady(ctx, targetConfig, previousConfig)
+	case redisv1.ClusterStatusScalingUp:
+		// Scaling up: not yet implemented, placeholder.
+		cr.logger.Info("Cluster is scaling up (operation not yet implemented)")
+		return reconcileAfterInterval, nil
+	case redisv1.ClusterStatusScalingDown:
+		// Scaling down: not yet implemented, placeholder.
+		cr.logger.Info("Cluster is scaling down (operation not yet implemented)")
+		return reconcileAfterInterval, nil
+	case redisv1.ClusterStatusUpgrading:
+		// Upgrading: not yet implemented, placeholder.
+		cr.logger.Info("Cluster is upgrading (operation not yet implemented)")
+		return reconcileAfterInterval, nil
 	case redisv1.ClusterStatusMaintenance:
 		// In maintenance mode, Robin should not perform any operations on the cluster.
 		cr.logger.Info("Cluster in maintenance mode, skipping reconciliation")
@@ -93,6 +106,55 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 		cr.logger.Info("Unhandled cluster status, skipping", "status", targetConfig.Status.Status)
 		return reconcileAfterInterval, nil
 	}
+}
+
+// handleConfigChange processes a new configuration for an existing cluster.
+// It detects what changed and determines the appropriate status transition.
+func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfig *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+	report := DetectChanges(previousConfig.Spec, targetConfig.Spec)
+
+	cr.logger.Info("Detected configuration changes",
+		"config", targetConfig.Name,
+		"hasRobinChanges", report.HasRobinChanges,
+		"hasTopologyChanges", report.HasTopologyChanges,
+		"hasKubernetesChanges", report.HasKubernetesChanges,
+		"hasRedisConfigChanges", report.HasRedisConfigChanges,
+		"hasPurgeKeysOnRebalanceChange", report.HasPurgeKeysOnRebalanceChange,
+		"topologyScaleDirection", report.TopologyScaleDirection,
+		"primariesDelta", report.PrimariesDelta,
+		"replicasDelta", report.ReplicasDelta,
+	)
+
+	// If only Robin config changed (or no changes at all), mark as Applied immediately.
+	// Robin hot-reload (applyRobinConfig) already handles these changes.
+	newStatus := DetermineStatusTransition(report)
+	if newStatus == "" {
+		cr.logger.Info("No cluster operation required, marking config as Applied",
+			"config", targetConfig.Name)
+		if err := cr.setConfigPhaseApplied(ctx, targetConfig); err != nil {
+			return reconcileAfterInterval, err
+		}
+		// Ensure the cluster status reflects the previous (Ready) state.
+		// If copyPreviousClusterStatus was already called, this is a no-op.
+		if targetConfig.Status.Status != previousConfig.Status.Status {
+			targetConfig.Status.Status = previousConfig.Status.Status
+			if err := cr.client.Status().Update(ctx, targetConfig); err != nil {
+				return reconcileAfterInterval, fmt.Errorf("updating cluster status from previous: %w", err)
+			}
+		}
+		return reconcileAfterInterval, nil
+	}
+
+	// Transition the cluster to the new status.
+	cr.logger.Info("Transitioning cluster status for config change",
+		"config", targetConfig.Name,
+		"newStatus", newStatus,
+	)
+	if err := cr.updateClusterStatus(ctx, targetConfig, newStatus); err != nil {
+		return reconcileAfterInterval, err
+	}
+
+	return reconcileImmediately, nil
 }
 
 // handleNew ensures Kubernetes objects exist and transitions to Initializing.
@@ -243,7 +305,7 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 }
 
 // handleReady performs a health check on the ready cluster.
-func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
 	// Get fresh pod addresses from K8s
 	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
 	if err != nil {
@@ -281,9 +343,34 @@ func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.Re
 		return schedule, err
 	}
 
-	// If the config is still InProgress and the cluster is healthy, mark it as Applied.
-	// This handles config-only changes (e.g. redis.conf update) where the cluster is already Ready.
+	// If the config is still InProgress and the cluster is healthy, check for remaining changes.
+	// This handles the post-scaling scenario: after topology is adjusted, non-topology changes
+	// (K8s objects, Redis config) may still need to be applied.
 	if config.Status.ConfigPhase == redisv1.ConfigPhaseInProgress && schedule == reconcileAfterInterval {
+		if previousConfig != nil {
+			report := DetectChanges(previousConfig.Spec, config.Spec)
+			// Only consider non-topology changes (topology is already applied at this point).
+			if report.HasKubernetesChanges || report.HasRedisConfigChanges {
+				newStatus := DetermineStatusTransition(ChangeReport{
+					HasKubernetesChanges:  report.HasKubernetesChanges,
+					HasRedisConfigChanges: report.HasRedisConfigChanges,
+				})
+				if newStatus != "" {
+					cr.logger.Info("Post-scaling: remaining non-topology changes detected, transitioning",
+						"config", config.Name,
+						"newStatus", newStatus,
+						"hasKubernetesChanges", report.HasKubernetesChanges,
+						"hasRedisConfigChanges", report.HasRedisConfigChanges,
+					)
+					if err := cr.updateClusterStatus(ctx, config, newStatus); err != nil {
+						return reconcileAfterInterval, err
+					}
+					return reconcileImmediately, nil
+				}
+			}
+		}
+
+		// No remaining cluster changes, mark as Applied.
 		if err := cr.setConfigPhaseApplied(ctx, config); err != nil {
 			return reconcileAfterInterval, err
 		}
