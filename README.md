@@ -4,13 +4,13 @@ SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 SPDX-License-Identifier: Apache-2.0
 -->
 
-<div align="center">
+# Redkey Robin
 
-# RedKey Robin
+![Redkey logo](docs/images/redkey-logo-512.png)
 
-**RedKey Robin is a faithful partner who assists the [RedKey Operator](https://github.com/InditexTech/redkeyoperator) in the dangerous Gotham.** 
+Redis-side orchestration runtime for Redkey clusters on Kubernetes.
 
-Designed to help the Operator (Batman) in its duties and seamlessly deployed by the RedKey Operator as a Deployment.
+Redkey Robin is the runtime component used by the [Redkey Operator](https://github.com/InditexTech/redkeyoperator) to execute Redis-side cluster orchestration, health supervision, and metrics collection. It is deployed by the operator as a `Deployment` and works as the in-cluster companion for each managed Redkey cluster.
 
 [![GitHub License](https://img.shields.io/github/license/InditexTech/redkeyrobin)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/InditexTech/redkeyrobin)](https://github.com/InditexTech/redkeyrobin/releases)
@@ -27,34 +27,39 @@ Designed to help the Operator (Batman) in its duties and seamlessly deployed by 
 [![GitHub Stars](https://img.shields.io/github/stars/InditexTech/redkeyrobin?style=social)](https://github.com/InditexTech/redkeyrobin/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/InditexTech/redkeyrobin?style=social)](https://github.com/InditexTech/redkeyrobin/network/members)
 
-[📖 Documentation](./docs) • [🤝 Contributing](./CONTRIBUTING.md) • [📝 License](./LICENSE)
-
-</div>
+[📖 Redkey Documentation](https://github.com/InditexTech/redkeyoperator/tree/main/docs) • [🛠 Developer Guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/developer-guide/development-guide.md) • [🤝 Contributing](./CONTRIBUTING.md) • [📝 License](./LICENSE)
 
 ---
 
 ## Key Features
 
-- Redis metrics, including cluster health gauges and redis-cli cluster check signals
-- Monitors the RedKey Cluster to ensure it is well-formed and balanced, performing the necessary operations to achieve this
-- Exposes an API to the RedKey Operator so that it can query the status of the RedKey Cluster and perform scaling and upgrading operations
+- Reconciles cluster bootstrap and configuration from Kubernetes and Redis state, including cluster formation and topology validation
+- Performs automated health checks and remediation for membership drift, uncovered slots, replica spread issues, cluster checkl findings, and slot imbalance
+- Exposes Prometheus metrics for Redkey and Redis/Valkey state, together with runtime metrics used by Redkey Operator and observability tooling
+- Hot-reloads operational settings from `RedkeyClusterConfig` without restarting the Robin Pod, including reconciliation cadence, metrics collection, auth secret reference, and profiling state
+- Provides a metrics HTTP endpoint plus optional `pprof` endpoints for diagnostics and performance analysis
+- Works as the Redis-side runtime companion for Redkey Operator during normal operation, maintenance, and recovery flows
 
 ## Getting Started
 
-Please refer to the [developer guide](./docs/developer-guide.md) to have more information about how to use, develop and deploy RedKey Robin.
+Redkey Robin is intended to be deployed and configured through [Redkey Operator](https://github.com/InditexTech/redkeyoperator), not as a standalone component.
+
+For development, build, deployment, and debugging workflows, follow the [Redkey Operator developer guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/developer-guide/development-guide.md) in the operator repository.
+
+## Documentation
+
+The canonical documentation for both Redkey Operator and Redkey Robin lives in the `redkeyoperator` repository:
+
+- [Documentation index](https://github.com/InditexTech/redkeyoperator/blob/main/docs/README.md)
+- [Redkey Robin guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/operator-guide/robin.md)
+- [Cluster health checks and remediation](https://github.com/InditexTech/redkeyoperator/blob/main/docs/cluster-health-checks.md)
+- [Dynamic configuration and hot reload](https://github.com/InditexTech/redkeyoperator/blob/main/docs/operator-guide/dynamic-configuration.md)
+- [Metrics reference](https://github.com/InditexTech/redkeyoperator/blob/main/docs/metrics.md)
+- [Observability guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/observability.md)
 
 ## Contributing
 
-We welcome contributions!
-
-Please read our [CONTRIBUTING.md](./CONTRIBUTING.md) and follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
-
-## Roadmap
-
-See [ROADMAP.md](./ROADMAP.md) for planned features and development goals.
-
-<!-- or -->
-
+We welcome contributions. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) and follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## License
 
