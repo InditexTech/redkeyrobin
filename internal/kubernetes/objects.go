@@ -262,11 +262,29 @@ func buildStatefulSet(clusterName, namespace string, config *redisv1.RedkeyClust
 	labels := clusterLabels(clusterName)
 	podManagement := appsv1.ParallelPodManagement
 
+	// Build pod labels: base labels + custom labels from spec.
+	podLabels := clusterLabels(clusterName)
+	if config.Spec.Labels != nil {
+		for k, v := range *config.Spec.Labels {
+			podLabels[k] = v
+		}
+	}
+
+	// Build pod annotations from spec.
+	var podAnnotations map[string]string
+	if config.Spec.Annotations != nil {
+		podAnnotations = make(map[string]string, len(*config.Spec.Annotations))
+		for k, v := range *config.Spec.Annotations {
+			podAnnotations[k] = v
+		}
+	}
+
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterName,
-			Namespace: namespace,
-			Labels:    labels,
+			Name:        clusterName,
+			Namespace:   namespace,
+			Labels:      podLabels,
+			Annotations: podAnnotations,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas:            &replicas,
@@ -277,7 +295,8 @@ func buildStatefulSet(clusterName, namespace string, config *redisv1.RedkeyClust
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels:      podLabels,
+					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{

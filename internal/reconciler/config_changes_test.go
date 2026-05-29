@@ -295,6 +295,54 @@ func TestDetectChanges_KubernetesOnly_Labels(t *testing.T) {
 	}
 }
 
+func TestDetectChanges_KubernetesOnly_Annotations(t *testing.T) {
+	previous := baseSpec()
+	target := baseSpec()
+	target.Sequence = 2
+	annotations := map[string]string{"prometheus.io/scrape": "true", "prometheus.io/port": "9121"}
+	target.Annotations = &annotations
+
+	report := DetectChanges(previous, target)
+
+	if !report.HasKubernetesChanges {
+		t.Error("expected HasKubernetesChanges")
+	}
+	if report.HasTopologyChanges || report.HasRobinChanges || report.HasRedisConfigChanges {
+		t.Error("unexpected additional change flags")
+	}
+}
+
+func TestDetectChanges_Annotations_NilToEmpty(t *testing.T) {
+	previous := baseSpec()
+	previous.Annotations = nil
+	target := baseSpec()
+	target.Sequence = 2
+	empty := map[string]string{}
+	target.Annotations = &empty
+
+	report := DetectChanges(previous, target)
+
+	if !report.HasKubernetesChanges {
+		t.Error("expected HasKubernetesChanges for Annotations nil→empty")
+	}
+}
+
+func TestDetectChanges_Annotations_SameValues(t *testing.T) {
+	previous := baseSpec()
+	a1 := map[string]string{"key": "value"}
+	previous.Annotations = &a1
+	target := baseSpec()
+	target.Sequence = 2
+	a2 := map[string]string{"key": "value"}
+	target.Annotations = &a2
+
+	report := DetectChanges(previous, target)
+
+	if report.HasKubernetesChanges {
+		t.Error("expected no HasKubernetesChanges for identical annotations")
+	}
+}
+
 func TestDetectChanges_KubernetesOnly_Resources(t *testing.T) {
 	previous := baseSpec()
 	target := baseSpec()

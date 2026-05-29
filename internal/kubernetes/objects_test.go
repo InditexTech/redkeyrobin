@@ -251,6 +251,113 @@ func TestBuildStatefulSet_DefaultImage(t *testing.T) {
 	}
 }
 
+func TestBuildStatefulSet_WithLabels(t *testing.T) {
+	config := testConfig()
+	customLabels := map[string]string{
+		"app.kubernetes.io/team": "platform",
+		"environment":            "test",
+	}
+	config.Spec.Labels = &customLabels
+	owner := testOwner()
+
+	sts := buildStatefulSet("test-cluster", "default", config, owner)
+
+	// Verify custom labels on StatefulSet ObjectMeta
+	if sts.Labels["app.kubernetes.io/team"] != "platform" {
+		t.Errorf("expected StatefulSet label 'app.kubernetes.io/team'='platform', got '%s'", sts.Labels["app.kubernetes.io/team"])
+	}
+	if sts.Labels["environment"] != "test" {
+		t.Errorf("expected StatefulSet label 'environment'='test', got '%s'", sts.Labels["environment"])
+	}
+
+	// Verify custom labels on pod template
+	podLabels := sts.Spec.Template.Labels
+	if podLabels["app.kubernetes.io/team"] != "platform" {
+		t.Errorf("expected pod template label 'app.kubernetes.io/team'='platform', got '%s'", podLabels["app.kubernetes.io/team"])
+	}
+	if podLabels["environment"] != "test" {
+		t.Errorf("expected pod template label 'environment'='test', got '%s'", podLabels["environment"])
+	}
+
+	// Verify base labels are still present
+	if podLabels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected base ClusterLabel, got '%s'", podLabels[ClusterLabel])
+	}
+	if podLabels[ComponentLabel] != ComponentRedis {
+		t.Errorf("expected base ComponentLabel, got '%s'", podLabels[ComponentLabel])
+	}
+
+	// Verify selector does NOT include custom labels (immutable after creation)
+	selectorLabels := sts.Spec.Selector.MatchLabels
+	if _, exists := selectorLabels["app.kubernetes.io/team"]; exists {
+		t.Error("selector should not include custom labels")
+	}
+}
+
+func TestBuildStatefulSet_WithAnnotations(t *testing.T) {
+	config := testConfig()
+	customAnnotations := map[string]string{
+		"prometheus.io/scrape": "true",
+		"prometheus.io/port":   "9121",
+	}
+	config.Spec.Annotations = &customAnnotations
+	owner := testOwner()
+
+	sts := buildStatefulSet("test-cluster", "default", config, owner)
+
+	// Verify custom annotations on StatefulSet ObjectMeta
+	if sts.Annotations["prometheus.io/scrape"] != "true" {
+		t.Errorf("expected StatefulSet annotation 'prometheus.io/scrape'='true', got '%s'", sts.Annotations["prometheus.io/scrape"])
+	}
+	if sts.Annotations["prometheus.io/port"] != "9121" {
+		t.Errorf("expected StatefulSet annotation 'prometheus.io/port'='9121', got '%s'", sts.Annotations["prometheus.io/port"])
+	}
+
+	// Verify custom annotations on pod template
+	podAnnotations := sts.Spec.Template.Annotations
+	if podAnnotations["prometheus.io/scrape"] != "true" {
+		t.Errorf("expected pod template annotation 'prometheus.io/scrape'='true', got '%s'", podAnnotations["prometheus.io/scrape"])
+	}
+	if podAnnotations["prometheus.io/port"] != "9121" {
+		t.Errorf("expected pod template annotation 'prometheus.io/port'='9121', got '%s'", podAnnotations["prometheus.io/port"])
+	}
+}
+
+func TestBuildStatefulSet_WithLabelsAndAnnotations(t *testing.T) {
+	config := testConfig()
+	labels := map[string]string{"team": "infra"}
+	annotations := map[string]string{"note": "test"}
+	config.Spec.Labels = &labels
+	config.Spec.Annotations = &annotations
+	owner := testOwner()
+
+	sts := buildStatefulSet("test-cluster", "default", config, owner)
+
+	// Labels
+	if sts.Spec.Template.Labels["team"] != "infra" {
+		t.Errorf("expected pod template label 'team'='infra', got '%s'", sts.Spec.Template.Labels["team"])
+	}
+	// Annotations
+	if sts.Spec.Template.Annotations["note"] != "test" {
+		t.Errorf("expected pod template annotation 'note'='test', got '%s'", sts.Spec.Template.Annotations["note"])
+	}
+}
+
+func TestBuildStatefulSet_NoAnnotations(t *testing.T) {
+	config := testConfig()
+	// No annotations set
+	owner := testOwner()
+
+	sts := buildStatefulSet("test-cluster", "default", config, owner)
+
+	if sts.Annotations != nil {
+		t.Errorf("expected nil annotations on StatefulSet, got %v", sts.Annotations)
+	}
+	if sts.Spec.Template.Annotations != nil {
+		t.Errorf("expected nil annotations on pod template, got %v", sts.Spec.Template.Annotations)
+	}
+}
+
 func TestEnsureClusterObjects_CreatesAll(t *testing.T) {
 	owner := testOwner()
 	config := testConfig()

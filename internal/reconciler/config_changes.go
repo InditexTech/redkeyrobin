@@ -144,6 +144,9 @@ func detectKubernetesChanges(previous, target redisv1.RedkeyClusterConfigSpec) b
 	if !labelsPtrEqual(previous.Labels, target.Labels) {
 		return true
 	}
+	if !annotationsPtrEqual(previous.Annotations, target.Annotations) {
+		return true
+	}
 	if !resourcesEqual(previous.Resources, target.Resources) {
 		return true
 	}
@@ -183,6 +186,16 @@ func boolPtrEqual(a, b *bool) bool {
 }
 
 func labelsPtrEqual(a, b *map[string]string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return reflect.DeepEqual(*a, *b)
+}
+
+func annotationsPtrEqual(a, b *map[string]string) bool {
 	if a == nil && b == nil {
 		return true
 	}
