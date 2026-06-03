@@ -286,3 +286,40 @@ func (c *Client) ClusterSetSlotNode(ctx context.Context, slot int, nodeID string
 	}
 	return nil
 }
+
+// ShutdownSave instructs the node to persist its dataset and shut down cleanly.
+// Redis closes the connection as part of SHUTDOWN, so the "connection closed" /
+// EOF responses returned by go-redis are treated as success.
+func (c *Client) ShutdownSave(ctx context.Context) error {
+	err := c.client.Do(ctx, "SHUTDOWN", "SAVE").Err()
+	if err == nil || isShutdownConnError(err) {
+		return nil
+	}
+	return fmt.Errorf("SHUTDOWN SAVE on %s: %w", c.addr, err)
+}
+
+// isShutdownConnError reports whether the error returned by a SHUTDOWN command is the
+// expected connection teardown rather than a genuine failure.
+func isShutdownConnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "connection closed") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "use of closed network connection")
+}
+
+// HasInFlightSlots reports whether any of the given nodes currently has slots in a
+// migrating ("[<slot>->-<id>]") or importing ("[<slot>-<-<id>]") state. A rebalance is
+// only considered complete once no node reports in-flight slots.
+func HasInFlightSlots(nodes []ClusterNode) bool {
+	for _, n := range nodes {
+		if strings.Contains(n.Slots, "[") {
+			return true
+		}
+	}
+	return false
+}

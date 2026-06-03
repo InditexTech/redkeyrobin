@@ -22,6 +22,8 @@ const (
 	ScaleUp
 	// ScaleDown indicates the cluster needs to shrink.
 	ScaleDown
+	// ScaleToZero indicates the cluster is scaling to zero primaries.
+	ScaleToZero
 )
 
 // ChangeReport holds the categorized results of comparing two RedkeyClusterConfigSpec values.
@@ -87,7 +89,7 @@ func DetectChanges(previous, target redisv1.RedkeyClusterConfigSpec) ChangeRepor
 
 	if report.PrimariesDelta != 0 || report.ReplicasDelta != 0 {
 		report.HasTopologyChanges = true
-		report.TopologyScaleDirection = determineScaleDirection(report.PrimariesDelta, report.ReplicasDelta)
+		report.TopologyScaleDirection = determineScaleDirection(report.PrimariesDelta, report.ReplicasDelta, target.Primaries)
 	}
 
 	// Robin config changes.
@@ -107,7 +109,11 @@ func DetectChanges(previous, target redisv1.RedkeyClusterConfigSpec) ChangeRepor
 
 // determineScaleDirection decides the scale direction.
 // Primaries direction takes precedence; if primaries are unchanged, replicas direction is used.
-func determineScaleDirection(primariesDelta, replicasDelta int32) ScaleDirection {
+// Scaling to 0 primaries is a special case (ScaleToZero).
+func determineScaleDirection(primariesDelta, replicasDelta int32, targetPrimaries int32) ScaleDirection {
+	if targetPrimaries == 0 {
+		return ScaleToZero
+	}
 	if primariesDelta > 0 {
 		return ScaleUp
 	}

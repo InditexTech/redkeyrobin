@@ -366,8 +366,8 @@ func TestMetricsLabels_NilDoesNotOverwrite(t *testing.T) {
 
 func TestRebalanceTimeout_Default(t *testing.T) {
 	rc := NewRuntimeConfig()
-	if rc.RebalanceTimeout() != 120*time.Second {
-		t.Fatalf("expected default rebalance timeout 120s, got %v", rc.RebalanceTimeout())
+	if rc.RebalanceTimeout() != 600*time.Second {
+		t.Fatalf("expected default rebalance timeout 600s, got %v", rc.RebalanceTimeout())
 	}
 }
 
@@ -393,7 +393,7 @@ func TestRebalanceTimeout_NilKeepsDefault(t *testing.T) {
 	}
 	rc.SetFromRobinConfig(cfg)
 	// RebalanceTimeoutSeconds not set → should keep default
-	if rc.RebalanceTimeout() != 120*time.Second {
-		t.Fatalf("expected rebalance timeout to remain 120s, got %v", rc.RebalanceTimeout())
+	if rc.RebalanceTimeout() != 600*time.Second {
+		t.Fatalf("expected rebalance timeout to remain 600s, got %v", rc.RebalanceTimeout())
 	}
 }

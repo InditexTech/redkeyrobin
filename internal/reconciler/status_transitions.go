@@ -12,6 +12,7 @@ import redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 //
 // Transition rules:
 //   - Only Robin changes → "" (no transition; mark as Applied)
+//   - Topology scale to zero → ScalingToZero
 //   - Topology scale-up → ScalingUp
 //   - Topology scale-down → ScalingDown
 //   - Kubernetes/Redis config changes only (no topology) → Upgrading
@@ -31,6 +32,8 @@ func DetermineStatusTransition(report ChangeReport) string {
 	// Topology changes take priority.
 	if report.HasTopologyChanges {
 		switch report.TopologyScaleDirection {
+		case ScaleToZero:
+			return redisv1.ClusterStatusScalingToZero
 		case ScaleUp:
 			return redisv1.ClusterStatusScalingUp
 		case ScaleDown:

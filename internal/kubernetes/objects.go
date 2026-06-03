@@ -100,6 +100,63 @@ func AllPodsReady(ctx context.Context, c client.Client, clusterName, namespace s
 	return sts.Status.ReadyReplicas >= expectedReplicas, nil
 }
 
+// GetStatefulSetReplicas returns the desired replica count currently configured on the
+// cluster's StatefulSet. It returns 0 if the StatefulSet has no explicit replica count.
+func GetStatefulSetReplicas(ctx context.Context, c client.Client, clusterName, namespace string) (int32, error) {
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
+		return 0, err
+	}
+	if sts.Spec.Replicas == nil {
+		return 0, nil
+	}
+	return *sts.Spec.Replicas, nil
+}
+
+// ScaleStatefulSet sets the desired replica count on the cluster's StatefulSet.
+// Robin owns the StatefulSet replica count throughout scaling operations, so this is
+// the single point where the pod count is changed. It is a no-op when the StatefulSet
+// already has the requested replica count.
+func ScaleStatefulSet(ctx context.Context, c client.Client, clusterName, namespace string, replicas int32) error {
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
+		return fmt.Errorf("getting StatefulSet %s: %w", clusterName, err)
+	}
+	if sts.Spec.Replicas != nil && *sts.Spec.Replicas == replicas {
+		return nil
+	}
+	sts.Spec.Replicas = &replicas
+	if err := c.Update(ctx, sts); err != nil {
+		return fmt.Errorf("scaling StatefulSet %s to %d replicas: %w", clusterName, replicas, err)
+	}
+	return nil
+}
+
+// StatefulSetExists reports whether the cluster's StatefulSet currently exists.
+func StatefulSetExists(ctx context.Context, c client.Client, clusterName, namespace string) (bool, error) {
+	sts := &appsv1.StatefulSet{}
+	err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts)
+	if errors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// DeleteStatefulSet deletes the cluster's StatefulSet. It is used by fast scaling, which
+// wipes and recreates the StatefulSet. Missing StatefulSets are treated as success.
+func DeleteStatefulSet(ctx context.Context, c client.Client, clusterName, namespace string) error {
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+	}
+	if err := c.Delete(ctx, sts); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("deleting StatefulSet %s: %w", clusterName, err)
+	}
+	return nil
+}
+
 // GetPodAddresses returns a map of pod name → IP:port for the cluster's StatefulSet pods.
 // This uses pod IPs directly, which works both in-cluster and out-of-cluster (e.g. kind dev).
 func GetPodAddresses(ctx context.Context, c client.Client, clusterName, namespace string) (map[string]string, error) {
@@ -445,4 +502,57 @@ func createProbe(initial, period int32) *corev1.Probe {
 		InitialDelaySeconds: initial,
 		PeriodSeconds:       period,
 	}
+}
+
+// DeleteService deletes the cluster's headless Service. Missing Services are treated as success.
+func DeleteService(ctx context.Context, c client.Client, clusterName, namespace string) error {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+	}
+	if err := c.Delete(ctx, svc); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("deleting Service %s: %w", clusterName, err)
+	}
+	return nil
+}
+
+// DeleteConfigMap deletes the cluster's ConfigMap. Missing ConfigMaps are treated as success.
+func DeleteConfigMap(ctx context.Context, c client.Client, clusterName, namespace string) error {
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+	}
+	if err := c.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("deleting ConfigMap %s: %w", clusterName, err)
+	}
+	return nil
+}
+
+// DeletePDB deletes the cluster's PodDisruptionBudget. Missing PDBs are treated as success.
+func DeletePDB(ctx context.Context, c client.Client, clusterName, namespace string) error {
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName + "-pdb", Namespace: namespace},
+	}
+	if err := c.Delete(ctx, pdb); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("deleting PDB %s-pdb: %w", clusterName, err)
+	}
+	return nil
+}
+
+// DeletePVCs deletes all PersistentVolumeClaims belonging to the cluster.
+// It uses the cluster label selector to find matching PVCs.
+// Missing PVCs are treated as success.
+func DeletePVCs(ctx context.Context, c client.Client, clusterName, namespace string) error {
+	pvcList := &corev1.PersistentVolumeClaimList{}
+	if err := c.List(ctx, pvcList,
+		client.InNamespace(namespace),
+		client.MatchingLabels(clusterLabels(clusterName)),
+	); err != nil {
+		return fmt.Errorf("listing PVCs for cluster %s: %w", clusterName, err)
+	}
+
+	for i := range pvcList.Items {
+		if err := c.Delete(ctx, &pvcList.Items[i]); err != nil && !errors.IsNotFound(err) {
+			return fmt.Errorf("deleting PVC %s: %w", pvcList.Items[i].Name, err)
+		}
+	}
+	return nil
 }

@@ -594,6 +594,122 @@ func TestBuildPDB_MinAvailable(t *testing.T) {
 	}
 }
 
+// --- Scaling helpers ---
+
+func TestScaleStatefulSet_UpdatesReplicas(t *testing.T) {
+	old := int32(6)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &old},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).WithObjects(sts).Build()
+
+	if err := ScaleStatefulSet(context.Background(), fakeClient, "test-cluster", "default", 9); err != nil {
+		t.Fatalf("ScaleStatefulSet failed: %v", err)
+	}
+
+	got := &appsv1.StatefulSet{}
+	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-cluster", Namespace: "default"}, got); err != nil {
+		t.Fatalf("getting StatefulSet: %v", err)
+	}
+	if got.Spec.Replicas == nil || *got.Spec.Replicas != 9 {
+		t.Fatalf("expected 9 replicas, got %v", got.Spec.Replicas)
+	}
+}
+
+func TestScaleStatefulSet_NoOpWhenUnchanged(t *testing.T) {
+	current := int32(6)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default", ResourceVersion: "1"},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &current},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).WithObjects(sts).Build()
+
+	if err := ScaleStatefulSet(context.Background(), fakeClient, "test-cluster", "default", 6); err != nil {
+		t.Fatalf("ScaleStatefulSet failed: %v", err)
+	}
+
+	got := &appsv1.StatefulSet{}
+	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-cluster", Namespace: "default"}, got); err != nil {
+		t.Fatalf("getting StatefulSet: %v", err)
+	}
+	// ResourceVersion unchanged means no update was issued.
+	if got.ResourceVersion != "1" {
+		t.Fatalf("expected no update (resourceVersion 1), got %s", got.ResourceVersion)
+	}
+}
+
+func TestScaleStatefulSet_NotFound(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+
+	if err := ScaleStatefulSet(context.Background(), fakeClient, "missing", "default", 3); err == nil {
+		t.Fatal("expected error for missing StatefulSet")
+	}
+}
+
+func TestGetStatefulSetReplicas(t *testing.T) {
+	current := int32(4)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &current},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).WithObjects(sts).Build()
+
+	got, err := GetStatefulSetReplicas(context.Background(), fakeClient, "test-cluster", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != 4 {
+		t.Fatalf("expected 4 replicas, got %d", got)
+	}
+}
+
+func TestStatefulSetExists(t *testing.T) {
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).WithObjects(sts).Build()
+
+	exists, err := StatefulSetExists(context.Background(), fakeClient, "test-cluster", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected StatefulSet to exist")
+	}
+
+	missing, err := StatefulSetExists(context.Background(), fakeClient, "missing", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if missing {
+		t.Fatal("expected missing StatefulSet to not exist")
+	}
+}
+
+func TestDeleteStatefulSet(t *testing.T) {
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).WithObjects(sts).Build()
+
+	if err := DeleteStatefulSet(context.Background(), fakeClient, "test-cluster", "default"); err != nil {
+		t.Fatalf("DeleteStatefulSet failed: %v", err)
+	}
+	exists, err := StatefulSetExists(context.Background(), fakeClient, "test-cluster", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Fatal("expected StatefulSet to be deleted")
+	}
+
+	// Deleting a missing StatefulSet is a no-op.
+	if err := DeleteStatefulSet(context.Background(), fakeClient, "test-cluster", "default"); err != nil {
+		t.Fatalf("expected no error deleting missing StatefulSet, got: %v", err)
+	}
+}
+
 // --- Helpers ---
 
 func contains(s, substr string) bool {

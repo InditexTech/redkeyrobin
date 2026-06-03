@@ -87,13 +87,14 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 		// Cluster is ready, perform health check.
 		return cr.handleReady(ctx, targetConfig, previousConfig)
 	case redisv1.ClusterStatusScalingUp:
-		// Scaling up: not yet implemented, placeholder.
-		cr.logger.Info("Cluster is scaling up (operation not yet implemented)")
-		return reconcileAfterInterval, nil
+		// Scaling up: add primaries/replicas and rebalance slots onto the new nodes.
+		return cr.handleScalingUp(ctx, targetConfig)
 	case redisv1.ClusterStatusScalingDown:
-		// Scaling down: not yet implemented, placeholder.
-		cr.logger.Info("Cluster is scaling down (operation not yet implemented)")
-		return reconcileAfterInterval, nil
+		// Scaling down: drain and remove the highest-ordinal nodes, then shrink the StatefulSet.
+		return cr.handleScalingDown(ctx, targetConfig)
+	case redisv1.ClusterStatusScalingToZero:
+		// Scaling to zero: delete all cluster objects.
+		return cr.handleScalingToZero(ctx, targetConfig)
 	case redisv1.ClusterStatusUpgrading:
 		// Upgrading: not yet implemented, placeholder.
 		cr.logger.Info("Cluster is upgrading (operation not yet implemented)")
@@ -159,6 +160,20 @@ func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfi
 
 // handleNew ensures Kubernetes objects exist and transitions to Initializing.
 func (cr *ClusterReconciler) handleNew(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+	// New cluster with 0 primaries: nothing to create, mark Applied immediately.
+	if config.Spec.Primaries == 0 {
+		cr.logger.Info("New cluster with 0 primaries, marking config as Applied", "config", config.Name)
+		config.Status.Status = redisv1.ClusterStatusReady
+		config.Status.Nodes = map[string]*redisv1.RedisNode{}
+		if err := cr.client.Status().Update(ctx, config); err != nil {
+			return reconcileAfterInterval, fmt.Errorf("updating status for zero-primary cluster: %w", err)
+		}
+		if err := cr.setConfigPhaseApplied(ctx, config); err != nil {
+			return reconcileAfterInterval, err
+		}
+		return reconcileAfterInterval, nil
+	}
+
 	cr.logger.Info("New cluster detected, creating Kubernetes objects")
 
 	owner, err := cr.getOwner(ctx)
@@ -242,47 +257,8 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 		return reconcileAfterWaitInterval, nil
 	}
 
-	// Step 1: Meet all nodes
-	if err := cr.meetNodes(ctx, nodes); err != nil {
-		cr.logger.Error("Failed to meet nodes", "error", err)
-		return reconcileAfterWaitInterval, nil
-	}
-
-	// Step 2: Assign slots to primaries
-	primaries := nodes[:config.Spec.Primaries]
-	if err := cr.assignSlots(ctx, primaries); err != nil {
-		cr.logger.Error("Failed to assign slots", "error", err)
-		return reconcileAfterWaitInterval, nil
-	}
-
-	// Step 3: Verify gossip convergence before replication
-	if config.Spec.ReplicasPerPrimary > 0 {
-		converged, err := cr.checkGossipConvergence(ctx, nodes)
-		if err != nil {
-			cr.logger.Warn("Failed to check gossip convergence", "error", err)
-			return reconcileAfterWaitInterval, nil
-		}
-		if !converged {
-			cr.logger.Info("Gossip not yet converged, will retry before setting replicas")
-			return reconcileAfterWaitInterval, nil
-		}
-
-		// Step 4: Set replicas
-		replicas := nodes[config.Spec.Primaries:]
-		if err := cr.setReplicas(ctx, primaries, replicas, config.Spec.ReplicasPerPrimary); err != nil {
-			cr.logger.Warn("Failed to set replicas, will retry", "error", err)
-			return reconcileAfterWaitInterval, nil
-		}
-	}
-
-	// Step 4: Verify cluster state
-	clusterOK, err := cr.verifyCluster(ctx, nodes[0])
-	if err != nil {
-		cr.logger.Error("Failed to verify cluster", "error", err)
-		return reconcileAfterWaitInterval, nil
-	}
-	if !clusterOK {
-		cr.logger.Info("Cluster not yet converged, will retry")
+	// Form the cluster from scratch (meet, assign slots, replicas, verify).
+	if !cr.formCluster(ctx, config, nodes) {
 		return reconcileAfterWaitInterval, nil
 	}
 
@@ -302,6 +278,61 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 
 	cr.logger.Info("Cluster formation complete, status set to Ready")
 	return reconcileAfterInterval, nil
+}
+
+// formCluster forms a Redis cluster from a freshly initialized set of nodes by meeting
+// the nodes, assigning slots to primaries, and attaching replicas. It returns true once
+// the cluster has fully converged; false indicates a transient state and the caller
+// should retry on the next reconciliation pass.
+//
+// The nodes slice must be ordered by StatefulSet ordinal: nodes[0:Primaries] become
+// primaries and the remaining nodes become replicas. It is shared by the initial
+// configuration flow and the fast-scaling path, which both build a cluster from scratch.
+func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.RedkeyClusterConfig, nodes []*redis.Node) bool {
+	// Step 1: Meet all nodes
+	if err := cr.meetNodes(ctx, nodes); err != nil {
+		cr.logger.Error("Failed to meet nodes", "error", err)
+		return false
+	}
+
+	// Step 2: Assign slots to primaries
+	primaries := nodes[:config.Spec.Primaries]
+	if err := cr.assignSlots(ctx, primaries); err != nil {
+		cr.logger.Error("Failed to assign slots", "error", err)
+		return false
+	}
+
+	// Step 3: Verify gossip convergence before replication, then attach replicas.
+	if config.Spec.ReplicasPerPrimary > 0 {
+		converged, err := cr.checkGossipConvergence(ctx, nodes)
+		if err != nil {
+			cr.logger.Warn("Failed to check gossip convergence", "error", err)
+			return false
+		}
+		if !converged {
+			cr.logger.Info("Gossip not yet converged, will retry before setting replicas")
+			return false
+		}
+
+		replicas := nodes[config.Spec.Primaries:]
+		if err := cr.setReplicas(ctx, primaries, replicas, config.Spec.ReplicasPerPrimary); err != nil {
+			cr.logger.Warn("Failed to set replicas, will retry", "error", err)
+			return false
+		}
+	}
+
+	// Step 4: Verify cluster state
+	clusterOK, err := cr.verifyCluster(ctx, nodes[0])
+	if err != nil {
+		cr.logger.Error("Failed to verify cluster", "error", err)
+		return false
+	}
+	if !clusterOK {
+		cr.logger.Info("Cluster not yet converged, will retry")
+		return false
+	}
+
+	return true
 }
 
 // handleReady performs a health check on the ready cluster.
@@ -552,6 +583,18 @@ func (cr *ClusterReconciler) updateClusterStatus(ctx context.Context, config *re
 		return fmt.Errorf("updating cluster status to %s: %w", status, err)
 	}
 	return nil
+}
+
+// updateSubstatus sets the informational substatus field to indicate the current phase
+// within a scaling operation. This is purely observational — it does not affect control flow.
+func (cr *ClusterReconciler) updateSubstatus(ctx context.Context, config *redisv1.RedkeyClusterConfig, substatus string) {
+	if config.Status.Substatus.Status == substatus {
+		return
+	}
+	config.Status.Substatus.Status = substatus
+	if err := cr.client.Status().Update(ctx, config); err != nil {
+		cr.logger.Warn("Failed to update substatus (non-critical)", "substatus", substatus, "error", err)
+	}
 }
 
 func (cr *ClusterReconciler) setConfigPhaseApplied(ctx context.Context, config *redisv1.RedkeyClusterConfig) error {

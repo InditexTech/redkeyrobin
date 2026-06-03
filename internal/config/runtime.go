@@ -28,7 +28,11 @@ const (
 	// DefaultClusterCommandTimeoutSeconds is the default timeout for redis-cli cluster commands (fix, check).
 	DefaultClusterCommandTimeoutSeconds = 24
 	// DefaultRebalanceTimeoutSeconds is the default timeout for redis-cli --cluster rebalance.
-	DefaultRebalanceTimeoutSeconds = 120
+	// A full reshard moves slots (and their keys) across the cluster in a single redis-cli
+	// invocation, which can take several minutes on clusters that hold data. The timeout
+	// must be generous enough to let that invocation finish; interrupting it leaves slots
+	// in an open state and prevents the cluster from converging.
+	DefaultRebalanceTimeoutSeconds = 600
 	// DefaultClusterMeetWaitSeconds is the default wait time after MEET/FORGET for gossip convergence.
 	DefaultClusterMeetWaitSeconds = 5
 )

@@ -135,6 +135,10 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 		return reconcileAfterInterval, false
 	}
 
+	// Remember the phase the target config had when this cycle started so we can
+	// detect whether it transitioned to Applied during this cycle.
+	initialConfigPhase := targetConfig.Status.ConfigPhase
+
 	// Log information about the target and previous configurations.
 	r.logger.Info("Selected configuration to apply",
 		"name", targetConfig.Name,
@@ -268,7 +272,44 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 		r.applyRobinConfig(targetConfig, previousConfig)
 	}
 
+	// If the target config was just applied during this cycle and there are still
+	// other configurations waiting to be processed (Pending or not yet initialised),
+	// reconcile immediately instead of waiting for the next interval, so the next
+	// configuration is picked up without delay.
+	if !onReconcilingError &&
+		initialConfigPhase != redisv1.ConfigPhaseApplied &&
+		targetConfig.Status.ConfigPhase == redisv1.ConfigPhaseApplied &&
+		r.hasMoreActionableConfigs(ctx, targetConfig) {
+		r.logger.Info("Configuration applied and more configurations are pending, scheduling immediate reconciliation",
+			"name", targetConfig.Name,
+			"sequence", targetConfig.Spec.Sequence,
+		)
+		scheduleRequired = reconcileImmediately
+	}
+
 	return scheduleRequired, onReconcilingError
+}
+
+// hasMoreActionableConfigs reports whether any RedkeyClusterConfig other than the
+// just-applied one still needs processing (i.e. it has not reached a terminal
+// phase of Applied or Superseded). It is used to decide whether to reconcile
+// immediately after a configuration is applied instead of waiting a full interval.
+func (r *Reconciler) hasMoreActionableConfigs(ctx context.Context, applied *redisv1.RedkeyClusterConfig) bool {
+	configs, err := r.listConfigs(ctx, false)
+	if err != nil {
+		r.logger.Warn("Failed to list configs while checking for pending configurations", "error", err)
+		return false
+	}
+	for i := range configs {
+		if applied != nil && configs[i].Name == applied.Name {
+			continue
+		}
+		phase := configs[i].Status.ConfigPhase
+		if phase != redisv1.ConfigPhaseApplied && phase != redisv1.ConfigPhaseSuperseded {
+			return true
+		}
+	}
+	return false
 }
 
 // copyPreviousClusterStatus copies the previous Status into the target configuration, preserving the target ConfigPhase and persisting the result.
