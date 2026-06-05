@@ -418,8 +418,9 @@ func TestRollingUpgradeSubstatusRouting(t *testing.T) {
 	}
 }
 
-// upgradePartitionPod builds a pod at the given ordinal running the given image, marked Ready.
-func upgradePartitionPod(ordinal int, image string) *corev1.Pod {
+// upgradePartitionPod builds a pod at the given ordinal running the given image and
+// carrying the given controller-revision-hash label, marked Ready.
+func upgradePartitionPod(ordinal int, image, revision string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("test-cluster-%d", ordinal),
@@ -427,6 +428,7 @@ func upgradePartitionPod(ordinal int, image string) *corev1.Pod {
 			Labels: map[string]string{
 				"redkey.inditex.dev/cluster":   "test-cluster",
 				"redkey.inditex.dev/component": "redis",
+				"controller-revision-hash":     revision,
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -438,8 +440,10 @@ func upgradePartitionPod(ordinal int, image string) *corev1.Pod {
 	}
 }
 
-// TestHandleUpgradeRollingUpdate_DeletesPodWithOldImageOnce verifies that a pod still
-// running the OLD image is deleted exactly once so the OnDelete strategy can recreate it.
+// TestHandleUpgradeRollingUpdate_DeletesPodWithOldImageOnce verifies that a pod whose
+// controller-revision-hash differs from the StatefulSet's UpdateRevision (i.e. it is
+// still running the OLD spec) is deleted exactly once so the OnDelete strategy can
+// recreate it.
 func TestHandleUpgradeRollingUpdate_DeletesPodWithOldImageOnce(t *testing.T) {
 	cfg := testClusterConfig(redisv1.ClusterStatusUpgrading)
 	cfg.Spec.Primaries = 3
@@ -449,12 +453,19 @@ func TestHandleUpgradeRollingUpdate_DeletesPodWithOldImageOnce(t *testing.T) {
 	cfg.Status.Substatus.UpgradingPartition = 2
 	owner := testOwnerCluster()
 
-	// Pod 2 still runs the OLD image — it must be deleted to be recycled.
-	oldPod := upgradePartitionPod(2, "redis:7")
+	replicas := int32(3)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		Status:     appsv1.StatefulSetStatus{UpdateRevision: "test-cluster-new"},
+	}
+
+	// Pod 2 still carries the OLD revision — it must be deleted to be recycled.
+	oldPod := upgradePartitionPod(2, "redis:7", "test-cluster-old")
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
-		WithObjects(owner, cfg, oldPod).
+		WithObjects(owner, cfg, sts, oldPod).
 		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
 		Build()
 
@@ -490,12 +501,19 @@ func TestHandleUpgradeRollingUpdate_DoesNotDeletePodWithNewImage(t *testing.T) {
 	cfg.Status.Substatus.UpgradingPartition = 2
 	owner := testOwnerCluster()
 
-	// Pod 2 already runs the NEW image — it must be preserved across retries.
-	newPod := upgradePartitionPod(2, "redis:8")
+	// Pod 2 already carries the NEW revision — it must be preserved across retries.
+	newPod := upgradePartitionPod(2, "redis:8", "test-cluster-new")
+
+	replicas := int32(3)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		Status:     appsv1.StatefulSetStatus{UpdateRevision: "test-cluster-new"},
+	}
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
-		WithObjects(owner, cfg, newPod).
+		WithObjects(owner, cfg, sts, newPod).
 		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
 		Build()
 

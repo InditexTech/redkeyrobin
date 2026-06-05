@@ -59,6 +59,61 @@ func (c *Client) GetInfo(ctx context.Context) (string, error) {
 	return result, nil
 }
 
+// ReplicaLinkUp reports whether this node is a replica whose link to its primary is
+// established (master_link_status:up in INFO replication). It returns false for a
+// primary or for a replica that has not yet completed its initial sync. This is used
+// to guard HA before recycling: a replica that has not synced cannot safely take over.
+func (c *Client) ReplicaLinkUp(ctx context.Context) (bool, error) {
+	result, err := c.client.Info(ctx, "replication").Result()
+	if err != nil {
+		// Fallback: some servers (e.g. miniredis) don't support INFO <section>.
+		result, err = c.client.Info(ctx).Result()
+		if err != nil {
+			return false, fmt.Errorf("INFO replication on %s: %w", c.addr, err)
+		}
+	}
+	for _, line := range strings.Split(result, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if ok && key == "master_link_status" {
+			return value == "up", nil
+		}
+	}
+	return false, nil
+}
+
+// IsReplica reports whether this node currently runs as a replica (role:slave in INFO
+// replication). During a rolling upgrade a drained primary can be automatically converted
+// into a read-only replica of the node that absorbed its slots (Redis cluster replica
+// migration); callers use this to detect that case before attempting a write such as
+// FLUSHALL, which a read-only replica rejects.
+func (c *Client) IsReplica(ctx context.Context) (bool, error) {
+	result, err := c.client.Info(ctx, "replication").Result()
+	if err != nil {
+		// Fallback: some servers (e.g. miniredis) don't support INFO <section>.
+		result, err = c.client.Info(ctx).Result()
+		if err != nil {
+			return false, fmt.Errorf("INFO replication on %s: %w", c.addr, err)
+		}
+	}
+	for _, line := range strings.Split(result, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if ok && key == "role" {
+			return value == "slave", nil
+		}
+	}
+	return false, nil
+}
+
+// Save executes a synchronous SAVE, persisting the current dataset to disk (RDB). It is
+// used before recycling a drained node in a persistent cluster so the restarted pod
+// reloads the up-to-date (e.g. flushed) dataset instead of a stale pre-reshard snapshot.
+func (c *Client) Save(ctx context.Context) error {
+	if err := c.client.Save(ctx).Err(); err != nil {
+		return fmt.Errorf("SAVE on %s: %w", c.addr, err)
+	}
+	return nil
+}
+
 // ClusterInfo holds parsed CLUSTER INFO fields.
 type ClusterInfo struct {
 	State       string

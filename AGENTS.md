@@ -276,7 +276,23 @@ This ensures each slot migrates exactly twice and each recycled node is immediat
 
 6. **Only recycle drained pairs**: As per the upgrade design (section 6.2 of the technical analysis), only primaries with 0 slots AND their replicas may be recycled. Replicas of primaries that still hold slots must never be restarted. This is enforced by `recycleReplicasForPrimary(ctx, config, primaryOrdinal, password)` which targets a single shard.
 
-7. **No `defer` in loops for Redis clients**: Functions that iterate over primaries/replicas (like `rebalanceReplicas`, `recycleReplicasForPrimary`) must use explicit `.Close()` calls, not `defer`, to avoid connection accumulation across loop iterations.
+7. **No `defer` in loops for Redis clients**: Functions that iterate over primaries/replicas (like `rebalanceReplicas`, `recycleReplicasForPrimary`) must use explicit `.Close()` calls, not `defer`, to avoid connection accumulation across loop iterations. The same applies to one-shot helpers invoked inside the reconcile loop such as `ensurePivotReplica`, which opens a temporary client and must close it manually before returning.
+
+### Recycle Decision: controller-revision-hash, not image
+
+`handleUpgradeRollingUpdate` decides whether a pod still needs recycling by comparing the StatefulSet's `Status.UpdateRevision` (desired revision) against each pod's `controller-revision-hash` label (the revision the pod was created with), via `kubernetes.GetStatefulSetUpdateRevision` and `kubernetes.GetPodControllerRevisionHash`. **Do not gate recycling on the container image alone** — any spec change (resources, labels, annotations, redisConfig, env, etc.) bumps the revision and must trigger a recycle. The `PodTemplateHashLabel` constant (`"controller-revision-hash"`) is the native StatefulSet mechanism; reusing it keeps Robin consistent with `kubectl rollout`.
+
+### HA / Data-Safety Invariants in Rolling Update
+
+These guard against data loss and split-brain during the rolling phase; never remove them:
+
+1. **Wait for replica resync before advancing**: After `CLUSTER REPLICATE`, call `waitReplicaSynced` which polls `ReplicaLinkUp` (parses `INFO replication` → `master_link_status:up`). Advancing before the replica is in sync risks promoting an empty replica on failover.
+2. **Cluster check per iteration**: Run `ClusterCheck` before moving to the next partition. A partition must not advance while slots are open/importing or gossip has not converged.
+3. **Flush + persist on persistent clusters**: For non-ephemeral (PVC-backed) clusters, drained nodes are cleaned with `flushAndPersistNode` (`FLUSHALL` then synchronous `SAVE`) so the recycled pod does not reload stale slot data from its RDB on restart. Skipped for ephemeral clusters (nothing on disk).
+
+### Shutdown / Close Convention
+
+Resources that own background goroutines or pooled Redis connections expose an idempotent `Close()` that the parent calls in a chain: `reconciler.Start` defers `clusterReconciler.Close()` → `healthReconciler.Close()` → `health.Checker.CloseAll()`. When adding a component that holds clients or goroutines, wire its `Close()` into this chain rather than relying on GC; `Close()` must be safe to call more than once.
 
 ### Testing the Upgrade
 

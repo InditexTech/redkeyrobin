@@ -47,6 +47,14 @@ func NewHealthReconciler(
 	}
 }
 
+// Close releases resources held by the health reconciler, closing all cached
+// health-check Redis clients. It should be called on shutdown.
+func (hr *HealthReconciler) Close() {
+	if hr.checker != nil {
+		hr.checker.CloseAll()
+	}
+}
+
 // Reconcile performs health checks and, if needed, remediation on the cluster.
 // Returns the recommended schedule for the next reconciliation.
 func (hr *HealthReconciler) Reconcile(ctx context.Context, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (reconcileSchedule, error) {

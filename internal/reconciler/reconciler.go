@@ -85,6 +85,10 @@ func (r *Reconciler) Start(ctx context.Context) error {
 		"intervalOnWait", r.intervalOnWait,
 	)
 
+	// Ensure cached Redis clients (e.g. health-check connections) are closed on shutdown
+	// to avoid leaking connections and file descriptors.
+	defer r.clusterReconciler.Close()
+
 	// Run an initial reconciliation immediately
 	r.logger.Info("Starting reconciliation cycle")
 	schedule, onError := r.reconcile(ctx)

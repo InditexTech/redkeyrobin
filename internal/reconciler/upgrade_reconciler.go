@@ -520,9 +520,25 @@ func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, con
 	partition := config.Status.Substatus.UpgradingPartition
 	podName := fmt.Sprintf("%s-%d", cr.clusterName, partition)
 
-	expectedImage := config.Spec.Image
+	// Determine whether this pod still runs an OUTDATED pod template by comparing its native
+	// controller-revision-hash label against the StatefulSet's UpdateRevision. This detects
+	// ANY pod-template change (image, resources, labels, annotations, redis.conf checksum),
+	// not just image changes, and is robust to label/annotation ordering — unlike comparing
+	// a single field or an ad-hoc checksum.
+	desiredRevision, revErr := kubernetes.GetStatefulSetUpdateRevision(ctx, cr.client, cr.clusterName, cr.namespace)
+	if revErr != nil {
+		return reconcileAfterInterval, fmt.Errorf("getting StatefulSet update revision: %w", revErr)
+	}
+	if desiredRevision == "" {
+		// The StatefulSet controller has not yet computed the update revision for the new
+		// template. Wait rather than risk a false "already up to date" decision that would
+		// skip recycling the pod.
+		cr.logger.Info("Rolling upgrade: StatefulSet update revision not yet available, waiting",
+			"partition", partition)
+		return reconcileAfterWaitInterval, nil
+	}
 
-	// Decide whether the pod still needs recycling by inspecting its current image.
+	// Decide whether the pod still needs recycling by inspecting its current revision.
 	//
 	// CRITICAL: the pod must be deleted at most ONCE per partition. This handler returns
 	// reconcileAfterWaitInterval while waiting for the pod to be recreated and ready, so it
@@ -531,29 +547,49 @@ func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, con
 	// pod had already been met and received migrated slots, the re-deletion orphans those
 	// slots under a now-dead node ID, permanently deadlocking the upgrade (redis-cli reshard
 	// refuses to run while an unreachable master still owns slots).
-	actualImage, imgErr := kubernetes.GetPodImage(ctx, cr.client, cr.clusterName, cr.namespace, int32(partition))
-	if imgErr != nil {
+	actualRevision, revErr := kubernetes.GetPodControllerRevisionHash(ctx, cr.client, cr.clusterName, cr.namespace, int32(partition))
+	if revErr != nil {
 		// Pod is most likely mid-recreation (not yet present). Wait for it to come back
 		// rather than treating this as a fatal error or re-issuing a delete.
 		cr.logger.Info("Rolling upgrade: pod not available yet, waiting for recreation",
-			"partition", partition, "error", imgErr)
+			"partition", partition, "error", revErr)
 		return reconcileAfterWaitInterval, nil
 	}
 
-	if actualImage != expectedImage {
-		// Pod still runs the OLD image: delete it once so the OnDelete strategy recreates
-		// it with the current template (new image).
+	if actualRevision != desiredRevision {
+		// For PERSISTENT clusters, clear and persist the drained node's dataset before
+		// recycling. The drained primary already has 0 slots (migrated away during
+		// resharding), but its on-disk RDB still holds the pre-reshard keyspace. Without
+		// flushing + persisting, the restarted pod would reload that stale snapshot and
+		// resurrect keys for slots it no longer owns. Ephemeral clusters have no RDB to
+		// reload, so this is skipped for them.
+		if !config.Spec.Ephemeral {
+			password := cr.getPassword(ctx, config)
+			drainedAddr, addrErr := cr.getPodAddr(ctx, int32(partition))
+			if addrErr != nil {
+				return reconcileAfterInterval, fmt.Errorf("getting drained primary address for flush: %w", addrErr)
+			}
+			if err := cr.flushAndPersistNode(ctx, drainedAddr, password); err != nil {
+				cr.logger.Warn("Rolling upgrade: failed to flush/persist drained primary before recycle, will retry",
+					"partition", partition, "error", err)
+				return reconcileAfterWaitInterval, nil
+			}
+		}
+
+		// Pod still runs an OUTDATED template: delete it once so the OnDelete strategy
+		// recreates it with the current template (new configuration).
 		cr.logger.Info("Rolling upgrade: deleting drained primary pod for recycling",
-			"partition", partition, "pod", podName)
+			"partition", partition, "pod", podName,
+			"actualRevision", actualRevision, "desiredRevision", desiredRevision)
 		if err := kubernetes.DeletePod(ctx, cr.client, podName, cr.namespace); err != nil {
 			return reconcileAfterInterval, fmt.Errorf("deleting pod %s: %w", podName, err)
 		}
-		cr.logger.Info("Rolling upgrade: waiting for pod to be recreated with new image",
+		cr.logger.Info("Rolling upgrade: waiting for pod to be recreated with new template",
 			"partition", partition)
 		return reconcileAfterWaitInterval, nil
 	}
 
-	// Pod already runs the new image. Ensure it is Ready before meeting it back.
+	// Pod already runs the new template. Ensure it is Ready before meeting it back.
 	ready, err := kubernetes.IsPodOrdinalReady(ctx, cr.client, cr.clusterName, cr.namespace, int32(partition))
 	if err != nil {
 		return reconcileAfterInterval, fmt.Errorf("checking pod %d readiness: %w", partition, err)
@@ -622,6 +658,24 @@ func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, con
 				"partition", partition, "error", err)
 			return reconcileAfterWaitInterval, nil
 		}
+	}
+
+	// Validate cluster health before advancing to the next partition. redis-cli
+	// --cluster check verifies slot coverage, topology agreement (gossip convergence)
+	// and the absence of open/stuck slots. Advancing while the cluster is inconsistent
+	// could leave slots orphaned and deadlock the upgrade, so we retry instead.
+	checkResult, checkErr := seedClient.ClusterCheck(ctx)
+	if checkErr != nil {
+		cr.logger.Warn("Rolling upgrade: cluster check failed before advancing, will retry",
+			"partition", partition, "error", checkErr)
+		return reconcileAfterWaitInterval, nil
+	}
+	if checkResult.CommandCodeOutput != 0 || len(checkResult.Errors) > 0 {
+		cr.logger.Warn("Rolling upgrade: cluster not healthy yet, delaying advance",
+			"partition", partition,
+			"exitCode", checkResult.CommandCodeOutput,
+			"errors", checkResult.Errors)
+		return reconcileAfterWaitInterval, nil
 	}
 
 	// Advance to next partition or proceed to ending
@@ -704,6 +758,15 @@ func (cr *ClusterReconciler) handleUpgradeEnding(ctx context.Context, config *re
 
 	cr.logger.Info("Rolling upgrade ending: moving slots from extra to node 0",
 		"extraID", extraID, "destID", destID, "slots", extraSlots)
+
+	// Forget any dead (failed) nodes before resharding. The last recycled partition's
+	// replicas (recycled after the previous forgetFailedNodes pass) leave stale FAIL
+	// entries in the topology. Without this cleanup, redis-cli --cluster reshard tries
+	// to send SETSLOT to those unreachable nodes on every slot migration, making the
+	// reshard of all slots extremely slow and stalling the upgrade.
+	if err := cr.forgetFailedNodes(ctx, extraClient, password, config); err != nil {
+		cr.logger.Warn("Rolling upgrade ending: failed to forget dead nodes, continuing", "error", err)
+	}
 
 	// Run cluster fix to resolve any open/stuck slots before reshard
 	if _, err := extraClient.ClusterFix(ctx); err != nil {
@@ -900,6 +963,83 @@ func (cr *ClusterReconciler) forgetNodeFromAll(ctx context.Context, nodeID, pass
 	return nil
 }
 
+// waitReplicaSynced waits until the node at replicaAddr reports master_link_status:up,
+// confirming its replication link to the primary is established. This preserves HA: a
+// replica that has not finished its initial sync cannot safely fail over. It polls a
+// bounded number of times and returns an error if the link never comes up, so callers
+// can retry on the next reconcile cycle rather than proceeding with an unsynced replica.
+func (cr *ClusterReconciler) waitReplicaSynced(ctx context.Context, replicaAddr, password string) error {
+	const maxAttempts = 10
+	c := redis.NewClient(replicaAddr, password)
+	defer c.Close()
+	for attempt := range maxAttempts {
+		up, err := c.ReplicaLinkUp(ctx)
+		if err == nil && up {
+			return nil
+		}
+		if attempt < maxAttempts-1 {
+			time.Sleep(1 * time.Second)
+		}
+	}
+	return fmt.Errorf("replica %s did not reach master_link_status:up", replicaAddr)
+}
+
+// flushAndPersistNode clears the dataset of the node at addr and persists the empty state
+// to disk (SAVE). It is invoked before recycling a drained node in a PERSISTENT cluster so
+// the restarted pod reloads an up-to-date dataset rather than a stale pre-reshard RDB
+// snapshot that still contains keys for slots already migrated away. It must not be used
+// on ephemeral clusters (no on-disk RDB) nor on nodes that still own slots.
+func (cr *ClusterReconciler) flushAndPersistNode(ctx context.Context, addr, password string) error {
+	c := redis.NewClient(addr, password)
+	defer c.Close()
+
+	// Determine the node's current role. After all of its slots have been migrated away,
+	// an emptied primary can be automatically demoted by Redis into a read-only replica of
+	// the node that absorbed those slots (cluster replica migration). FLUSHALL is rejected
+	// on a read-only replica ("READONLY You can't write against a read only replica").
+	isReplica, err := c.IsReplica(ctx)
+	if err != nil {
+		return fmt.Errorf("checking role of node %s before recycle: %w", addr, err)
+	}
+
+	// Masters holding keys reject CLUSTER RESET, so flush a writable master first. A
+	// read-only replica cannot be flushed (READONLY); CLUSTER RESET itself flushes the
+	// dataset when it turns the replica back into an empty master, so FLUSHALL is skipped
+	// for that case.
+	if !isReplica {
+		if err := c.FlushAll(ctx); err != nil {
+			return fmt.Errorf("flushing node %s before recycle: %w", addr, err)
+		}
+	}
+
+	// CLUSTER RESET HARD wipes the node's persisted cluster identity: it forgets all other
+	// nodes, drops every slot assignment, resets the config epoch AND generates a brand-new
+	// node ID, rewriting nodes.conf on disk. This is essential for PERSISTENT clusters.
+	//
+	// Without a HARD reset, the recycled pod reloads its stale persistent nodes.conf and
+	// rejoins under its OLD node ID with an outdated epoch/topology. The live cluster still
+	// remembers that ID as the node it just emptied, so the conflicting rejoin is flagged
+	// as "fail" by gossip; forgetFailedNodes then evicts it, and the following reshard aims
+	// at a destination the cluster no longer knows ("node is not known or not a master"),
+	// deadlocking the upgrade. A SOFT reset is not enough because it preserves the node ID
+	// and config epoch, reproducing the very conflict we need to avoid.
+	//
+	// With a fresh ID the recycled node behaves like a brand-new member — exactly what
+	// ephemeral clusters get for free (they lose nodes.conf on recycle) — so it is cleanly
+	// met back and accepted as a reshard target. The reconciler re-reads the node ID after
+	// the pod is recycled, so the new ID is picked up automatically.
+	if err := c.ClusterReset(ctx, true); err != nil {
+		return fmt.Errorf("resetting cluster state of node %s before recycle: %w", addr, err)
+	}
+
+	// Persist the now-empty dataset so the recycled pod does not reload a stale RDB snapshot
+	// and resurrect keys for slots it no longer owns.
+	if err := c.Save(ctx); err != nil {
+		return fmt.Errorf("persisting empty dataset on node %s before recycle: %w", addr, err)
+	}
+	return nil
+}
+
 // forgetReplicasOfNode forgets all replicas of a given primary node ID from the cluster.
 // This removes the replica nodes from cluster topology so they can be safely recycled.
 func (cr *ClusterReconciler) forgetReplicasOfNode(ctx context.Context, primaryID, password string, config *redisv1.RedkeyClusterConfig) error {
@@ -951,34 +1091,62 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 		return fmt.Errorf("getting primary %d ID: %w", primaryOrdinal, err)
 	}
 
-	expectedImage := config.Spec.Image
+	// Desired pod-template revision: replicas whose controller-revision-hash differs from
+	// this value still run an outdated template (any config change, not just image) and
+	// must be recycled.
+	desiredRevision, revErr := kubernetes.GetStatefulSetUpdateRevision(ctx, cr.client, cr.clusterName, cr.namespace)
+	if revErr != nil {
+		primaryClient.Close()
+		return fmt.Errorf("getting StatefulSet update revision: %w", revErr)
+	}
+	if desiredRevision == "" {
+		primaryClient.Close()
+		return fmt.Errorf("StatefulSet update revision not yet available")
+	}
 
 	for r := range replicasPerPrimary {
 		replicaOrdinal := int32(primaries + primaryOrdinal*replicasPerPrimary + r)
 		podName := fmt.Sprintf("%s-%d", cr.clusterName, replicaOrdinal)
 
-		// Delete the replica pod at most ONCE: only when it still runs the OLD image.
+		// Delete the replica pod at most ONCE: only when it still runs an OUTDATED template.
 		// This handler is re-entered on every retry, so deleting unconditionally would
 		// repeatedly destroy the freshly-recreated replica and prevent it from stabilizing.
-		actualImage, imgErr := kubernetes.GetPodImage(ctx, cr.client, cr.clusterName, cr.namespace, replicaOrdinal)
+		actualRevision, imgErr := kubernetes.GetPodControllerRevisionHash(ctx, cr.client, cr.clusterName, cr.namespace, replicaOrdinal)
 		if imgErr != nil {
 			// Replica is most likely mid-recreation (not yet present). Signal a retry.
 			primaryClient.Close()
 			return fmt.Errorf("replica pod %d not available yet: %w", replicaOrdinal, imgErr)
 		}
-		if actualImage != expectedImage {
+		if actualRevision != desiredRevision {
 			cr.logger.Info("Rolling upgrade: deleting replica pod for recycling",
 				"replicaOrdinal", replicaOrdinal,
-				"primaryOrdinal", primaryOrdinal)
+				"primaryOrdinal", primaryOrdinal,
+				"actualRevision", actualRevision,
+				"desiredRevision", desiredRevision)
 
-			// Delete the replica pod — it will be recreated with the new image
+			// For PERSISTENT clusters, clear and persist the replica's dataset before
+			// recycling so the restarted pod does not briefly load a stale pre-reshard RDB
+			// before it re-syncs from its primary. Ephemeral clusters have no RDB to reload.
+			if !config.Spec.Ephemeral {
+				replicaAddr, addrErr := cr.getPodAddr(ctx, replicaOrdinal)
+				if addrErr != nil {
+					primaryClient.Close()
+					return fmt.Errorf("getting replica %d address for flush: %w", replicaOrdinal, addrErr)
+				}
+				if err := cr.flushAndPersistNode(ctx, replicaAddr, password); err != nil {
+					primaryClient.Close()
+					return fmt.Errorf("flushing replica %d before recycle: %w", replicaOrdinal, err)
+				}
+			}
+
+			// Delete the replica pod — it will be recreated with the new template
 			// (OnDelete strategy: new pods always use the current template)
 			if err := kubernetes.DeletePod(ctx, cr.client, podName, cr.namespace); err != nil {
 				primaryClient.Close()
 				return fmt.Errorf("deleting replica pod %d: %w", replicaOrdinal, err)
 			}
 			primaryClient.Close()
-			return fmt.Errorf("replica pod %d deleted, waiting for recreation with new image", replicaOrdinal)
+			return fmt.Errorf("replica pod %d deleted, waiting for recreation with new template", replicaOrdinal)
 		}
 
 		// Wait for the replica pod to be ready
@@ -1016,11 +1184,18 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 			primaryClient.Close()
 			return fmt.Errorf("replicating %d to primary %d: %w", replicaOrdinal, primaryOrdinal, err)
 		}
+		replicaClient.Close()
+
+		// Wait for the replica to finish syncing with its primary before moving on, so the
+		// primary regains real HA coverage before the upgrade advances to the next partition.
+		if err := cr.waitReplicaSynced(ctx, replicaAddr, password); err != nil {
+			primaryClient.Close()
+			return fmt.Errorf("waiting for replica %d to sync with primary %d: %w", replicaOrdinal, primaryOrdinal, err)
+		}
 
 		cr.logger.Info("Rolling upgrade: replica recycled and attached",
 			"replicaOrdinal", replicaOrdinal,
 			"primaryOrdinal", primaryOrdinal)
-		replicaClient.Close()
 	}
 	primaryClient.Close()
 	return nil
@@ -1094,12 +1269,21 @@ func (cr *ClusterReconciler) ensurePivotReplica(ctx context.Context, config *red
 
 		time.Sleep(2 * time.Second)
 
-		// Force replication to the pivot
+		// Force replication to the pivot.
+		// Close the client immediately after use (no defer inside loops) to avoid
+		// accumulating open Redis connections until the function returns.
 		extraReplicaClient := redis.NewClient(extraReplicaAddr, password)
-		defer extraReplicaClient.Close()
 
 		if err := extraReplicaClient.ClusterReplicate(ctx, extraPrimaryID); err != nil {
+			extraReplicaClient.Close()
 			return fmt.Errorf("replicating extra replica %d to pivot: %w", extraReplicaOrdinal, err)
+		}
+		extraReplicaClient.Close()
+
+		// Wait for the replica's link to the pivot to come up before proceeding, so the
+		// pivot keeps real HA coverage during the next reshard instead of an unsynced replica.
+		if err := cr.waitReplicaSynced(ctx, extraReplicaAddr, password); err != nil {
+			return fmt.Errorf("waiting for pivot replica %d to sync: %w", extraReplicaOrdinal, err)
 		}
 
 		cr.logger.Info("Rolling upgrade: pivot replica re-attached",

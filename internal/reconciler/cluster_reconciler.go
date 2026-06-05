@@ -65,6 +65,14 @@ func NewClusterReconciler(c client.Client, clusterName, namespace string, runtim
 	}
 }
 
+// Close releases resources held by the cluster reconciler, closing all cached
+// Redis clients used for health checks. It should be called on shutdown.
+func (cr *ClusterReconciler) Close() {
+	if cr.healthReconciler != nil {
+		cr.healthReconciler.Close()
+	}
+}
+
 // ReconcileCluster processes the cluster creation/configuration state machine.
 // It returns whether the outer reconciliation loop should run immediately again
 // or wait for the configured interval.

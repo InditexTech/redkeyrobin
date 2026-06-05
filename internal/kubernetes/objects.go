@@ -718,6 +718,37 @@ func GetPodImage(ctx context.Context, c client.Client, clusterName, namespace st
 	return pod.Spec.Containers[0].Image, nil
 }
 
+// PodTemplateHashLabel is the StatefulSet controller-managed label that records the
+// ControllerRevision a pod was created from. It changes whenever the pod template changes
+// (image, resources, labels, annotations including the config checksum, etc.).
+const PodTemplateHashLabel = "controller-revision-hash"
+
+// GetPodControllerRevisionHash returns the controller-revision-hash label of a specific
+// pod (by ordinal). This native StatefulSet label identifies the exact pod-template
+// revision the pod was created from, so it can be compared against the StatefulSet's
+// UpdateRevision to determine whether the pod is running the desired configuration.
+// It is deterministic and robust to label/annotation ordering, unlike an ad-hoc checksum.
+func GetPodControllerRevisionHash(ctx context.Context, c client.Client, clusterName, namespace string, ordinal int32) (string, error) {
+	podName := fmt.Sprintf("%s-%d", clusterName, ordinal)
+	pod := &corev1.Pod{}
+	if err := c.Get(ctx, types.NamespacedName{Name: podName, Namespace: namespace}, pod); err != nil {
+		return "", fmt.Errorf("getting pod %s for revision check: %w", podName, err)
+	}
+	return pod.Labels[PodTemplateHashLabel], nil
+}
+
+// GetStatefulSetUpdateRevision returns the StatefulSet's current UpdateRevision, i.e. the
+// ControllerRevision hash that corresponds to the desired pod template. Pods whose
+// controller-revision-hash label differs from this value still run an outdated template
+// and must be recycled.
+func GetStatefulSetUpdateRevision(ctx context.Context, c client.Client, clusterName, namespace string) (string, error) {
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
+		return "", fmt.Errorf("getting StatefulSet %s for update revision: %w", clusterName, err)
+	}
+	return sts.Status.UpdateRevision, nil
+}
+
 // DeletePod deletes a specific pod by name. It is used during fast upgrade to force pod recreation.
 func DeletePod(ctx context.Context, c client.Client, podName, namespace string) error {
 	pod := &corev1.Pod{
