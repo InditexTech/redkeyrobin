@@ -207,6 +207,101 @@ There is currently no dedicated e2e target in this repository. Treat `make test-
 - Changes to CRD types come from the operator repository, not from Robin directly; keep the local module replacement aligned with the sibling checkout.
 - REUSE compliance is required: every source file must have an `SPDX-FileCopyrightText` and `SPDX-License-Identifier` header.
 
+---
+
+## Upgrade Reconciler — Critical Design Knowledge
+
+The upgrade state machine in `internal/reconciler/upgrade_reconciler.go` is the most complex reconciler. This section documents hard-won invariants that must be preserved.
+
+### Strategy Selection
+
+```go
+fastUpgradeEligible = Ephemeral && ReplicasPerPrimary == 0 && PurgeKeysOnRebalance == true
+```
+
+All three conditions are required. **Clusters with replicas always use Rolling N+1**, even if ephemeral and purgeKeys is true.
+
+### Rolling N+1 State Machine
+
+```
+handleUpgradeStart → handleUpgradeScalingUp → handleUpgradeResharding ⟷ handleUpgradeRollingUpdate → handleUpgradeEnding → handleUpgradeScalingDown
+```
+
+Substatus values (from operator API):
+- `AddingExtraNode` → `DrainingNode` ⟷ `RollingUpdate` → `MovingLastSlots` → `RemovingExtraNode`
+### Update Strategy: OnDelete + Manual Pod Deletion
+
+The upgrade uses **OnDelete** StatefulSet update strategy (not RollingUpdate with partition). This ensures:
+- **No pods are recreated automatically** when the template is updated
+- Only specifically targeted pods (drained primaries + their replicas) are deleted and recreated
+- Replicas of primaries that still hold slots are **never disrupted**, preserving HA
+
+The reconciler controls pod recreation by:
+1. Calling `kubernetes.DeletePod()` on the drained primary
+2. Calling `kubernetes.DeletePod()` on each replica of that specific primary (via `recycleReplicasForPrimary`)
+3. At the end (`handleUpgradeScalingDown`), restoring `RollingUpdate` strategy with partition=0
+### StatefulSet Layout (with replicas)
+
+For `primaries=P`, `replicasPerPrimary=R`:
+- Pods `0 .. P-1` → primaries
+- Pods `P .. P+P*R-1` → replicas (pod `P+i*R+j` is replica `j` of primary `i`)
+- Pods `P+P*R` → extra primary (new image)
+- Pods `P+P*R+1 .. P+P*R+R` → extra replicas (new image)
+
+**Key formula**: `totalMembers = primaries + primaries * replicasPerPrimary`. This is used everywhere — scale calculations, CLUSTER MEET ranges, CLUSTER FORGET iteration. Getting this wrong (e.g., using just `primaries`) was the root cause of 5 bugs fixed in June 2025.
+
+### Pivot Pattern (destination logic)
+
+Slots do NOT always go to/from the extra node. Instead:
+- **First reshard** (partition = P-1): slots move TO the extra primary (ordinal = `P + P*R`)
+- **Subsequent reshards** (partition < P-1): slots move to `partition + 1` (the previously recycled primary that already has the new image)
+- **Ending phase**: slots move FROM the extra primary BACK to node 0
+
+This ensures each slot migrates exactly twice and each recycled node is immediately productive.
+
+### Common Bugs to Watch For (replica-aware clusters)
+
+1. **Extra replica must be explicitly attached**: After `CLUSTER MEET` for the extra pods, run `CLUSTER REPLICATE` on the extra replica to attach it to the extra primary. Without this, the extra replica joins as a master (cluster gets P+2 masters instead of P+1).
+
+2. **Ordinal calculations must use `P + P*R`**, not just `P`:
+   - `handleUpgradeResharding` first dest: `primaries + primaries*replicasPerPrimary`
+   - `handleUpgradeEnding` extra ordinal: `primaries + primaries*replicasPerPrimary`
+   - `handleUpgradeRollingUpdate` seed: `primaries + primaries*replicasPerPrimary` (the extra primary is the seed for meeting recycled nodes back)
+
+3. **`forgetReplicasOfNode`** must actually call `CLUSTER FORGET` via `forgetNodeFromAll` for each replica, not just log. **`forgetNodeFromAll` / `forgetFailedNodes` / `forgetExtraReplicas`** must iterate over ALL cluster members (primaries + replicas + extras), not just primaries. A FORGET issued only to primaries leaves stale entries in replica gossip tables.
+
+4. **Seed node for CLUSTER MEET after rolling update**: Must be the extra primary (ordinal `P+P*R`), NOT one of the original primaries. Original primaries get recycled and temporarily lose their cluster state; the extra primary is the only node guaranteed to remain stable throughout the entire upgrade.
+
+5. **`CLUSTER FIX` before every reshard**: Required to clear any stuck open/importing slots from a previous partial reshard that was interrupted.
+
+6. **Only recycle drained pairs**: As per the upgrade design (section 6.2 of the technical analysis), only primaries with 0 slots AND their replicas may be recycled. Replicas of primaries that still hold slots must never be restarted. This is enforced by `recycleReplicasForPrimary(ctx, config, primaryOrdinal, password)` which targets a single shard.
+
+7. **No `defer` in loops for Redis clients**: Functions that iterate over primaries/replicas (like `rebalanceReplicas`, `recycleReplicasForPrimary`) must use explicit `.Close()` calls, not `defer`, to avoid connection accumulation across loop iterations.
+
+### Testing the Upgrade
+
+```shell
+# E2E with replicas (the critical path):
+cd ../redkeyoperator && go test ./test/e2e/ -v -ginkgo.v \
+  -ginkgo.label-filter="upgrade" -ginkgo.focus="with replicas" -timeout 20m
+
+# E2E without replicas:
+cd ../redkeyoperator && go test ./test/e2e/ -v -ginkgo.v \
+  -ginkgo.label-filter="upgrade" -ginkgo.focus="without replicas" -timeout 15m
+```
+
+The E2E tests create a 3-primary cluster, write 50 keys, trigger an image upgrade, and verify all keys survive. The "with replicas" test uses `replicasPerPrimary: 1` (8 pods total during upgrade: 3P + 3R + 1 extra P + 1 extra R).
+
+### Image Build & Load for E2E
+
+```shell
+make docker-build                           # builds localhost:5005/redkey-robin:<VERSION>
+docker tag localhost:5005/redkey-robin:<VERSION> localhost:5005/redkey-robin:<VERSION>
+docker push localhost:5005/redkey-robin:<VERSION>
+```
+
+The Kind cluster uses a local registry at `localhost:5005`. Both robin and operator images must be pushed there before E2E tests.
+
 ### Dependency management
 
 - Use `go mod tidy` after adding or removing dependencies.

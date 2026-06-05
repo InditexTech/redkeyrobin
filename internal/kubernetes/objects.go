@@ -6,7 +6,10 @@ package kubernetes
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -67,12 +70,28 @@ func EnsureClusterObjects(
 	}
 
 	// 4. PodDisruptionBudget (optional)
+	if err := ReconcilePDB(ctx, c, config, owner); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ReconcilePDB creates, updates, or deletes the cluster's PodDisruptionBudget so it
+// matches the desired configuration. The PDB is only kept when it is enabled and the
+// cluster has more than one primary; otherwise any existing PDB is removed.
+func ReconcilePDB(ctx context.Context, c client.Client, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
+	clusterName := owner.Name
+	namespace := owner.Namespace
 	if config.Spec.Pdb.Enabled && config.Spec.Primaries > 1 {
 		if err := ensurePDB(ctx, c, clusterName, namespace, config, owner); err != nil {
 			return fmt.Errorf("ensuring PDB: %w", err)
 		}
+		return nil
 	}
-
+	if err := DeletePDB(ctx, c, clusterName, namespace); err != nil {
+		return fmt.Errorf("deleting PDB: %w", err)
+	}
 	return nil
 }
 
@@ -216,13 +235,29 @@ func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyCluster
 	}
 }
 
+// clusterDefaults contains the Redis configuration parameters that Redkey applies
+// unconditionally to every cluster, regardless of topology. These ensure safe
+// operation during slot migrations (upgrades, scaling) and partial-failure scenarios.
+//
+//   - cluster-enabled yes: required for Redis Cluster mode.
+//   - cluster-config-file nodes.conf: persistent cluster topology metadata.
+//   - cluster-node-timeout 5000: time (ms) before a node is considered unreachable.
+//   - cluster-require-full-coverage no: allows the cluster to continue serving requests
+//     even when some hash slots are temporarily uncovered (e.g., during reshard).
+//     Without this, any slot migration causes CLUSTERDOWN for the entire cluster.
+//   - cluster-allow-reads-when-down yes: permits read operations even when the cluster
+//     detects partial failure states. Reduces impact on read-intensive workloads during
+//     transient conditions (node restart, network partition recovery).
+var clusterDefaults = []string{
+	"cluster-enabled yes",
+	"cluster-config-file nodes.conf",
+	"cluster-node-timeout 5000",
+	"cluster-require-full-coverage no",
+	"cluster-allow-reads-when-down yes",
+}
+
 func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrimary int32) string {
-	// Start with cluster-required defaults
-	lines := []string{
-		"cluster-enabled yes",
-		"cluster-config-file nodes.conf",
-		"cluster-node-timeout 5000",
-	}
+	lines := append([]string{}, clusterDefaults...)
 
 	if ephemeral {
 		lines = append(lines, "appendonly no", "save \"\"")
@@ -230,11 +265,7 @@ func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrim
 		lines = append(lines, "appendonly yes")
 	}
 
-	if replicasPerPrimary > 0 {
-		lines = append(lines, "cluster-allow-reads-when-down yes")
-	}
-
-	// Add user config
+	// Add user config (may override defaults above)
 	if userConfig != "" {
 		lines = append(lines, userConfig)
 	}
@@ -459,7 +490,19 @@ func ensurePDB(ctx context.Context, c client.Client, clusterName, namespace stri
 	if errors.IsNotFound(err) {
 		return c.Create(ctx, desired)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Update the existing PDB if its spec drifted from the desired state.
+	if !reflect.DeepEqual(existing.Spec.MinAvailable, desired.Spec.MinAvailable) ||
+		!reflect.DeepEqual(existing.Spec.MaxUnavailable, desired.Spec.MaxUnavailable) {
+		existing.Spec.MinAvailable = desired.Spec.MinAvailable
+		existing.Spec.MaxUnavailable = desired.Spec.MaxUnavailable
+		return c.Update(ctx, existing)
+	}
+
+	return nil
 }
 
 func buildPDB(pdbName, clusterName, namespace string, config *redisv1.RedkeyClusterConfig) *policyv1.PodDisruptionBudget {
@@ -555,4 +598,182 @@ func DeletePVCs(ctx context.Context, c client.Client, clusterName, namespace str
 		}
 	}
 	return nil
+}
+
+// --- Upgrade Helpers ---
+
+// ConfigChecksumAnnotation is the annotation key used to store the configuration checksum on pod templates.
+// When the checksum changes, Kubernetes recreates the affected pods on the next partition update.
+const ConfigChecksumAnnotation = "redkey.inditex.dev/config-checksum"
+
+// UpdateStatefulSetTemplate updates the StatefulSet's pod template to reflect the new configuration:
+// image, resources, labels, annotations, and config checksum. It does NOT change the replica count.
+// The update strategy is set to OnDelete so that no pods are automatically recreated — the
+// reconciler controls which specific pods are recycled via manual deletion, ensuring only drained
+// primaries and their replicas are affected (preserving HA for active shards).
+func UpdateStatefulSetTemplate(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, configChecksum string) error {
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
+		return fmt.Errorf("getting StatefulSet %s for template update: %w", clusterName, err)
+	}
+
+	image := config.Spec.Image
+	if image == "" {
+		image = defaultRedisImage
+	}
+
+	// Update container image.
+	if len(sts.Spec.Template.Spec.Containers) > 0 {
+		sts.Spec.Template.Spec.Containers[0].Image = image
+	}
+
+	// Update resources if provided.
+	if config.Spec.Resources != nil && len(sts.Spec.Template.Spec.Containers) > 0 {
+		sts.Spec.Template.Spec.Containers[0].Resources = *config.Spec.Resources
+	}
+
+	// Update pod labels.
+	podLabels := clusterLabels(clusterName)
+	if config.Spec.Labels != nil {
+		for k, v := range *config.Spec.Labels {
+			podLabels[k] = v
+		}
+	}
+	sts.Spec.Template.Labels = podLabels
+
+	// Update pod annotations with config checksum.
+	podAnnotations := make(map[string]string)
+	if config.Spec.Annotations != nil {
+		for k, v := range *config.Spec.Annotations {
+			podAnnotations[k] = v
+		}
+	}
+	podAnnotations[ConfigChecksumAnnotation] = configChecksum
+	sts.Spec.Template.Annotations = podAnnotations
+
+	// Set update strategy to OnDelete so that no pods are automatically recreated.
+	// The reconciler will manually delete specific pods (drained primary + its replicas)
+	// to trigger recreation with the new template, preserving HA for active shards.
+	sts.Spec.UpdateStrategy = appsv1.StatefulSetUpdateStrategy{
+		Type: appsv1.OnDeleteStatefulSetStrategyType,
+	}
+
+	if err := c.Update(ctx, sts); err != nil {
+		return fmt.Errorf("updating StatefulSet template %s: %w", clusterName, err)
+	}
+	return nil
+}
+
+// SetStatefulSetPartition sets the partition value on the StatefulSet's RollingUpdate strategy.
+// Pods with ordinal >= partition will be recreated with the new template. Setting partition to 0
+// causes all pods to be updated.
+func SetStatefulSetPartition(ctx context.Context, c client.Client, clusterName, namespace string, partition int32) error {
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
+		return fmt.Errorf("getting StatefulSet %s for partition update: %w", clusterName, err)
+	}
+
+	sts.Spec.UpdateStrategy = appsv1.StatefulSetUpdateStrategy{
+		Type: appsv1.RollingUpdateStatefulSetStrategyType,
+		RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{
+			Partition: &partition,
+		},
+	}
+
+	if err := c.Update(ctx, sts); err != nil {
+		return fmt.Errorf("setting StatefulSet %s partition to %d: %w", clusterName, partition, err)
+	}
+	return nil
+}
+
+// IsPodOrdinalReady checks if a specific pod (by ordinal index) in the StatefulSet is Ready.
+func IsPodOrdinalReady(ctx context.Context, c client.Client, clusterName, namespace string, ordinal int32) (bool, error) {
+	podName := fmt.Sprintf("%s-%d", clusterName, ordinal)
+	pod := &corev1.Pod{}
+	if err := c.Get(ctx, types.NamespacedName{Name: podName, Namespace: namespace}, pod); err != nil {
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("getting pod %s: %w", podName, err)
+	}
+
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// GetPodImage returns the image of the first container of a specific pod (by ordinal).
+func GetPodImage(ctx context.Context, c client.Client, clusterName, namespace string, ordinal int32) (string, error) {
+	podName := fmt.Sprintf("%s-%d", clusterName, ordinal)
+	pod := &corev1.Pod{}
+	if err := c.Get(ctx, types.NamespacedName{Name: podName, Namespace: namespace}, pod); err != nil {
+		return "", fmt.Errorf("getting pod %s for image check: %w", podName, err)
+	}
+	if len(pod.Spec.Containers) == 0 {
+		return "", fmt.Errorf("pod %s has no containers", podName)
+	}
+	return pod.Spec.Containers[0].Image, nil
+}
+
+// DeletePod deletes a specific pod by name. It is used during fast upgrade to force pod recreation.
+func DeletePod(ctx context.Context, c client.Client, podName, namespace string) error {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: namespace},
+	}
+	if err := c.Delete(ctx, pod); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("deleting pod %s: %w", podName, err)
+	}
+	return nil
+}
+
+// DeleteAllPods deletes all pods belonging to the cluster. Used by fast upgrade.
+func DeleteAllPods(ctx context.Context, c client.Client, clusterName, namespace string) error {
+	podList := &corev1.PodList{}
+	if err := c.List(ctx, podList,
+		client.InNamespace(namespace),
+		client.MatchingLabels(clusterLabels(clusterName)),
+	); err != nil {
+		return fmt.Errorf("listing pods for cluster %s: %w", clusterName, err)
+	}
+	for i := range podList.Items {
+		if err := c.Delete(ctx, &podList.Items[i]); err != nil && !errors.IsNotFound(err) {
+			return fmt.Errorf("deleting pod %s: %w", podList.Items[i].Name, err)
+		}
+	}
+	return nil
+}
+
+// UpdateConfigMap updates the ConfigMap content for the cluster. This is called during
+// an upgrade when redis.conf content changes.
+func UpdateConfigMap(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, password string) error {
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, cm); err != nil {
+		return fmt.Errorf("getting ConfigMap %s: %w", clusterName, err)
+	}
+
+	conf := buildRedisConf(config.Spec.RedisConfig, password, config.Spec.Ephemeral, config.Spec.ReplicasPerPrimary)
+	if cm.Data == nil {
+		cm.Data = make(map[string]string)
+	}
+	cm.Data["redis.conf"] = conf
+
+	if err := c.Update(ctx, cm); err != nil {
+		return fmt.Errorf("updating ConfigMap %s: %w", clusterName, err)
+	}
+	return nil
+}
+
+// ComputeConfigChecksum computes a SHA-256 checksum of the configuration fields that
+// should trigger a pod restart when changed: image, version, and redis config content.
+func ComputeConfigChecksum(image, version, redisConfig string) string {
+	h := sha256.New()
+	h.Write([]byte(image))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(version))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(redisConfig))
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }

@@ -10,7 +10,7 @@ import (
 	"fmt"
 )
 
-const clusterCLIErrorOutputLimit = 500
+const clusterCLIErrorOutputLimit = 2000
 
 // ClusterFixResult holds the outcome of redis-cli --cluster fix.
 type ClusterFixResult struct {

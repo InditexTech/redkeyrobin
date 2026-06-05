@@ -96,9 +96,7 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 		// Scaling to zero: delete all cluster objects.
 		return cr.handleScalingToZero(ctx, targetConfig)
 	case redisv1.ClusterStatusUpgrading:
-		// Upgrading: not yet implemented, placeholder.
-		cr.logger.Info("Cluster is upgrading (operation not yet implemented)")
-		return reconcileAfterInterval, nil
+		return cr.handleUpgrading(ctx, targetConfig)
 	case redisv1.ClusterStatusMaintenance:
 		// In maintenance mode, Robin should not perform any operations on the cluster.
 		cr.logger.Info("Cluster in maintenance mode, skipping reconciliation")

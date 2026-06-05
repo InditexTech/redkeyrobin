@@ -724,3 +724,81 @@ func containsSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+// --- Default cluster configuration tests ---
+
+func TestBuildRedisConf_ClusterDefaultsApplied(t *testing.T) {
+	// Every default in clusterDefaults must appear in the generated config,
+	// regardless of topology parameters.
+	topologies := []struct {
+		name               string
+		ephemeral          bool
+		replicasPerPrimary int32
+	}{
+		{"ephemeral_no_replicas", true, 0},
+		{"ephemeral_with_replicas", true, 1},
+		{"persistent_no_replicas", false, 0},
+		{"persistent_with_replicas", false, 1},
+	}
+
+	for _, tc := range topologies {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := buildRedisConf("", "", tc.ephemeral, tc.replicasPerPrimary)
+			for _, param := range clusterDefaults {
+				if !contains(conf, param) {
+					t.Errorf("expected default param %q in redis.conf for topology %s", param, tc.name)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildRedisConf_RequireFullCoverageNo(t *testing.T) {
+	conf := buildRedisConf("", "", true, 0)
+	if !contains(conf, "cluster-require-full-coverage no") {
+		t.Error("expected 'cluster-require-full-coverage no' in redis.conf")
+	}
+}
+
+func TestBuildRedisConf_AllowReadsWhenDownAllTopologies(t *testing.T) {
+	// cluster-allow-reads-when-down must be present even without replicas
+	conf := buildRedisConf("", "", true, 0)
+	if !contains(conf, "cluster-allow-reads-when-down yes") {
+		t.Error("expected 'cluster-allow-reads-when-down yes' for ephemeral no-replicas")
+	}
+
+	conf = buildRedisConf("", "", false, 0)
+	if !contains(conf, "cluster-allow-reads-when-down yes") {
+		t.Error("expected 'cluster-allow-reads-when-down yes' for persistent no-replicas")
+	}
+}
+
+func TestBuildRedisConf_UserConfigOverridesDefaults(t *testing.T) {
+	// User sets cluster-require-full-coverage yes — it should appear AFTER the default 'no'
+	userConf := "cluster-require-full-coverage yes"
+	conf := buildRedisConf(userConf, "", true, 0)
+
+	// Both should be present (last-write-wins in Redis)
+	if !contains(conf, "cluster-require-full-coverage no") {
+		t.Error("expected default 'cluster-require-full-coverage no' to still be in config")
+	}
+	if !contains(conf, "cluster-require-full-coverage yes") {
+		t.Error("expected user override 'cluster-require-full-coverage yes' to be in config")
+	}
+
+	// User override must come after the default
+	defaultIdx := indexOf(conf, "cluster-require-full-coverage no")
+	userIdx := indexOf(conf, "cluster-require-full-coverage yes")
+	if userIdx <= defaultIdx {
+		t.Error("expected user config to appear after defaults (last-write-wins)")
+	}
+}
+
+func indexOf(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
