@@ -326,6 +326,84 @@ The Kind cluster uses a local registry at `localhost:5005`. Both robin and opera
 
 ---
 
+## Auth Hot-Reload via CONFIG SET — Design Knowledge
+
+Auth changes (requirepass/masterauth) are applied via hot-reload (CONFIG SET) instead of triggering a cluster operation. This section documents the design invariants.
+
+### Change Detection Split
+
+Auth changes are detected separately from other Redis config changes in `config_changes.go`:
+
+```go
+type ChangeReport struct {
+    HasRedisConfigChanges bool  // RedisConfig, Version (triggers rolling upgrade)
+    HasAuthChanges        bool  // Auth only (hot-reloaded, no cluster op)
+    // ...
+}
+```
+
+- `detectRedisConfigChanges()` now only checks `RedisConfig` and `Version` — NOT `Auth`
+- `HasAuthChanges` is set directly in `DetectChanges()` via `previous.Auth != target.Auth`
+- `RequiresClusterOperation()` does NOT include `HasAuthChanges` → auth-only never triggers an upgrade
+- `HasAnyChange()` DOES include `HasAuthChanges` so the reconciler knows there is work to do
+
+### Status Transition for Auth-Only
+
+In `DetermineStatusTransition()`:
+- Auth-only changes fall through to the final `return ""` (no transition needed)
+- Auth + Robin: `OnlyRobinChanges()` returns `true` (also no transition)
+- Auth + image/config: auth is applied via CONFIG SET first, then the normal transition proceeds
+
+### applyAuthToAllNodes — Execution Order
+
+In `cluster_reconciler.go`, `handleConfigChange()` applies auth BEFORE `DetermineStatusTransition()`:
+
+1. If `HasAuthChanges`: call `applyAuthToAllNodes()` which performs CONFIG SET on ALL running pods
+2. Then determine and execute status transition
+
+`applyAuthToAllNodes()`:
+1. Gets the new password from the target config's auth secret
+2. Gets the old password from the previous config's auth secret (for connecting to existing nodes)
+3. Iterates over all pod addresses via `GetPodAddresses`
+4. For each pod: `CONFIG SET requirepass <new>` + `CONFIG SET masterauth <new>`
+5. Updates the ConfigMap so restarted pods get the correct auth
+6. Updates the runtime config's auth secret reference
+
+### Why Auth Goes First
+
+Auth is applied before the cluster operation to ensure:
+- New pods created during scaling/upgrade use `buildRedisConf()` with the new auth
+- All nodes share the same masterauth during the upgrade (critical for replica reconnections)
+- `redis-cli -a <password> PING` false positive: `redis-cli -a <wrong> PING` returns PONG even with wrong password (AUTH error goes to stderr, PONG to stdout). The `CheckAuthRequired`/`CheckAuthDisabled` helpers in the e2e framework avoid this by NEVER using `-a` flag — they run `redis-cli PING` without any password.
+
+### Key Flow for Combined Changes
+
+```
+Auth + Image change:
+  1. applyAuthToAllNodes() → CONFIG SET on all nodes
+  2. DetermineStatusTransition() → returns "Upgrading"
+  3. handleUpgradeStart → rolling/fast upgrade proceeds with auth already set
+
+Auth-only change:
+  1. applyAuthToAllNodes() → CONFIG SET on all nodes
+  2. DetermineStatusTransition() → returns ""
+  3. Mark config as Applied, restore Ready status
+  4. No pods are recycled, no cluster operation occurs
+```
+
+### E2E Test Pattern for Auth Verification
+
+```go
+// Correct — no false positive:
+Expect(framework.CheckAuthRequired(namespace, pod)).To(BeTrue())
+Expect(framework.CheckAuthDisabled(namespace, pod)).To(BeTrue())
+
+// Potentially false positive — avoid for auth verification:
+// framework.PingRedis(namespace, pod, wrongPassword) // returns PONG even on wrong pass
+```
+
+---
+
 ## Commit and PR Management
 
 ### Commit format

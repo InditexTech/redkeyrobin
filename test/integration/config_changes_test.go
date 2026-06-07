@@ -396,5 +396,184 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusReady))
 			}, timeout, interval).Should(Succeed())
 		})
+
+		It("auth-only change is marked Applied without cluster operation", func() {
+			createAppliedConfig("changes-auth-1", 1, 3, 0)
+			createConfigMap(clusterName)
+
+			cfg2 := &redisv1.RedkeyClusterConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "changes-auth-2",
+					Namespace: testNamespace,
+					Labels:    map[string]string{clusterLabel: clusterName},
+				},
+				Spec: redisv1.RedkeyClusterConfigSpec{
+					Sequence:           2,
+					Primaries:          3,
+					ReplicasPerPrimary: 0,
+					Ephemeral:          true,
+					Image:              "redis:7",
+					Version:            "7.0",
+					RedisConfig:        "maxmemory 100mb",
+					Auth:               redisv1.RedisAuth{SecretName: "my-new-secret"},
+					RobinConfig: &redisv1.RobinConfig{
+						Reconciler: &redisv1.RobinConfigReconciler{
+							IntervalSeconds: intPtrHelper(30),
+						},
+						Metrics: &redisv1.RobinConfigMetrics{
+							CollectionIntervalSeconds: intPtrHelper(60),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cfg2)).To(Succeed())
+			cfg2.Status = redisv1.RedkeyClusterConfigStatus{
+				ConfigPhase: redisv1.ConfigPhasePending,
+				Nodes:       map[string]*redisv1.RedisNode{},
+			}
+			Expect(k8sClient.Status().Update(ctx, cfg2)).To(Succeed())
+
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
+			loopCancel, errCh := startReconcilerLoop(rec)
+			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
+
+			// Auth-only should be marked Applied without triggering a cluster operation.
+			Eventually(func(g Gomega) {
+				var fetched redisv1.RedkeyClusterConfig
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &fetched)).To(Succeed())
+				g.Expect(fetched.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseApplied))
+				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusReady))
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("auth removal-only is marked Applied without cluster operation", func() {
+			createConfigMap(clusterName)
+
+			// Create previous config WITH auth.
+			prev := &redisv1.RedkeyClusterConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "changes-auth-remove-1",
+					Namespace: testNamespace,
+					Labels:    map[string]string{clusterLabel: clusterName},
+				},
+				Spec: redisv1.RedkeyClusterConfigSpec{
+					Sequence:           1,
+					Primaries:          3,
+					ReplicasPerPrimary: 0,
+					Ephemeral:          true,
+					Image:              "redis:7",
+					Version:            "7.0",
+					RedisConfig:        "maxmemory 100mb",
+					Auth:               redisv1.RedisAuth{SecretName: "existing-secret"},
+					RobinConfig: &redisv1.RobinConfig{
+						Reconciler: &redisv1.RobinConfigReconciler{
+							IntervalSeconds: intPtrHelper(30),
+						},
+						Metrics: &redisv1.RobinConfigMetrics{
+							CollectionIntervalSeconds: intPtrHelper(60),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, prev)).To(Succeed())
+			prev.Status = redisv1.RedkeyClusterConfigStatus{
+				ConfigPhase: redisv1.ConfigPhaseApplied,
+				Status:      redisv1.ClusterStatusReady,
+				Nodes:       map[string]*redisv1.RedisNode{},
+			}
+			Expect(k8sClient.Status().Update(ctx, prev)).To(Succeed())
+
+			cfg2 := &redisv1.RedkeyClusterConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "changes-auth-remove-2",
+					Namespace: testNamespace,
+					Labels:    map[string]string{clusterLabel: clusterName},
+				},
+				Spec: redisv1.RedkeyClusterConfigSpec{
+					Sequence:           2,
+					Primaries:          3,
+					ReplicasPerPrimary: 0,
+					Ephemeral:          true,
+					Image:              "redis:7",
+					Version:            "7.0",
+					RedisConfig:        "maxmemory 100mb",
+					// Auth not set — removing auth
+					RobinConfig: &redisv1.RobinConfig{
+						Reconciler: &redisv1.RobinConfigReconciler{
+							IntervalSeconds: intPtrHelper(30),
+						},
+						Metrics: &redisv1.RobinConfigMetrics{
+							CollectionIntervalSeconds: intPtrHelper(60),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cfg2)).To(Succeed())
+			cfg2.Status = redisv1.RedkeyClusterConfigStatus{
+				ConfigPhase: redisv1.ConfigPhasePending,
+				Nodes:       map[string]*redisv1.RedisNode{},
+			}
+			Expect(k8sClient.Status().Update(ctx, cfg2)).To(Succeed())
+
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
+			loopCancel, errCh := startReconcilerLoop(rec)
+			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
+
+			Eventually(func(g Gomega) {
+				var fetched redisv1.RedkeyClusterConfig
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &fetched)).To(Succeed())
+				g.Expect(fetched.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseApplied))
+				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusReady))
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("auth + image change still transitions to Upgrading", func() {
+			createAppliedConfig("changes-authimg-1", 1, 3, 0)
+			createConfigMap(clusterName)
+
+			cfg2 := &redisv1.RedkeyClusterConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "changes-authimg-2",
+					Namespace: testNamespace,
+					Labels:    map[string]string{clusterLabel: clusterName},
+				},
+				Spec: redisv1.RedkeyClusterConfigSpec{
+					Sequence:           2,
+					Primaries:          3,
+					ReplicasPerPrimary: 0,
+					Ephemeral:          true,
+					Image:              "redis:9-bookworm",
+					Version:            "7.0",
+					RedisConfig:        "maxmemory 100mb",
+					Auth:               redisv1.RedisAuth{SecretName: "new-secret"},
+					RobinConfig: &redisv1.RobinConfig{
+						Reconciler: &redisv1.RobinConfigReconciler{
+							IntervalSeconds: intPtrHelper(30),
+						},
+						Metrics: &redisv1.RobinConfigMetrics{
+							CollectionIntervalSeconds: intPtrHelper(60),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cfg2)).To(Succeed())
+			cfg2.Status = redisv1.RedkeyClusterConfigStatus{
+				ConfigPhase: redisv1.ConfigPhasePending,
+				Nodes:       map[string]*redisv1.RedisNode{},
+			}
+			Expect(k8sClient.Status().Update(ctx, cfg2)).To(Succeed())
+
+			rec := newIntegrationReconciler(clusterName, newTestRuntimeConfig())
+			loopCancel, errCh := startReconcilerLoop(rec)
+			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
+
+			// Auth + image change should still trigger a cluster operation.
+			Eventually(func(g Gomega) {
+				var fetched redisv1.RedkeyClusterConfig
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &fetched)).To(Succeed())
+				g.Expect(fetched.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
+				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusUpgrading))
+			}, timeout, interval).Should(Succeed())
+		})
 	})
 })

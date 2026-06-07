@@ -39,8 +39,11 @@ type ChangeReport struct {
 	HasKubernetesChanges bool
 
 	// HasRedisConfigChanges is true when Redis configuration fields differ
-	// (RedisConfig, Version, Auth).
+	// (RedisConfig, Version).
 	HasRedisConfigChanges bool
+
+	// HasAuthChanges is true when the Auth configuration differs.
+	HasAuthChanges bool
 
 	// HasPurgeKeysOnRebalanceChange is true when PurgeKeysOnRebalance differs.
 	HasPurgeKeysOnRebalanceChange bool
@@ -75,6 +78,7 @@ func (r ChangeReport) HasAnyChange() bool {
 		r.HasTopologyChanges ||
 		r.HasKubernetesChanges ||
 		r.HasRedisConfigChanges ||
+		r.HasAuthChanges ||
 		r.HasPurgeKeysOnRebalanceChange
 }
 
@@ -98,8 +102,12 @@ func DetectChanges(previous, target redisv1.RedkeyClusterConfigSpec) ChangeRepor
 	// Kubernetes object changes.
 	report.HasKubernetesChanges = detectKubernetesChanges(previous, target)
 
-	// Redis config changes.
+	// Redis config changes (RedisConfig, Version — NOT Auth).
 	report.HasRedisConfigChanges = detectRedisConfigChanges(previous, target)
+
+	// Auth change (separate from HasRedisConfigChanges so it can be applied
+	// via CONFIG SET hot-reload without triggering a cluster operation).
+	report.HasAuthChanges = previous.Auth != target.Auth
 
 	// PurgeKeysOnRebalance change.
 	report.HasPurgeKeysOnRebalanceChange = !boolPtrEqual(previous.PurgeKeysOnRebalance, target.PurgeKeysOnRebalance)
@@ -165,15 +173,13 @@ func detectKubernetesChanges(previous, target redisv1.RedkeyClusterConfigSpec) b
 	return false
 }
 
-// detectRedisConfigChanges returns true if any Redis configuration field differs.
+// detectRedisConfigChanges returns true if any Redis configuration field differs
+// (RedisConfig, Version). Auth changes are detected separately via HasAuthChanges.
 func detectRedisConfigChanges(previous, target redisv1.RedkeyClusterConfigSpec) bool {
 	if previous.RedisConfig != target.RedisConfig {
 		return true
 	}
 	if previous.Version != target.Version {
-		return true
-	}
-	if previous.Auth != target.Auth {
 		return true
 	}
 	return false

@@ -162,7 +162,7 @@ func (hr *HealthReconciler) remediateMembership(ctx context.Context, report *hea
 	// Use the first reachable node as the command executor
 	seedAddr := nodes[0].Addr
 	seedClient := hr.clientFactory(seedAddr, password)
-	defer seedClient.Close()
+	defer func() { _ = seedClient.Close() }()
 
 	// Get current cluster view
 	clusterNodes, err := seedClient.GetClusterNodes(ctx)
@@ -186,7 +186,7 @@ func (hr *HealthReconciler) remediateMembership(ctx context.Context, report *hea
 					hr.logger.Warn("Failed to forget node from peer",
 						"peer", node.Addr, "targetID", cn.ID, "error", forgetErr)
 				}
-				client.Close()
+				_ = client.Close()
 			}
 		}
 	}
@@ -215,7 +215,7 @@ func (hr *HealthReconciler) remediateMembership(ctx context.Context, report *hea
 				if meetErr := peerClient.ClusterMeet(ctx, ip, redis.DefaultPort); meetErr != nil {
 					hr.logger.Warn("Failed to meet from peer", "peer", peer.Addr, "target", ip, "error", meetErr)
 				}
-				peerClient.Close()
+				_ = peerClient.Close()
 			}
 		}
 	}
@@ -322,7 +322,7 @@ func (hr *HealthReconciler) remediateSlotCoverage(ctx context.Context, report *h
 
 		client := hr.clientFactory(primaries[i].addr, password)
 		err := client.ClusterAddSlots(ctx, slotsToAssign...)
-		client.Close()
+		_ = client.Close()
 		if err != nil {
 			if strings.Contains(err.Error(), "already busy") {
 				// Config disagreement: the seed thinks slots are unassigned, but
@@ -333,7 +333,6 @@ func (hr *HealthReconciler) remediateSlotCoverage(ctx context.Context, report *h
 					return fmt.Errorf("resolving slot disagreement: %w", resolveErr)
 				}
 				// All missing slots handled via SETSLOT, stop ADDSLOTS loop.
-				slotIdx = len(missingSlots)
 				break
 			}
 			return fmt.Errorf("assigning slots to %s: %w", primaries[i].addr, err)
@@ -381,7 +380,7 @@ func (hr *HealthReconciler) resolveSlotDisagreement(ctx context.Context, nodes [
 		queryCtx, cancel := context.WithTimeout(ctx, perNodeTimeout)
 		client := hr.clientFactory(node.Addr, password)
 		clusterNodes, err := client.GetClusterNodes(queryCtx)
-		client.Close()
+		_ = client.Close()
 		cancel()
 		if err != nil {
 			continue
@@ -432,7 +431,7 @@ func (hr *HealthReconciler) resolveSlotDisagreement(ctx context.Context, nodes [
 				setSlotErrors++
 			}
 		}
-		client.Close()
+		_ = client.Close()
 		cancel()
 	}
 
@@ -448,10 +447,10 @@ func (hr *HealthReconciler) resolveSlotDisagreement(ctx context.Context, nodes [
 		// Pick the first node to own these truly missing slots.
 		client := hr.clientFactory(nodes[0].Addr, password)
 		if err := client.ClusterAddSlots(ctx, trulyMissing...); err != nil {
-			client.Close()
+			_ = client.Close()
 			return fmt.Errorf("assigning truly missing slots to %s: %w", nodes[0].Addr, err)
 		}
-		client.Close()
+		_ = client.Close()
 	}
 
 	if setSlotErrors > 0 {
@@ -562,10 +561,10 @@ func (hr *HealthReconciler) remediateReplicaSpread(ctx context.Context, report *
 
 		client := hr.clientFactory(replica.addr, password)
 		if err := client.ClusterReplicate(ctx, targetPrimaryID); err != nil {
-			client.Close()
+			_ = client.Close()
 			return fmt.Errorf("replicating %s to primary %s: %w", replica.addr, targetPrimaryID, err)
 		}
-		client.Close()
+		_ = client.Close()
 	}
 
 	if reassignCount > 0 {
@@ -678,10 +677,10 @@ func (hr *HealthReconciler) remediateExcessPrimaries(
 
 		client := hr.clientFactory(ep.addr, password)
 		if err := client.ClusterReplicate(ctx, targetPrimaryID); err != nil {
-			client.Close()
+			_ = client.Close()
 			return fmt.Errorf("demoting %s to replica of %s: %w", ep.addr, targetPrimaryID, err)
 		}
-		client.Close()
+		_ = client.Close()
 		demoted++
 	}
 
@@ -710,7 +709,7 @@ func (hr *HealthReconciler) remediateClusterCheck(ctx context.Context, nodes []h
 		client := hr.clientFactory(node.Addr, password)
 
 		result, err := client.ClusterFix(fixCtx)
-		client.Close()
+		_ = client.Close()
 		cancel()
 
 		if err == nil {
@@ -761,7 +760,7 @@ func (hr *HealthReconciler) resolveConfigDisagreement(ctx context.Context, nodes
 		queryCtx, cancel := context.WithTimeout(ctx, perNodeTimeout)
 		client := hr.clientFactory(node.Addr, password)
 		clusterNodes, err := client.GetClusterNodes(queryCtx)
-		client.Close()
+		_ = client.Close()
 		cancel()
 		if err != nil {
 			hr.logger.Warn("Failed to query CLUSTER NODES for disagreement resolution",
@@ -776,11 +775,6 @@ func (hr *HealthReconciler) resolveConfigDisagreement(ctx context.Context, nodes
 	}
 
 	// Step 2: Build slot ownership map from each node's perspective.
-	// slotOwners[slot] = map[nodeID]count (how many views agree on that owner)
-	type slotOwnership struct {
-		ownerID string
-		epoch   int
-	}
 	// For each slot, collect the owner claimed by each view.
 	// The "correct" owner is determined by highest epoch.
 	const totalSlots = 16384
@@ -865,7 +859,7 @@ func (hr *HealthReconciler) resolveConfigDisagreement(ctx context.Context, nodes
 				// Don't fail on individual slot errors — continue best effort.
 			}
 		}
-		client.Close()
+		_ = client.Close()
 		cancel()
 	}
 
@@ -895,7 +889,7 @@ func (hr *HealthReconciler) remediateBalance(ctx context.Context, nodes []health
 
 	seedAddr := nodes[0].Addr
 	client := hr.clientFactory(seedAddr, password)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	result, err := client.ClusterRebalance(rebalanceCtx)
 	if err != nil {

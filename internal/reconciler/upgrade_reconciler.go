@@ -412,7 +412,7 @@ func (cr *ClusterReconciler) handleUpgradeResharding(ctx context.Context, config
 			cr.logger.Warn("Rolling upgrade: failed to forget dead nodes before reshard, continuing",
 				"partition", partition, "error", err)
 		}
-		seedClient.Close()
+		_ = seedClient.Close()
 	}
 
 	// Before each reshard, ensure the pivot has its replica for HA.
@@ -436,9 +436,9 @@ func (cr *ClusterReconciler) handleUpgradeResharding(ctx context.Context, config
 	}
 
 	sourceClient := redis.NewClient(sourceAddr, password)
-	defer sourceClient.Close()
+	defer func() { _ = sourceClient.Close() }()
 	destClient := redis.NewClient(destAddr, password)
-	defer destClient.Close()
+	defer func() { _ = destClient.Close() }()
 
 	sourceID, err := sourceClient.ClusterMyID(ctx)
 	if err != nil {
@@ -607,7 +607,7 @@ func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, con
 		return reconcileAfterInterval, fmt.Errorf("getting recycled pod address: %w", err)
 	}
 	recycledNode := redis.NewNode(fmt.Sprintf("%s-%d", cr.clusterName, partition), recycledAddr, password)
-	defer recycledNode.Close()
+	defer func() { _ = recycledNode.Close() }()
 
 	clusterCfg := cr.runtimeConfig.ClusterConfig()
 	if err := recycledNode.Init(ctx, clusterCfg.ConnectionMaxRetries, time.Duration(clusterCfg.ConnectionBackOffSeconds)*time.Second); err != nil {
@@ -623,7 +623,7 @@ func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, con
 		return reconcileAfterInterval, fmt.Errorf("getting seed pod address: %w", err)
 	}
 	seedClient := redis.NewClient(seedAddr, password)
-	defer seedClient.Close()
+	defer func() { _ = seedClient.Close() }()
 
 	// Meet the recycled node
 	if err := seedClient.ClusterMeet(ctx, recycledNode.IP, redis.DefaultPort); err != nil {
@@ -710,7 +710,7 @@ func (cr *ClusterReconciler) handleUpgradeEnding(ctx context.Context, config *re
 		return reconcileAfterInterval, fmt.Errorf("getting extra pod address: %w", err)
 	}
 	extraClient := redis.NewClient(extraAddr, password)
-	defer extraClient.Close()
+	defer func() { _ = extraClient.Close() }()
 
 	extraID, err := extraClient.ClusterMyID(ctx)
 	if err != nil {
@@ -751,7 +751,7 @@ func (cr *ClusterReconciler) handleUpgradeEnding(ctx context.Context, config *re
 	}
 	destClient := redis.NewClient(destAddr, password)
 	destID, err := destClient.ClusterMyID(ctx)
-	destClient.Close()
+	_ = destClient.Close()
 	if err != nil {
 		return reconcileAfterInterval, fmt.Errorf("getting node 0 ID: %w", err)
 	}
@@ -845,7 +845,7 @@ func (cr *ClusterReconciler) handleUpgradeScalingDown(ctx context.Context, confi
 		return reconcileAfterInterval, fmt.Errorf("getting node 0 for cluster check: %w", err)
 	}
 	node0Client := redis.NewClient(node0Addr, password)
-	defer node0Client.Close()
+	defer func() { _ = node0Client.Close() }()
 
 	checkResult, err := node0Client.ClusterCheck(ctx)
 	if err != nil {
@@ -948,17 +948,17 @@ func (cr *ClusterReconciler) forgetNodeFromAll(ctx context.Context, nodeID, pass
 		c := redis.NewClient(addr, password)
 		myID, _ := c.ClusterMyID(ctx)
 		if myID == nodeID {
-			c.Close()
+			_ = c.Close()
 			continue
 		}
 		if err := c.ClusterForget(ctx, nodeID); err != nil {
 			// Ignore "Unknown node" errors — node may already be forgotten by this member.
 			if !strings.Contains(err.Error(), "Unknown node") {
-				c.Close()
+				_ = c.Close()
 				return fmt.Errorf("node %s forgetting %s: %w", name, nodeID, err)
 			}
 		}
-		c.Close()
+		_ = c.Close()
 	}
 	return nil
 }
@@ -971,7 +971,7 @@ func (cr *ClusterReconciler) forgetNodeFromAll(ctx context.Context, nodeID, pass
 func (cr *ClusterReconciler) waitReplicaSynced(ctx context.Context, replicaAddr, password string) error {
 	const maxAttempts = 10
 	c := redis.NewClient(replicaAddr, password)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	for attempt := range maxAttempts {
 		up, err := c.ReplicaLinkUp(ctx)
 		if err == nil && up {
@@ -991,7 +991,7 @@ func (cr *ClusterReconciler) waitReplicaSynced(ctx context.Context, replicaAddr,
 // on ephemeral clusters (no on-disk RDB) nor on nodes that still own slots.
 func (cr *ClusterReconciler) flushAndPersistNode(ctx context.Context, addr, password string) error {
 	c := redis.NewClient(addr, password)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// Determine the node's current role. After all of its slots have been migrated away,
 	// an emptied primary can be automatically demoted by Redis into a read-only replica of
@@ -1049,7 +1049,7 @@ func (cr *ClusterReconciler) forgetReplicasOfNode(ctx context.Context, primaryID
 		return err
 	}
 	c := redis.NewClient(node0Addr, password)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	nodes, err := c.GetClusterNodes(ctx)
 	if err != nil {
@@ -1087,7 +1087,7 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 	primaryClient := redis.NewClient(primaryAddr, password)
 	primaryID, err := primaryClient.ClusterMyID(ctx)
 	if err != nil {
-		primaryClient.Close()
+		_ = primaryClient.Close()
 		return fmt.Errorf("getting primary %d ID: %w", primaryOrdinal, err)
 	}
 
@@ -1096,11 +1096,11 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 	// must be recycled.
 	desiredRevision, revErr := kubernetes.GetStatefulSetUpdateRevision(ctx, cr.client, cr.clusterName, cr.namespace)
 	if revErr != nil {
-		primaryClient.Close()
+		_ = primaryClient.Close()
 		return fmt.Errorf("getting StatefulSet update revision: %w", revErr)
 	}
 	if desiredRevision == "" {
-		primaryClient.Close()
+		_ = primaryClient.Close()
 		return fmt.Errorf("StatefulSet update revision not yet available")
 	}
 
@@ -1114,7 +1114,7 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 		actualRevision, imgErr := kubernetes.GetPodControllerRevisionHash(ctx, cr.client, cr.clusterName, cr.namespace, replicaOrdinal)
 		if imgErr != nil {
 			// Replica is most likely mid-recreation (not yet present). Signal a retry.
-			primaryClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("replica pod %d not available yet: %w", replicaOrdinal, imgErr)
 		}
 		if actualRevision != desiredRevision {
@@ -1130,11 +1130,11 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 			if !config.Spec.Ephemeral {
 				replicaAddr, addrErr := cr.getPodAddr(ctx, replicaOrdinal)
 				if addrErr != nil {
-					primaryClient.Close()
+					_ = primaryClient.Close()
 					return fmt.Errorf("getting replica %d address for flush: %w", replicaOrdinal, addrErr)
 				}
 				if err := cr.flushAndPersistNode(ctx, replicaAddr, password); err != nil {
-					primaryClient.Close()
+					_ = primaryClient.Close()
 					return fmt.Errorf("flushing replica %d before recycle: %w", replicaOrdinal, err)
 				}
 			}
@@ -1142,36 +1142,36 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 			// Delete the replica pod — it will be recreated with the new template
 			// (OnDelete strategy: new pods always use the current template)
 			if err := kubernetes.DeletePod(ctx, cr.client, podName, cr.namespace); err != nil {
-				primaryClient.Close()
+				_ = primaryClient.Close()
 				return fmt.Errorf("deleting replica pod %d: %w", replicaOrdinal, err)
 			}
-			primaryClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("replica pod %d deleted, waiting for recreation with new template", replicaOrdinal)
 		}
 
 		// Wait for the replica pod to be ready
 		ready, err := kubernetes.IsPodOrdinalReady(ctx, cr.client, cr.clusterName, cr.namespace, replicaOrdinal)
 		if err != nil {
-			primaryClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("checking replica pod %d readiness: %w", replicaOrdinal, err)
 		}
 		if !ready {
-			primaryClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("replica pod %d not ready yet", replicaOrdinal)
 		}
 
 		// Meet and replicate
 		replicaAddr, err := cr.getPodAddr(ctx, replicaOrdinal)
 		if err != nil {
-			primaryClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("getting replica %d address: %w", replicaOrdinal, err)
 		}
 		replicaClient := redis.NewClient(replicaAddr, password)
 
 		// Meet the replica into the cluster
 		if err := primaryClient.ClusterMeet(ctx, strings.Split(replicaAddr, ":")[0], redis.DefaultPort); err != nil {
-			replicaClient.Close()
-			primaryClient.Close()
+			_ = replicaClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("meeting replica %d: %w", replicaOrdinal, err)
 		}
 
@@ -1180,16 +1180,16 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 
 		// Set up replication
 		if err := replicaClient.ClusterReplicate(ctx, primaryID); err != nil {
-			replicaClient.Close()
-			primaryClient.Close()
+			_ = replicaClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("replicating %d to primary %d: %w", replicaOrdinal, primaryOrdinal, err)
 		}
-		replicaClient.Close()
+		_ = replicaClient.Close()
 
 		// Wait for the replica to finish syncing with its primary before moving on, so the
 		// primary regains real HA coverage before the upgrade advances to the next partition.
 		if err := cr.waitReplicaSynced(ctx, replicaAddr, password); err != nil {
-			primaryClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("waiting for replica %d to sync with primary %d: %w", replicaOrdinal, primaryOrdinal, err)
 		}
 
@@ -1197,7 +1197,7 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 			"replicaOrdinal", replicaOrdinal,
 			"primaryOrdinal", primaryOrdinal)
 	}
-	primaryClient.Close()
+	_ = primaryClient.Close()
 	return nil
 }
 
@@ -1215,7 +1215,7 @@ func (cr *ClusterReconciler) ensurePivotReplica(ctx context.Context, config *red
 		return fmt.Errorf("getting extra primary address: %w", err)
 	}
 	extraPrimaryClient := redis.NewClient(extraPrimaryAddr, password)
-	defer extraPrimaryClient.Close()
+	defer func() { _ = extraPrimaryClient.Close() }()
 
 	extraPrimaryID, err := extraPrimaryClient.ClusterMyID(ctx)
 	if err != nil {
@@ -1275,10 +1275,10 @@ func (cr *ClusterReconciler) ensurePivotReplica(ctx context.Context, config *red
 		extraReplicaClient := redis.NewClient(extraReplicaAddr, password)
 
 		if err := extraReplicaClient.ClusterReplicate(ctx, extraPrimaryID); err != nil {
-			extraReplicaClient.Close()
+			_ = extraReplicaClient.Close()
 			return fmt.Errorf("replicating extra replica %d to pivot: %w", extraReplicaOrdinal, err)
 		}
-		extraReplicaClient.Close()
+		_ = extraReplicaClient.Close()
 
 		// Wait for the replica's link to the pivot to come up before proceeding, so the
 		// pivot keeps real HA coverage during the next reshard instead of an unsynced replica.
@@ -1310,7 +1310,7 @@ func (cr *ClusterReconciler) rebalanceReplicas(ctx context.Context, config *redi
 
 		primaryID, err := primaryClient.ClusterMyID(ctx)
 		if err != nil {
-			primaryClient.Close()
+			_ = primaryClient.Close()
 			return fmt.Errorf("getting primary %d ID for rebalance: %w", p, err)
 		}
 
@@ -1318,32 +1318,32 @@ func (cr *ClusterReconciler) rebalanceReplicas(ctx context.Context, config *redi
 			replicaOrdinal := int32(primaries + p*replicasPerPrimary + r)
 			replicaAddr, err := cr.getPodAddr(ctx, replicaOrdinal)
 			if err != nil {
-				primaryClient.Close()
+				_ = primaryClient.Close()
 				return fmt.Errorf("getting replica %d address for rebalance: %w", replicaOrdinal, err)
 			}
 			replicaClient := redis.NewClient(replicaAddr, password)
 
 			// Meet (idempotent) and replicate
 			if err := primaryClient.ClusterMeet(ctx, strings.Split(replicaAddr, ":")[0], redis.DefaultPort); err != nil {
-				replicaClient.Close()
-				primaryClient.Close()
+				_ = replicaClient.Close()
+				_ = primaryClient.Close()
 				return fmt.Errorf("meeting replica %d during rebalance: %w", replicaOrdinal, err)
 			}
 
 			time.Sleep(2 * time.Second)
 
 			if err := replicaClient.ClusterReplicate(ctx, primaryID); err != nil {
-				replicaClient.Close()
-				primaryClient.Close()
+				_ = replicaClient.Close()
+				_ = primaryClient.Close()
 				return fmt.Errorf("replicating %d to primary %d during rebalance: %w", replicaOrdinal, p, err)
 			}
 
 			cr.logger.Info("Rolling upgrade: replica rebalanced",
 				"replicaOrdinal", replicaOrdinal,
 				"primaryOrdinal", p)
-			replicaClient.Close()
+			_ = replicaClient.Close()
 		}
-		primaryClient.Close()
+		_ = primaryClient.Close()
 	}
 	return nil
 }
@@ -1359,7 +1359,7 @@ func (cr *ClusterReconciler) forgetExtraReplicas(ctx context.Context, config *re
 		return err
 	}
 	extraClient := redis.NewClient(extraAddr, password)
-	defer extraClient.Close()
+	defer func() { _ = extraClient.Close() }()
 
 	extraID, err := extraClient.ClusterMyID(ctx)
 	if err != nil {
@@ -1372,7 +1372,7 @@ func (cr *ClusterReconciler) forgetExtraReplicas(ctx context.Context, config *re
 		return err
 	}
 	node0Client := redis.NewClient(node0Addr, password)
-	defer node0Client.Close()
+	defer func() { _ = node0Client.Close() }()
 
 	clusterNodes, err := node0Client.GetClusterNodes(ctx)
 	if err != nil {
@@ -1439,38 +1439,4 @@ func isConfirmedFail(flags string) bool {
 		}
 	}
 	return false
-}
-
-// stabilizeOpenSlots detects migrating/importing slots on the source and destination
-// nodes and clears them with CLUSTER SETSLOT <slot> STABLE. This recovers from a
-// previous partial reshard attempt without running a full cluster fix.
-func (cr *ClusterReconciler) stabilizeOpenSlots(ctx context.Context, sourceClient, destClient *redis.Client) error {
-	stabilized := 0
-	for _, client := range []*redis.Client{sourceClient, destClient} {
-		nodes, err := client.GetClusterNodes(ctx)
-		if err != nil {
-			return fmt.Errorf("getting cluster nodes for stabilization: %w", err)
-		}
-		myID, err := client.ClusterMyID(ctx)
-		if err != nil {
-			return fmt.Errorf("getting node ID for stabilization: %w", err)
-		}
-		for _, node := range nodes {
-			if node.ID != myID {
-				continue
-			}
-			openSlots := redis.ParseOpenSlots(node.Slots)
-			for _, slot := range openSlots {
-				if err := client.ClusterSetSlotStable(ctx, slot); err != nil {
-					cr.logger.Warn("Failed to stabilize slot", "slot", slot, "error", err)
-				} else {
-					stabilized++
-				}
-			}
-		}
-	}
-	if stabilized > 0 {
-		cr.logger.Info("Stabilized open slots before reshard", "count", stabilized)
-	}
-	return nil
 }

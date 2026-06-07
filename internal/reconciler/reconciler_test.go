@@ -510,7 +510,7 @@ func TestCopyPreviousStatus_DeepCopiesReferenceFieldsPreservesTargetConfigPhaseA
 
 	fetchedTarget.Status.Nodes["node-0"].Role = "replica"
 	fetchedTarget.Status.Conditions[0].Reason = "Changed"
-	fetchedTarget.Status.LastUpdatedAt.Time = fetchedTarget.Status.LastUpdatedAt.Time.Add(time.Second)
+	fetchedTarget.Status.LastUpdatedAt.Time = fetchedTarget.Status.LastUpdatedAt.Add(time.Second)
 
 	if fetchedPrevious.Status.Nodes["node-0"].Role != "primary" {
 		t.Fatalf("expected previous node role to remain 'primary', got %q", fetchedPrevious.Status.Nodes["node-0"].Role)

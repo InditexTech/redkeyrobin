@@ -11,6 +11,7 @@ import (
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkeyrobin/internal/kubernetes"
 	"github.com/inditextech/redkeyrobin/internal/redis"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -409,4 +410,85 @@ func TestCloseNodes(t *testing.T) {
 func TestCloseNodes_Empty(t *testing.T) {
 	closeNodes(nil)             // Should not panic
 	closeNodes([]*redis.Node{}) // Should not panic
+}
+
+func authConfigMap(redisConf string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cluster",
+			Namespace: "default",
+		},
+		Data: map[string]string{"redis.conf": redisConf},
+	}
+}
+
+func TestClusterReconciler_ReconcileAuthRotation_NoConfigMapIsNoOp(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(clusterTestScheme).Build()
+	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
+
+	cfg := testClusterConfig(redisv1.ClusterStatusReady)
+
+	// No ConfigMap yet (cluster not fully provisioned): must be a no-op.
+	if err := cr.reconcileAuthRotation(context.Background(), cfg, "any-pass"); err != nil {
+		t.Fatalf("unexpected error when ConfigMap is absent: %v", err)
+	}
+}
+
+func TestClusterReconciler_ReconcileAuthRotation_InSyncIsNoOp(t *testing.T) {
+	cm := authConfigMap("requirepass same-pass\nmasterauth same-pass\n")
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(clusterTestScheme).
+		WithObjects(cm).
+		Build()
+	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
+
+	cfg := testClusterConfig(redisv1.ClusterStatusReady)
+
+	// ConfigMap password matches the Secret password: no rotation, no node access.
+	if err := cr.reconcileAuthRotation(context.Background(), cfg, "same-pass"); err != nil {
+		t.Fatalf("unexpected error when passwords are in sync: %v", err)
+	}
+}
+
+func TestClusterReconciler_ReconcileAuthRotation_NoAuthInSync(t *testing.T) {
+	// A cluster without auth has no requirepass line; an empty Secret password
+	// must be considered in sync and never mistaken for a rotation.
+	cm := authConfigMap("appendonly no\nsave \"\"\n")
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(clusterTestScheme).
+		WithObjects(cm).
+		Build()
+	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
+
+	cfg := testClusterConfig(redisv1.ClusterStatusReady)
+
+	if err := cr.reconcileAuthRotation(context.Background(), cfg, ""); err != nil {
+		t.Fatalf("unexpected error for no-auth in-sync cluster: %v", err)
+	}
+}
+
+func TestClusterReconciler_ReconcileAuthRotation_RotatesAndUpdatesConfigMap(t *testing.T) {
+	cm := authConfigMap("requirepass old-pass\nmasterauth old-pass\n")
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(clusterTestScheme).
+		WithObjects(cm).
+		Build()
+	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
+
+	cfg := testClusterConfig(redisv1.ClusterStatusReady)
+
+	// Secret holds a new password while the ConfigMap still has the old one.
+	// With no pods, the CONFIG SET loop is skipped but the ConfigMap must be
+	// updated so the cluster converges and future cycles are no-ops.
+	if err := cr.reconcileAuthRotation(context.Background(), cfg, "new-pass"); err != nil {
+		t.Fatalf("unexpected error applying rotation: %v", err)
+	}
+
+	pw, found, err := kubernetes.GetConfigMapPassword(context.Background(), fakeClient, "test-cluster", "default")
+	if err != nil {
+		t.Fatalf("unexpected error reading ConfigMap: %v", err)
+	}
+	if !found || pw != "new-pass" {
+		t.Fatalf("expected ConfigMap password 'new-pass' (found=%v), got '%s'", found, pw)
+	}
 }

@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -74,12 +75,30 @@ func cleanup() {
 	for i := range list.Items {
 		_ = k8sClient.Delete(ctx, &list.Items[i])
 	}
-	// Wait until all are gone.
+	// Wait until all configs are gone.
 	Eventually(func() int {
 		var l redisv1.RedkeyClusterConfigList
 		_ = k8sClient.List(ctx, &l, client.InNamespace(testNamespace))
 		return len(l.Items)
 	}, timeout, interval).Should(Equal(0))
+
+	// Clean up ConfigMaps created for auth integration tests.
+	var cms corev1.ConfigMapList
+	_ = k8sClient.List(ctx, &cms, client.InNamespace(testNamespace))
+	for i := range cms.Items {
+		_ = k8sClient.Delete(ctx, &cms.Items[i])
+	}
+}
+
+func createConfigMap(name string) {
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+		},
+		Data: map[string]string{"redis.conf": ""},
+	}
+	Expect(k8sClient.Create(ctx, cm)).To(Succeed())
 }
 
 var _ = Describe("Configuration Selection (integration)", func() {

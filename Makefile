@@ -76,7 +76,7 @@ help: ##	Display this help.
 ##@ CI
 
 .PHONY: verify
-verify: tidy fmt vet build test ## Check the code
+verify: tidy fmt vet lint build test-all ## Run all verification steps (fmt, vet, lint, unit and integration tests).
 
 .PHONY: version
 version: ## Print the current version of the project.

@@ -110,6 +110,36 @@ func GetRedisPassword(ctx context.Context, c client.Client, secretName, namespac
 	return "", nil
 }
 
+// GetConfigMapPassword returns the password currently baked into the cluster's
+// ConfigMap (the requirepass directive of redis.conf). This reflects the
+// credentials the running Redis nodes were started with and therefore still use,
+// which is the source of truth Robin needs to connect to the nodes after the auth
+// Secret has been rotated out-of-band but before the new password has been
+// applied via CONFIG SET. found is false when the ConfigMap does not exist yet.
+func GetConfigMapPassword(ctx context.Context, c client.Client, clusterName, namespace string) (password string, found bool, err error) {
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, cm); err != nil {
+		if errors.IsNotFound(err) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("getting ConfigMap %s: %w", clusterName, err)
+	}
+	return parseRequirePass(cm.Data["redis.conf"]), true, nil
+}
+
+// parseRequirePass extracts the value of the requirepass directive from a
+// redis.conf body. It returns an empty string when no requirepass line is
+// present (auth disabled).
+func parseRequirePass(redisConf string) string {
+	for _, line := range strings.Split(redisConf, "\n") {
+		line = strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(line, "requirepass "); ok {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
+}
+
 // AllPodsReady checks whether the StatefulSet has all pods in Ready state.
 func AllPodsReady(ctx context.Context, c client.Client, clusterName, namespace string, expectedReplicas int32) (bool, error) {
 	sts := &appsv1.StatefulSet{}

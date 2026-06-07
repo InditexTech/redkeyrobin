@@ -444,7 +444,7 @@ func TestDetectChanges_RedisConfigOnly_Version(t *testing.T) {
 	}
 }
 
-func TestDetectChanges_RedisConfigOnly_Auth(t *testing.T) {
+func TestDetectChanges_AuthOnly_SecretName(t *testing.T) {
 	previous := baseSpec()
 	target := baseSpec()
 	target.Sequence = 2
@@ -452,8 +452,105 @@ func TestDetectChanges_RedisConfigOnly_Auth(t *testing.T) {
 
 	report := DetectChanges(previous, target)
 
+	if !report.HasAuthChanges {
+		t.Error("expected HasAuthChanges")
+	}
+	if report.HasRedisConfigChanges {
+		t.Error("auth should NOT set HasRedisConfigChanges")
+	}
+	if report.RequiresClusterOperation() {
+		t.Error("auth-only should NOT require cluster operation")
+	}
+}
+
+func TestDetectChanges_AuthOnly_Disable(t *testing.T) {
+	previous := baseSpec()
+	previous.Auth = redisv1.RedisAuth{SecretName: "my-secret"}
+	target := baseSpec()
+	target.Auth = redisv1.RedisAuth{}
+
+	report := DetectChanges(previous, target)
+
+	if !report.HasAuthChanges {
+		t.Error("expected HasAuthChanges for auth removal")
+	}
+	if report.RequiresClusterOperation() {
+		t.Error("disabling auth should NOT require cluster operation")
+	}
+}
+
+func TestDetectChanges_AuthOnly_NoSecretToSecret(t *testing.T) {
+	previous := baseSpec()
+	previous.Auth = redisv1.RedisAuth{}
+	target := baseSpec()
+	target.Sequence = 2
+	target.Auth = redisv1.RedisAuth{SecretName: "new-secret"}
+
+	report := DetectChanges(previous, target)
+
+	if !report.HasAuthChanges {
+		t.Error("expected HasAuthChanges for enabling auth")
+	}
+	if report.RequiresClusterOperation() {
+		t.Error("enabling auth should NOT require cluster operation")
+	}
+}
+
+func TestDetectChanges_AuthOnly_SecretToNoSecret(t *testing.T) {
+	previous := baseSpec()
+	target := baseSpec()
+	target.Auth = redisv1.RedisAuth{}
+
+	report := DetectChanges(previous, target)
+
+	if !report.HasAuthChanges {
+		t.Error("expected HasAuthChanges for disabling auth")
+	}
+	if report.RequiresClusterOperation() {
+		t.Error("disabling auth should NOT require cluster operation")
+	}
+}
+
+func TestDetectChanges_Combined_AuthAndRedisConfig(t *testing.T) {
+	previous := baseSpec()
+	target := baseSpec()
+	target.Sequence = 2
+	target.Auth = redisv1.RedisAuth{SecretName: "new-secret"}
+	target.RedisConfig = "maxmemory 200mb"
+
+	report := DetectChanges(previous, target)
+
+	if !report.HasAuthChanges {
+		t.Error("expected HasAuthChanges")
+	}
 	if !report.HasRedisConfigChanges {
 		t.Error("expected HasRedisConfigChanges")
+	}
+	if !report.RequiresClusterOperation() {
+		t.Error("should require cluster operation (has redis config change)")
+	}
+}
+
+func TestDetectChanges_Combined_AuthAndRobin(t *testing.T) {
+	previous := baseSpec()
+	target := baseSpec()
+	target.Sequence = 2
+	target.Auth = redisv1.RedisAuth{SecretName: "new-secret"}
+	target.RobinConfig.Reconciler.IntervalSeconds = intPtr(60)
+
+	report := DetectChanges(previous, target)
+
+	if !report.HasAuthChanges {
+		t.Error("expected HasAuthChanges")
+	}
+	if !report.HasRobinChanges {
+		t.Error("expected HasRobinChanges")
+	}
+	if !report.OnlyRobinChanges() {
+		t.Error("auth + Robin should still be OnlyRobinChanges (no cluster op)")
+	}
+	if report.RequiresClusterOperation() {
+		t.Error("auth + Robin should NOT require cluster operation")
 	}
 }
 

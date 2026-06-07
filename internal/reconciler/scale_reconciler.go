@@ -616,26 +616,6 @@ func (cr *ClusterReconciler) refreshRoles(ctx context.Context, nodes []*redis.No
 	return nil
 }
 
-// resetMisplacedPrimaries soft-resets any node that must become a primary but is currently
-// a replica, turning it into an empty master. It returns true if any node was reset.
-func (cr *ClusterReconciler) resetMisplacedPrimaries(ctx context.Context, primaries []*redis.Node) (bool, error) {
-	reset := false
-	for _, p := range primaries {
-		if err := p.RefreshInfo(ctx); err != nil {
-			return reset, fmt.Errorf("refreshing %s: %w", p.Name, err)
-		}
-		if !p.IsReplica() {
-			continue
-		}
-		cr.logger.Info("Resetting replica to empty master for scale up", "node", p.Name)
-		if err := p.Client().ClusterReset(ctx, false); err != nil {
-			return reset, fmt.Errorf("resetting %s: %w", p.Name, err)
-		}
-		reset = true
-	}
-	return reset, nil
-}
-
 // rebalanceWithRetry runs a weighted rebalance from the given seed node, retrying with
 // backoff until it succeeds or the attempts are exhausted. A nil/empty weights map
 // performs an empty-masters rebalance that distributes slots evenly across all primaries.

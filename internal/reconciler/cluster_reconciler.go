@@ -117,6 +117,9 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 
 // handleConfigChange processes a new configuration for an existing cluster.
 // It detects what changed and determines the appropriate status transition.
+// If auth changes are detected, they are applied via CONFIG SET to all running
+// nodes BEFORE any cluster operation, ensuring all nodes share the same auth
+// configuration throughout the upgrade/scaling process.
 func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfig *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
 	report := DetectChanges(previousConfig.Spec, targetConfig.Spec)
 
@@ -126,23 +129,35 @@ func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfi
 		"hasTopologyChanges", report.HasTopologyChanges,
 		"hasKubernetesChanges", report.HasKubernetesChanges,
 		"hasRedisConfigChanges", report.HasRedisConfigChanges,
+		"hasAuthChanges", report.HasAuthChanges,
 		"hasPurgeKeysOnRebalanceChange", report.HasPurgeKeysOnRebalanceChange,
 		"topologyScaleDirection", report.TopologyScaleDirection,
 		"primariesDelta", report.PrimariesDelta,
 		"replicasDelta", report.ReplicasDelta,
 	)
 
-	// If only Robin config changed (or no changes at all), mark as Applied immediately.
-	// Robin hot-reload (applyRobinConfig) already handles these changes.
+	// If auth changed, apply it via CONFIG SET to all running nodes first.
+	// This ensures all nodes share the same auth before any operation
+	// (rolling upgrade, scaling, etc.) that might create or recycle pods.
+	if report.HasAuthChanges {
+		cr.logger.Info("Auth change detected, applying via CONFIG SET to all nodes",
+			"config", targetConfig.Name,
+			"secretName", targetConfig.Spec.Auth.SecretName)
+		if err := cr.applyAuthToAllNodes(ctx, targetConfig, previousConfig); err != nil {
+			return reconcileAfterInterval, fmt.Errorf("applying auth config: %w", err)
+		}
+	}
+
+	// Determine the status transition.
 	newStatus := DetermineStatusTransition(report)
 	if newStatus == "" {
+		// No cluster operation required (auth-only was already applied via CONFIG SET above).
 		cr.logger.Info("No cluster operation required, marking config as Applied",
 			"config", targetConfig.Name)
 		if err := cr.setConfigPhaseApplied(ctx, targetConfig); err != nil {
 			return reconcileAfterInterval, err
 		}
 		// Ensure the cluster status reflects the previous (Ready) state.
-		// If copyPreviousClusterStatus was already called, this is a no-op.
 		if targetConfig.Status.Status != previousConfig.Status.Status {
 			targetConfig.Status.Status = previousConfig.Status.Status
 			if err := cr.client.Status().Update(ctx, targetConfig); err != nil {
@@ -152,7 +167,7 @@ func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfi
 		return reconcileAfterInterval, nil
 	}
 
-	// Transition the cluster to the new status.
+	// Transition the cluster to the new status (auth was already applied above).
 	cr.logger.Info("Transitioning cluster status for config change",
 		"config", targetConfig.Name,
 		"newStatus", newStatus,
@@ -371,6 +386,14 @@ func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.Re
 	if err != nil {
 		cr.logger.Warn("Could not retrieve Redis password for health check", "error", err)
 		// Continue without password — it may not be configured
+	}
+
+	// Detect an out-of-band password rotation (the auth Secret was edited in
+	// place, with no new RedkeyClusterConfig) and apply the new password to all
+	// nodes via CONFIG SET before health-checking, so the running nodes accept
+	// the rotated credentials instead of failing with WRONGPASS.
+	if err := cr.reconcileAuthRotation(ctx, config, password); err != nil {
+		return reconcileAfterInterval, fmt.Errorf("reconciling auth rotation: %w", err)
 	}
 
 	// Run health reconciliation
@@ -644,6 +667,113 @@ func (cr *ClusterReconciler) getPassword(ctx context.Context, config *redisv1.Re
 		return ""
 	}
 	return password
+}
+
+// applyAuthToAllNodes applies the target configuration's auth settings to ALL
+// running Redis nodes via CONFIG SET requirepass / CONFIG SET masterauth,
+// then updates the ConfigMap so future pod restarts pick up the correct auth.
+//
+// This must be called BEFORE any cluster operation (rolling upgrade, scaling)
+// that could create or recycle pods, ensuring all nodes share the same auth
+// throughout the process and avoiding mixed-auth communication failures.
+func (cr *ClusterReconciler) applyAuthToAllNodes(ctx context.Context, config, previousConfig *redisv1.RedkeyClusterConfig) error {
+	newPassword := cr.getPassword(ctx, config)
+
+	// Use the previous config's credentials to connect to existing nodes.
+	// If the previous config had no auth (empty secret), this returns ""
+	// which means "connect without password" — correct for that case.
+	oldPassword := cr.getPassword(ctx, previousConfig)
+
+	if err := cr.applyAuthCredentials(ctx, config, oldPassword, newPassword); err != nil {
+		return err
+	}
+
+	cr.logger.Info("Auth configuration applied to all nodes and ConfigMap updated",
+		"secretName", config.Spec.Auth.SecretName)
+	return nil
+}
+
+// reconcileAuthRotation detects and applies an out-of-band password rotation.
+//
+// A rotation happens when the auth Secret referenced by the cluster is edited in
+// place: the SecretName does not change, so the operator generates no new
+// RedkeyClusterConfig and handleConfigChange/applyAuthToAllNodes never runs. The
+// running Redis nodes therefore keep the old requirepass while the Secret (and
+// every component that reads it) already holds the new password, which surfaces
+// as WRONGPASS errors during health checks.
+//
+// The cluster's ConfigMap (redis.conf requirepass) is the source of truth for the
+// password the running nodes actually use: it is what they were started with and
+// only Robin changes it. Comparing it against the Secret detects a rotation
+// robustly — without any in-memory state, so it survives Robin restarts and has
+// no start-up race. When they differ, Robin connects to every node with the
+// ConfigMap password and applies the Secret's password via CONFIG SET, then
+// updates the ConfigMap so the two converge.
+//
+// currentPassword is the password just read from the Secret.
+func (cr *ClusterReconciler) reconcileAuthRotation(ctx context.Context, config *redisv1.RedkeyClusterConfig, currentPassword string) error {
+	nodePassword, found, err := kubernetes.GetConfigMapPassword(ctx, cr.client, cr.clusterName, cr.namespace)
+	if err != nil {
+		return fmt.Errorf("reading current node password from ConfigMap: %w", err)
+	}
+
+	// No ConfigMap yet (cluster not fully provisioned) or already in sync: nothing to do.
+	if !found || nodePassword == currentPassword {
+		return nil
+	}
+
+	cr.logger.Info("Password rotation detected (auth Secret differs from ConfigMap), applying to all nodes",
+		"secretName", config.Spec.Auth.SecretName)
+
+	if err := cr.applyAuthCredentials(ctx, config, nodePassword, currentPassword); err != nil {
+		return fmt.Errorf("applying rotated auth: %w", err)
+	}
+
+	cr.logger.Info("Password rotation applied to all nodes",
+		"secretName", config.Spec.Auth.SecretName)
+	return nil
+}
+
+// applyAuthCredentials applies newPassword to ALL running Redis nodes via
+// CONFIG SET requirepass / CONFIG SET masterauth, connecting to each node with
+// oldPassword, then updates the ConfigMap so future pod restarts pick up the
+// correct auth and refreshes the runtime auth secret so other components
+// (metrics, health) use it.
+func (cr *ClusterReconciler) applyAuthCredentials(ctx context.Context, config *redisv1.RedkeyClusterConfig, oldPassword, newPassword string) error {
+	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
+	if err != nil {
+		return fmt.Errorf("getting pod addresses for auth config: %w", err)
+	}
+
+	for name, addr := range podAddrs {
+		client := redis.NewClient(addr, oldPassword)
+
+		if err := client.ConfigSet(ctx, "requirepass", newPassword); err != nil {
+			_ = client.Close()
+			return fmt.Errorf("CONFIG SET requirepass on %s: %w", name, err)
+		}
+		if err := client.ConfigSet(ctx, "masterauth", newPassword); err != nil {
+			_ = client.Close()
+			return fmt.Errorf("CONFIG SET masterauth on %s: %w", name, err)
+		}
+		_ = client.Close()
+
+		cr.logger.Info("Applied auth configuration via CONFIG SET",
+			"node", name, "hasAuth", newPassword != "")
+	}
+
+	// Update the ConfigMap so recycled/new pods start with the correct auth.
+	// This also keeps the ConfigMap in sync with the Secret, which is what
+	// reconcileAuthRotation compares against to detect future rotations.
+	if err := kubernetes.UpdateConfigMap(ctx, cr.client, cr.clusterName, cr.namespace, config, newPassword); err != nil {
+		return fmt.Errorf("updating ConfigMap with new auth: %w", err)
+	}
+
+	// Update the runtime auth secret so other components (metrics, health)
+	// pick up the change immediately.
+	cr.runtimeConfig.SetAuthSecret(config.Spec.Auth.SecretName)
+
+	return nil
 }
 
 func closeNodes(nodes []*redis.Node) {

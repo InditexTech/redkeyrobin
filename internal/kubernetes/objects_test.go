@@ -802,3 +802,47 @@ func indexOf(s, substr string) int {
 	}
 	return -1
 }
+
+func TestParseRequirePass(t *testing.T) {
+	cases := []struct {
+		name string
+		conf string
+		want string
+	}{
+		{"present", "appendonly no\nrequirepass secret123\nmasterauth secret123\n", "secret123"},
+		{"absent", "appendonly no\nsave \"\"\n", ""},
+		{"empty", "", ""},
+		{"with surrounding whitespace", "  requirepass  spaced-pass  \n", "spaced-pass"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseRequirePass(tc.conf); got != tc.want {
+				t.Fatalf("parseRequirePass(%q) = %q, want %q", tc.conf, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetConfigMapPassword(t *testing.T) {
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-cluster", Namespace: "default"},
+		Data:       map[string]string{"redis.conf": "requirepass cm-pass\nmasterauth cm-pass\n"},
+	}
+	c := fake.NewClientBuilder().WithScheme(testScheme).WithObjects(cm).Build()
+
+	pw, found, err := GetConfigMapPassword(context.Background(), c, "my-cluster", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found || pw != "cm-pass" {
+		t.Fatalf("expected ('cm-pass', true), got (%q, %v)", pw, found)
+	}
+
+	_, found, err = GetConfigMapPassword(context.Background(), c, "missing", "default")
+	if err != nil {
+		t.Fatalf("unexpected error for missing ConfigMap: %v", err)
+	}
+	if found {
+		t.Fatal("expected found=false for missing ConfigMap")
+	}
+}
