@@ -71,17 +71,23 @@ func (cr *ClusterReconciler) handleFastUpgradeStart(ctx context.Context, config 
 		return reconcileAfterInterval, fmt.Errorf("updating ConfigMap for fast upgrade: %w", err)
 	}
 
-	// Update StatefulSet template (image, labels, annotations, config checksum)
-	checksum := kubernetes.ComputeConfigChecksum(config.Spec.Image, config.Spec.Version, config.Spec.RedisConfig)
-	if err := kubernetes.UpdateStatefulSetTemplate(ctx, cr.client, cr.clusterName, cr.namespace, config, checksum); err != nil {
-		return reconcileAfterInterval, fmt.Errorf("updating StatefulSet template for fast upgrade: %w", err)
-	}
-
-	// Reconcile the PodDisruptionBudget so PDB-only changes are applied during upgrades.
 	owner, err := cr.getOwner(ctx)
 	if err != nil {
 		return reconcileAfterInterval, fmt.Errorf("getting owner for fast upgrade: %w", err)
 	}
+
+	// Update StatefulSet template (image, labels, annotations, override, config checksum)
+	checksum := kubernetes.ComputeConfigChecksum(config.Spec.Image, config.Spec.Version, config.Spec.RedisConfig)
+	if err := kubernetes.UpdateStatefulSetTemplate(ctx, cr.client, cr.clusterName, cr.namespace, config, owner, checksum); err != nil {
+		return reconcileAfterInterval, fmt.Errorf("updating StatefulSet template for fast upgrade: %w", err)
+	}
+
+	// Reconcile the Service so Service override changes are applied during upgrades.
+	if err := kubernetes.ReconcileService(ctx, cr.client, config, owner); err != nil {
+		return reconcileAfterInterval, fmt.Errorf("reconciling Service for fast upgrade: %w", err)
+	}
+
+	// Reconcile the PodDisruptionBudget so PDB-only changes are applied during upgrades.
 	if err := kubernetes.ReconcilePDB(ctx, cr.client, config, owner); err != nil {
 		return reconcileAfterInterval, fmt.Errorf("reconciling PDB for fast upgrade: %w", err)
 	}
@@ -290,19 +296,25 @@ func (cr *ClusterReconciler) handleUpgradeStart(ctx context.Context, config *red
 	cr.logger.Info("Rolling upgrade: scaling StatefulSet for extra nodes",
 		"currentTotal", currentTotal, "targetTotal", targetTotal, "extraNodes", extra)
 
-	// Update the StatefulSet template BEFORE scaling up so the new pods get the new image.
-	// OnDelete strategy: existing pods are NOT restarted automatically — only manually
-	// deleted pods will be recreated with the new template.
-	checksum := kubernetes.ComputeConfigChecksum(config.Spec.Image, config.Spec.Version, config.Spec.RedisConfig)
-	if err := kubernetes.UpdateStatefulSetTemplate(ctx, cr.client, cr.clusterName, cr.namespace, config, checksum); err != nil {
-		return reconcileAfterInterval, fmt.Errorf("updating StatefulSet template for rolling upgrade: %w", err)
-	}
-
-	// Reconcile the PodDisruptionBudget so PDB-only changes are applied during upgrades.
 	owner, err := cr.getOwner(ctx)
 	if err != nil {
 		return reconcileAfterInterval, fmt.Errorf("getting owner for rolling upgrade: %w", err)
 	}
+
+	// Update the StatefulSet template BEFORE scaling up so the new pods get the new image.
+	// OnDelete strategy: existing pods are NOT restarted automatically — only manually
+	// deleted pods will be recreated with the new template.
+	checksum := kubernetes.ComputeConfigChecksum(config.Spec.Image, config.Spec.Version, config.Spec.RedisConfig)
+	if err := kubernetes.UpdateStatefulSetTemplate(ctx, cr.client, cr.clusterName, cr.namespace, config, owner, checksum); err != nil {
+		return reconcileAfterInterval, fmt.Errorf("updating StatefulSet template for rolling upgrade: %w", err)
+	}
+
+	// Reconcile the Service so Service override changes are applied during upgrades.
+	if err := kubernetes.ReconcileService(ctx, cr.client, config, owner); err != nil {
+		return reconcileAfterInterval, fmt.Errorf("reconciling Service for rolling upgrade: %w", err)
+	}
+
+	// Reconcile the PodDisruptionBudget so PDB-only changes are applied during upgrades.
 	if err := kubernetes.ReconcilePDB(ctx, cr.client, config, owner); err != nil {
 		return reconcileAfterInterval, fmt.Errorf("reconciling PDB for rolling upgrade: %w", err)
 	}

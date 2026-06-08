@@ -311,8 +311,22 @@ func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrim
 
 // --- Service ---
 
+// ReconcileService creates or updates the cluster's headless Service, applying the
+// optional Service override from the configuration. It is safe to call repeatedly:
+// an existing Service is only updated when its override-managed fields drift.
+func ReconcileService(ctx context.Context, c client.Client, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
+	return ensureService(ctx, c, owner.Name, owner.Namespace, config, owner)
+}
+
 func ensureService(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
 	desired := buildService(clusterName, namespace)
+	if config.Spec.Override != nil && config.Spec.Override.Service != nil {
+		var err error
+		desired, err = applyServiceOverride(desired, config.Spec.Override.Service)
+		if err != nil {
+			return err
+		}
+	}
 	if err := controllerutil.SetOwnerReference(owner, desired, c.Scheme()); err != nil {
 		return err
 	}
@@ -322,7 +336,29 @@ func ensureService(ctx context.Context, c client.Client, clusterName, namespace 
 	if errors.IsNotFound(err) {
 		return c.Create(ctx, desired)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Update the existing Service only when an override-managed field drifted.
+	// ClusterIP(s) are assigned by the API server and must be preserved.
+	if serviceNeedsUpdate(existing, desired) {
+		desired.Spec.ClusterIP = existing.Spec.ClusterIP
+		desired.Spec.ClusterIPs = existing.Spec.ClusterIPs
+		desired.ResourceVersion = existing.ResourceVersion
+		return c.Update(ctx, desired)
+	}
+	return nil
+}
+
+// serviceNeedsUpdate reports whether the override-managed fields of the existing
+// Service differ from the desired Service.
+func serviceNeedsUpdate(existing, desired *corev1.Service) bool {
+	return !reflect.DeepEqual(existing.Spec.Ports, desired.Spec.Ports) ||
+		existing.Spec.Type != desired.Spec.Type ||
+		existing.Spec.PublishNotReadyAddresses != desired.Spec.PublishNotReadyAddresses ||
+		!reflect.DeepEqual(existing.Labels, desired.Labels) ||
+		!reflect.DeepEqual(existing.Annotations, desired.Annotations)
 }
 
 func buildService(clusterName, namespace string) *corev1.Service {
@@ -358,6 +394,13 @@ func buildService(clusterName, namespace string) *corev1.Service {
 
 func ensureStatefulSet(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
 	desired := buildStatefulSet(clusterName, namespace, config, owner)
+	if config.Spec.Override != nil && config.Spec.Override.StatefulSet != nil {
+		var err error
+		desired, err = applyStatefulSetOverride(desired, config.Spec.Override.StatefulSet)
+		if err != nil {
+			return err
+		}
+	}
 	if err := controllerutil.SetOwnerReference(owner, desired, c.Scheme()); err != nil {
 		return err
 	}
@@ -641,45 +684,35 @@ const ConfigChecksumAnnotation = "redkey.inditex.dev/config-checksum"
 // The update strategy is set to OnDelete so that no pods are automatically recreated — the
 // reconciler controls which specific pods are recycled via manual deletion, ensuring only drained
 // primaries and their replicas are affected (preserving HA for active shards).
-func UpdateStatefulSetTemplate(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, configChecksum string) error {
+func UpdateStatefulSetTemplate(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster, configChecksum string) error {
 	sts := &appsv1.StatefulSet{}
 	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
 		return fmt.Errorf("getting StatefulSet %s for template update: %w", clusterName, err)
 	}
 
-	image := config.Spec.Image
-	if image == "" {
-		image = defaultRedisImage
-	}
-
-	// Update container image.
-	if len(sts.Spec.Template.Spec.Containers) > 0 {
-		sts.Spec.Template.Spec.Containers[0].Image = image
-	}
-
-	// Update resources if provided.
-	if config.Spec.Resources != nil && len(sts.Spec.Template.Spec.Containers) > 0 {
-		sts.Spec.Template.Spec.Containers[0].Resources = *config.Spec.Resources
-	}
-
-	// Update pod labels.
-	podLabels := clusterLabels(clusterName)
-	if config.Spec.Labels != nil {
-		for k, v := range *config.Spec.Labels {
-			podLabels[k] = v
+	// Rebuild the desired pod template from the base builder and re-apply the
+	// override. Rebuilding (instead of patching in place) keeps the template in
+	// sync with the current configuration and cleanly reverts any fields a
+	// previously-set override may have introduced once it is removed.
+	base := buildStatefulSet(clusterName, namespace, config, owner)
+	if config.Spec.Override != nil && config.Spec.Override.StatefulSet != nil {
+		var err error
+		base, err = applyStatefulSetOverride(base, config.Spec.Override.StatefulSet)
+		if err != nil {
+			return fmt.Errorf("applying StatefulSet override for template update: %w", err)
 		}
 	}
-	sts.Spec.Template.Labels = podLabels
 
-	// Update pod annotations with config checksum.
-	podAnnotations := make(map[string]string)
-	if config.Spec.Annotations != nil {
-		for k, v := range *config.Spec.Annotations {
-			podAnnotations[k] = v
-		}
+	// Replace the pod template with the freshly-built desired one. StatefulSet
+	// identity (replicas, selector, serviceName, volumeClaimTemplates) is left
+	// untouched on the existing object.
+	sts.Spec.Template = base.Spec.Template
+
+	// Stamp the config checksum so a change in redis.conf triggers pod recreation.
+	if sts.Spec.Template.Annotations == nil {
+		sts.Spec.Template.Annotations = make(map[string]string)
 	}
-	podAnnotations[ConfigChecksumAnnotation] = configChecksum
-	sts.Spec.Template.Annotations = podAnnotations
+	sts.Spec.Template.Annotations[ConfigChecksumAnnotation] = configChecksum
 
 	// Set update strategy to OnDelete so that no pods are automatically recreated.
 	// The reconciler will manually delete specific pods (drained primary + its replicas)
