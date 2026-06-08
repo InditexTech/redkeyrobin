@@ -28,7 +28,7 @@ Today, Robin focuses on orchestration of `RedkeyClusterConfig` progression rathe
 
 | Layer | Technology |
 | ----- | ---------- |
-| Language | Go 1.26.3 |
+| Language | Go 1.26.4 |
 | Runtime style | Standalone controller-style daemon |
 | Kubernetes client | [controller-runtime](https://sigs.k8s.io/controller-runtime) v0.24.0 |
 | API dependency | `github.com/inditextech/redkeyoperator/api/v1beta1` via local `replace ../redkeyoperator` |
