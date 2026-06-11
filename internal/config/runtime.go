@@ -5,6 +5,7 @@
 package config
 
 import (
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -167,9 +168,7 @@ func (rc *RuntimeConfig) SetFromRobinConfig(cfg *redisv1.RobinConfig) {
 		}
 		if cfg.Metrics.MetricsLabels != nil {
 			labels := make(map[string]string, len(cfg.Metrics.MetricsLabels))
-			for k, v := range cfg.Metrics.MetricsLabels {
-				labels[k] = v
-			}
+			maps.Copy(labels, cfg.Metrics.MetricsLabels)
 			rc.metricsLabels = labels
 		}
 	}
@@ -308,9 +307,7 @@ func (rc *RuntimeConfig) MetricsLabels() map[string]string {
 		return nil
 	}
 	labels := make(map[string]string, len(rc.metricsLabels))
-	for k, v := range rc.metricsLabels {
-		labels[k] = v
-	}
+	maps.Copy(labels, rc.metricsLabels)
 	return labels
 }
 

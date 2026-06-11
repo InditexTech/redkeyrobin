@@ -12,7 +12,8 @@ import (
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 )
 
-func intPtr(v int) *int { return &v }
+//go:fix inline
+func intPtr(v int) *int { return new(v) }
 
 func TestNewRuntimeConfig_Defaults(t *testing.T) {
 	rc := NewRuntimeConfig()
@@ -61,16 +62,16 @@ func TestSetFromRobinConfig_AllFields(t *testing.T) {
 	rc := NewRuntimeConfig()
 	cfg := &redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds:        intPtr(5),
-			IntervalOnErrorSeconds: intPtr(7),
-			IntervalOnWaitSeconds:  intPtr(11),
+			IntervalSeconds:        new(5),
+			IntervalOnErrorSeconds: new(7),
+			IntervalOnWaitSeconds:  new(11),
 		},
 		Cluster: &redisv1.RobinConfigCluster{
-			ConnectionMaxRetries:     intPtr(3),
-			ConnectionBackOffSeconds: intPtr(2),
+			ConnectionMaxRetries:     new(3),
+			ConnectionBackOffSeconds: new(2),
 		},
 		Metrics: &redisv1.RobinConfigMetrics{
-			CollectionIntervalSeconds: intPtr(15),
+			CollectionIntervalSeconds: new(15),
 			RedisInfoKeys:             []string{"used_memory", "connected_clients"},
 		},
 	}
@@ -107,7 +108,7 @@ func TestSetFromRobinConfig_PartialFields(t *testing.T) {
 	// Only set reconciler interval, leave the rest untouched.
 	cfg := &redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds: intPtr(10),
+			IntervalSeconds: new(10),
 		},
 	}
 
@@ -132,15 +133,15 @@ func TestSetFromRobinConfig_ResetsReconcilerIntervalsToBootstrap(t *testing.T) {
 	rc := NewRuntimeConfigWithReconcilerIntervals(13*time.Second, 17*time.Second, 19*time.Second)
 	rc.SetFromRobinConfig(&redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds:        intPtr(5),
-			IntervalOnErrorSeconds: intPtr(7),
-			IntervalOnWaitSeconds:  intPtr(11),
+			IntervalSeconds:        new(5),
+			IntervalOnErrorSeconds: new(7),
+			IntervalOnWaitSeconds:  new(11),
 		},
 	})
 
 	rc.SetFromRobinConfig(&redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds: intPtr(23),
+			IntervalSeconds: new(23),
 		},
 	})
 
@@ -211,7 +212,7 @@ func TestSetFromRobinConfig_DoesNotAffectAuthSecret(t *testing.T) {
 	// SetFromRobinConfig should not touch authSecret.
 	cfg := &redisv1.RobinConfig{
 		Reconciler: &redisv1.RobinConfigReconciler{
-			IntervalSeconds: intPtr(5),
+			IntervalSeconds: new(5),
 		},
 	}
 	rc.SetFromRobinConfig(cfg)
@@ -226,23 +227,19 @@ func TestConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Writer goroutine for RobinConfig.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := range 100 {
 			cfg := &redisv1.RobinConfig{
 				Reconciler: &redisv1.RobinConfigReconciler{
-					IntervalSeconds: intPtr(i + 1),
+					IntervalSeconds: new(i + 1),
 				},
 			}
 			rc.SetFromRobinConfig(cfg)
 		}
-	}()
+	})
 
 	// Writer goroutine for auth secret.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := range 100 {
 			if i%2 == 0 {
 				rc.SetAuthSecret("secret-a")
@@ -250,22 +247,18 @@ func TestConcurrentAccess(t *testing.T) {
 				rc.SetAuthSecret("secret-b")
 			}
 		}
-	}()
+	})
 
 	// Writer goroutine for topology.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := range 100 {
 			rc.SetTopology(int32(i%5+1), int32(i%3))
 		}
-	}()
+	})
 
 	// Reader goroutines.
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = rc.ReconcilerInterval()
 				_ = rc.ReconcilerIntervalOnError()
@@ -277,7 +270,7 @@ func TestConcurrentAccess(t *testing.T) {
 				_ = rc.AuthSecret()
 				_ = rc.MetricsLabels()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -353,7 +346,7 @@ func TestMetricsLabels_NilDoesNotOverwrite(t *testing.T) {
 	// Apply config without MetricsLabels (nil) — should not clear.
 	cfg2 := &redisv1.RobinConfig{
 		Metrics: &redisv1.RobinConfigMetrics{
-			CollectionIntervalSeconds: intPtr(30),
+			CollectionIntervalSeconds: new(30),
 		},
 	}
 	rc.SetFromRobinConfig(cfg2)
@@ -375,7 +368,7 @@ func TestRebalanceTimeout_SetFromRobinConfig(t *testing.T) {
 	rc := NewRuntimeConfig()
 	cfg := &redisv1.RobinConfig{
 		Cluster: &redisv1.RobinConfigCluster{
-			RebalanceTimeoutSeconds: intPtr(300),
+			RebalanceTimeoutSeconds: new(300),
 		},
 	}
 	rc.SetFromRobinConfig(cfg)
@@ -388,7 +381,7 @@ func TestRebalanceTimeout_NilKeepsDefault(t *testing.T) {
 	rc := NewRuntimeConfig()
 	cfg := &redisv1.RobinConfig{
 		Cluster: &redisv1.RobinConfigCluster{
-			ConnectionMaxRetries: intPtr(5),
+			ConnectionMaxRetries: new(5),
 		},
 	}
 	rc.SetFromRobinConfig(cfg)

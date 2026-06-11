@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 
@@ -131,7 +132,7 @@ func GetConfigMapPassword(ctx context.Context, c client.Client, clusterName, nam
 // redis.conf body. It returns an empty string when no requirepass line is
 // present (auth disabled).
 func parseRequirePass(redisConf string) string {
-	for _, line := range strings.Split(redisConf, "\n") {
+	for line := range strings.SplitSeq(redisConf, "\n") {
 		line = strings.TrimSpace(line)
 		if rest, ok := strings.CutPrefix(line, "requirepass "); ok {
 			return strings.TrimSpace(rest)
@@ -426,18 +427,14 @@ func buildStatefulSet(clusterName, namespace string, config *redisv1.RedkeyClust
 	// Build pod labels: base labels + custom labels from spec.
 	podLabels := clusterLabels(clusterName)
 	if config.Spec.Labels != nil {
-		for k, v := range *config.Spec.Labels {
-			podLabels[k] = v
-		}
+		maps.Copy(podLabels, *config.Spec.Labels)
 	}
 
 	// Build pod annotations from spec.
 	var podAnnotations map[string]string
 	if config.Spec.Annotations != nil {
 		podAnnotations = make(map[string]string, len(*config.Spec.Annotations))
-		for k, v := range *config.Spec.Annotations {
-			podAnnotations[k] = v
-		}
+		maps.Copy(podAnnotations, *config.Spec.Annotations)
 	}
 
 	sts := &appsv1.StatefulSet{

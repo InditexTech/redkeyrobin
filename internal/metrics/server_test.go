@@ -60,7 +60,7 @@ func TestServer_ServesMetrics(t *testing.T) {
 	// Wait for server to be ready
 	var resp *http.Response
 	var err error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		resp, err = http.Get(fmt.Sprintf("http://%s/metrics", addr))
 		if err == nil {
 			break
@@ -115,7 +115,7 @@ func TestServer_ServesCustomGatherer(t *testing.T) {
 
 	var resp *http.Response
 	var err error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		resp, err = http.Get(fmt.Sprintf("http://%s/metrics", addr))
 		if err == nil {
 			break
@@ -185,7 +185,7 @@ func TestServer_GracefulShutdown(t *testing.T) {
 	}()
 
 	// Wait for server to be ready
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		_, err := http.Get(fmt.Sprintf("http://%s/metrics", addr))
 		if err == nil {
 			break
@@ -219,8 +219,7 @@ func TestServer_PprofEnabled(t *testing.T) {
 	rc.SetProfilingEnabled(true)
 	s := NewServer(addr, nil, rc)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -228,7 +227,7 @@ func TestServer_PprofEnabled(t *testing.T) {
 	}()
 
 	// Wait for server to be ready
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		_, err := http.Get(fmt.Sprintf("http://%s/metrics", addr))
 		if err == nil {
 			break
@@ -262,8 +261,7 @@ func TestServer_PprofDisabled(t *testing.T) {
 	rc.SetProfilingEnabled(false)
 	s := NewServer(addr, nil, rc)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -271,7 +269,7 @@ func TestServer_PprofDisabled(t *testing.T) {
 	}()
 
 	// Wait for server to be ready
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		_, err := http.Get(fmt.Sprintf("http://%s/metrics", addr))
 		if err == nil {
 			break

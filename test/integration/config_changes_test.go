@@ -35,10 +35,10 @@ func createAppliedConfig(name string, seq int, primaries, replicas int32) *redis
 			RedisConfig:        "maxmemory 100mb",
 			RobinConfig: &redisv1.RobinConfig{
 				Reconciler: &redisv1.RobinConfigReconciler{
-					IntervalSeconds: intPtrHelper(30),
+					IntervalSeconds: new(30),
 				},
 				Metrics: &redisv1.RobinConfigMetrics{
-					CollectionIntervalSeconds: intPtrHelper(60),
+					CollectionIntervalSeconds: new(60),
 				},
 			},
 		},
@@ -54,7 +54,8 @@ func createAppliedConfig(name string, seq int, primaries, replicas int32) *redis
 	return cfg
 }
 
-func intPtrHelper(v int) *int { return &v }
+//go:fix inline
+func intPtrHelper(v int) *int { return new(v) }
 
 var _ = Describe("Config Changes Detection (integration)", func() {
 	AfterEach(func() {
@@ -83,10 +84,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					RedisConfig:        "maxmemory 100mb",
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(60), // Changed from 30 to 60
+							IntervalSeconds: new(60), // Changed from 30 to 60
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(120), // Changed from 60 to 120
+							CollectionIntervalSeconds: new(120), // Changed from 60 to 120
 						},
 					},
 				},
@@ -131,10 +132,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					RedisConfig:        "maxmemory 100mb",
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -177,10 +178,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					RedisConfig:        "maxmemory 100mb",
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -223,10 +224,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					RedisConfig:        "maxmemory 100mb",
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -269,10 +270,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					RedisConfig:        "maxmemory 200mb",  // Redis config change
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -315,10 +316,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					RedisConfig:        "maxmemory 200mb", // Also redis config change
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(60), // Also Robin change
+							IntervalSeconds: new(60), // Also Robin change
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -370,10 +371,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					RedisConfig:        "maxmemory 100mb",
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -418,10 +419,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					Auth:               redisv1.RedisAuth{SecretName: "my-new-secret"},
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -467,10 +468,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					Auth:               redisv1.RedisAuth{SecretName: "existing-secret"},
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -500,10 +501,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					// Auth not set — removing auth
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},
@@ -548,10 +549,10 @@ var _ = Describe("Config Changes Detection (integration)", func() {
 					Auth:               redisv1.RedisAuth{SecretName: "new-secret"},
 					RobinConfig: &redisv1.RobinConfig{
 						Reconciler: &redisv1.RobinConfigReconciler{
-							IntervalSeconds: intPtrHelper(30),
+							IntervalSeconds: new(30),
 						},
 						Metrics: &redisv1.RobinConfigMetrics{
-							CollectionIntervalSeconds: intPtrHelper(60),
+							CollectionIntervalSeconds: new(60),
 						},
 					},
 				},

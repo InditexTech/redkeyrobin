@@ -62,7 +62,7 @@ func applyStatefulSetOverride(base *appsv1.StatefulSet, override *redisv1.Partia
 	}
 
 	patch := struct {
-		Metadata metav1.ObjectMeta               `json:"metadata,omitempty"`
+		Metadata metav1.ObjectMeta               `json:"metadata"`
 		Spec     *redisv1.PartialStatefulSetSpec `json:"spec,omitempty"`
 	}{
 		Metadata: override.Metadata,
@@ -115,7 +115,7 @@ func applyServiceOverride(base *corev1.Service, override *redisv1.PartialService
 	}
 
 	patch := struct {
-		Metadata metav1.ObjectMeta           `json:"metadata,omitempty"`
+		Metadata metav1.ObjectMeta           `json:"metadata"`
 		Spec     *redisv1.PartialServiceSpec `json:"spec,omitempty"`
 	}{
 		Metadata: override.Metadata,

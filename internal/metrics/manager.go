@@ -6,6 +6,7 @@ package metrics
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -154,12 +155,8 @@ func (m *MetricsManager) ResetRegistry() bool {
 // mergeLabels merges two label maps and returns the combined map with sorted keys.
 func mergeLabels(a, b map[string]string) (prometheus.Labels, []string) {
 	merged := make(prometheus.Labels, len(a)+len(b))
-	for k, v := range a {
-		merged[k] = v
-	}
-	for k, v := range b {
-		merged[k] = v
-	}
+	maps.Copy(merged, a)
+	maps.Copy(merged, b)
 
 	keys := make([]string, 0, len(merged))
 	for k := range merged {

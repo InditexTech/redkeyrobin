@@ -72,7 +72,7 @@ func (c *Client) ReplicaLinkUp(ctx context.Context) (bool, error) {
 			return false, fmt.Errorf("INFO replication on %s: %w", c.addr, err)
 		}
 	}
-	for _, line := range strings.Split(result, "\n") {
+	for line := range strings.SplitSeq(result, "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
 		if ok && key == "master_link_status" {
 			return value == "up", nil
@@ -95,7 +95,7 @@ func (c *Client) IsReplica(ctx context.Context) (bool, error) {
 			return false, fmt.Errorf("INFO replication on %s: %w", c.addr, err)
 		}
 	}
-	for _, line := range strings.Split(result, "\n") {
+	for line := range strings.SplitSeq(result, "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
 		if ok && key == "role" {
 			return value == "slave", nil
@@ -137,7 +137,7 @@ func (c *Client) GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
 	}
 
 	info := &ClusterInfo{raw: make(map[string]string)}
-	for _, line := range strings.Split(strings.TrimSpace(result), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(result), "\n") {
 		line = strings.TrimSpace(line)
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
@@ -189,7 +189,7 @@ func (c *Client) GetClusterNodes(ctx context.Context) ([]ClusterNode, error) {
 // ParseClusterNodesOutput parses the raw text output of CLUSTER NODES into a slice of ClusterNode.
 func ParseClusterNodesOutput(output string) []ClusterNode {
 	var nodes []ClusterNode
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -202,8 +202,8 @@ func ParseClusterNodesOutput(output string) []ClusterNode {
 		// addr format is ip:port@cport or ip:port
 		addr := parts[1]
 		ip := addr
-		if idx := strings.Index(addr, ":"); idx >= 0 {
-			ip = addr[:idx]
+		if before, _, ok := strings.Cut(addr, ":"); ok {
+			ip = before
 		}
 
 		pingSent, _ := strconv.Atoi(parts[4])

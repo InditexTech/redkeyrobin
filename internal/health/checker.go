@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -407,12 +408,7 @@ func isPrimary(node redis.ClusterNode) bool {
 }
 
 func slicesContains(values []string, expected string) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, expected)
 }
 
 // replicaSpreadOK validates that the cluster's replica topology is correct:
@@ -423,12 +419,7 @@ func slicesContains(values []string, expected string) bool {
 func replicaSpreadOK(nodes []redis.ClusterNode, desiredPrimaries, desiredReplicasPerPrimary int) bool {
 	if desiredReplicasPerPrimary == 0 {
 		// No replicas expected; just verify no replicas exist.
-		for _, node := range nodes {
-			if isReplica(node) {
-				return false
-			}
-		}
-		return true
+		return !slices.ContainsFunc(nodes, isReplica)
 	}
 
 	// Collect primaries and replicas.

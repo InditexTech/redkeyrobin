@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -275,9 +276,7 @@ func (c *Collector) buildCommonMetadataTags() map[string]string {
 		labelCluster:   c.clusterName,
 		labelNamespace: c.namespace,
 	}
-	for k, v := range c.runtimeConfig.MetricsLabels() {
-		tags[k] = v
-	}
+	maps.Copy(tags, c.runtimeConfig.MetricsLabels())
 	return tags
 }
 
@@ -409,8 +408,8 @@ func (c *Collector) collectNode(ctx context.Context, node nodeInfo, password str
 
 // processSubmetrics handles compound values like "calls=100,usec=500,usec_per_call=5.0".
 func (c *Collector) processSubmetrics(metricName, rawValue string, tags map[string]string) {
-	parts := strings.Split(rawValue, ",")
-	for _, part := range parts {
+	parts := strings.SplitSeq(rawValue, ",")
+	for part := range parts {
 		subKey, subVal, ok := strings.Cut(part, "=")
 		if !ok {
 			continue
@@ -442,8 +441,8 @@ func (c *Collector) processSingleMetric(name, rawValue string, tags map[string]s
 func (c *Collector) processKeyspaceMetrics(keyspaces map[string]string, tags map[string]string) {
 	for dbName, value := range keyspaces {
 		additionalLabels := map[string]string{"database": dbName}
-		parts := strings.Split(value, ",")
-		for _, part := range parts {
+		parts := strings.SplitSeq(value, ",")
+		for part := range parts {
 			subKey, subVal, ok := strings.Cut(part, "=")
 			if !ok {
 				continue
@@ -509,9 +508,7 @@ func (c *Collector) processClusterInfo(info *redis.ClusterInfo) {
 
 	// Expose stable string fields as a single info-style metric with labels.
 	infoTags := make(map[string]string, len(tags)+1)
-	for k, v := range tags {
-		infoTags[k] = v
-	}
+	maps.Copy(infoTags, tags)
 	infoTags["cluster_state"] = info.State
 
 	infoLabelKeys := make([]string, 0, len(infoTags))
