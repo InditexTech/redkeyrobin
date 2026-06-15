@@ -712,10 +712,30 @@ func UpdateStatefulSetTemplate(ctx context.Context, c client.Client, clusterName
 		}
 	}
 
-	// Replace the pod template with the freshly-built desired one. StatefulSet
-	// identity (replicas, selector, serviceName, volumeClaimTemplates) is left
-	// untouched on the existing object.
-	sts.Spec.Template = base.Spec.Template
+	// Preserve the StatefulSet identity / immutable fields from the existing
+	// object. Kubernetes rejects in-place changes to these, and they are owned by
+	// the operator's scaling and upgrade logic — never by user overrides:
+	//   - spec.replicas               — driven by the primaries/replicas formula
+	//   - spec.selector               — must keep matching the managed pods
+	//   - spec.serviceName            — must match the headless Service
+	//   - spec.podManagementPolicy    — immutable after creation
+	//   - spec.volumeClaimTemplates   — immutable after creation
+	base.Spec.Replicas = sts.Spec.Replicas
+	base.Spec.Selector = sts.Spec.Selector
+	base.Spec.ServiceName = sts.Spec.ServiceName
+	base.Spec.PodManagementPolicy = sts.Spec.PodManagementPolicy
+	base.Spec.VolumeClaimTemplates = sts.Spec.VolumeClaimTemplates
+
+	// Apply the fully-rebuilt desired object so that EVERY override-managed field
+	// is reconciled on the existing StatefulSet — its own metadata (labels and
+	// annotations) and all mutable spec fields (pod template, minReadySeconds,
+	// revisionHistoryLimit, PVC retention policy, ordinals, ...) — not just the
+	// pod template. The pod template's labels/annotations already are a merge of
+	// the cluster selector labels, spec.labels/spec.annotations and the override
+	// template metadata, performed by buildStatefulSet + applyStatefulSetOverride.
+	sts.Labels = base.Labels
+	sts.Annotations = base.Annotations
+	sts.Spec = base.Spec
 
 	// Stamp the config checksum so a change in redis.conf triggers pod recreation.
 	if sts.Spec.Template.Annotations == nil {

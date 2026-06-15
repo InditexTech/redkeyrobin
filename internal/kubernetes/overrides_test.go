@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
@@ -522,6 +523,232 @@ func TestReconcileService_RemovingOverrideReverts(t *testing.T) {
 	}
 	if hasServicePort(svc, "metrics") {
 		t.Error("expected metrics port to be removed after override removal")
+	}
+}
+
+// --- UpdateStatefulSetTemplate: full override application on an existing object ---
+
+// createClusterStatefulSet creates the cluster objects and returns the fake client
+// with an existing StatefulSet ready to be updated.
+func createClusterStatefulSet(t *testing.T, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) client.Client {
+	t.Helper()
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(owner).
+		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		Build()
+	if err := EnsureClusterObjects(context.Background(), fakeClient, config, owner, ""); err != nil {
+		t.Fatalf("EnsureClusterObjects failed: %v", err)
+	}
+	return fakeClient
+}
+
+func getStatefulSet(t *testing.T, c client.Client) *appsv1.StatefulSet {
+	t.Helper()
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "test-cluster", Namespace: "default"}, sts); err != nil {
+		t.Fatalf("StatefulSet not found: %v", err)
+	}
+	return sts
+}
+
+// TestUpdateStatefulSetTemplate_SyncsTopLevelMetadata verifies that adding a
+// StatefulSet override metadata (labels/annotations) to an EXISTING cluster is
+// reconciled onto the StatefulSet's own metadata, not just the pod template.
+func TestUpdateStatefulSetTemplate_SyncsTopLevelMetadata(t *testing.T) {
+	owner := testOwner()
+	config := testConfig()
+	fakeClient := createClusterStatefulSet(t, config, owner)
+
+	// Add an override after creation and run the update path used by upgrades.
+	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+		StatefulSet: &redisv1.PartialStatefulSet{
+			Metadata: metav1.ObjectMeta{
+				Labels:      map[string]string{"inditex.dev/test": "test"},
+				Annotations: map[string]string{"traffic.inditex.dev/weight": "10"},
+			},
+		},
+	}
+	if err := UpdateStatefulSetTemplate(context.Background(), fakeClient, "test-cluster", "default", config, owner, "checksum-1"); err != nil {
+		t.Fatalf("UpdateStatefulSetTemplate failed: %v", err)
+	}
+
+	sts := getStatefulSet(t, fakeClient)
+	if sts.Labels["inditex.dev/test"] != "test" {
+		t.Errorf("expected override label on StatefulSet metadata, got %v", sts.Labels)
+	}
+	if sts.Annotations["traffic.inditex.dev/weight"] != "10" {
+		t.Errorf("expected override annotation on StatefulSet metadata, got %v", sts.Annotations)
+	}
+	// The cluster identity label must be preserved.
+	if sts.Labels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected cluster label preserved, got %v", sts.Labels)
+	}
+}
+
+// TestUpdateStatefulSetTemplate_MergesPodTemplateMetadata verifies that pod
+// template metadata from the override is MERGED with the labels/annotations the
+// pods already carry (cluster selector labels + spec.labels), never replacing them.
+func TestUpdateStatefulSetTemplate_MergesPodTemplateMetadata(t *testing.T) {
+	owner := testOwner()
+	config := testConfig()
+	specLabels := map[string]string{"team": "a-team"}
+	specAnnotations := map[string]string{"custom-annotation": "custom-value"}
+	config.Spec.Labels = &specLabels
+	config.Spec.Annotations = &specAnnotations
+	fakeClient := createClusterStatefulSet(t, config, owner)
+
+	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+		StatefulSet: &redisv1.PartialStatefulSet{
+			Spec: &redisv1.PartialStatefulSetSpec{
+				Template: &redisv1.PartialPodTemplateSpec{
+					Metadata: metav1.ObjectMeta{
+						Labels:      map[string]string{"inditex.dev/test": "test"},
+						Annotations: map[string]string{"sidecar.io/inject": "true"},
+					},
+				},
+			},
+		},
+	}
+	if err := UpdateStatefulSetTemplate(context.Background(), fakeClient, "test-cluster", "default", config, owner, "checksum-1"); err != nil {
+		t.Fatalf("UpdateStatefulSetTemplate failed: %v", err)
+	}
+
+	sts := getStatefulSet(t, fakeClient)
+	podLabels := sts.Spec.Template.Labels
+	// Override label is present.
+	if podLabels["inditex.dev/test"] != "test" {
+		t.Errorf("expected override pod label, got %v", podLabels)
+	}
+	// Existing pod labels are preserved (merge, not replace).
+	if podLabels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected cluster selector label preserved on pods, got %v", podLabels)
+	}
+	if podLabels["team"] != "a-team" {
+		t.Errorf("expected spec.labels preserved on pods, got %v", podLabels)
+	}
+
+	podAnnotations := sts.Spec.Template.Annotations
+	if podAnnotations["sidecar.io/inject"] != "true" {
+		t.Errorf("expected override pod annotation, got %v", podAnnotations)
+	}
+	if podAnnotations["custom-annotation"] != "custom-value" {
+		t.Errorf("expected spec.annotations preserved on pods, got %v", podAnnotations)
+	}
+	// The config checksum must always be stamped.
+	if podAnnotations[ConfigChecksumAnnotation] != "checksum-1" {
+		t.Errorf("expected config checksum annotation, got %v", podAnnotations)
+	}
+}
+
+// TestUpdateStatefulSetTemplate_AppliesPodSpecOverride verifies that a full pod
+// spec override (sidecars, tolerations, topology spread, container env) is applied
+// to the existing StatefulSet while the cluster identity fields are preserved.
+func TestUpdateStatefulSetTemplate_AppliesPodSpecOverride(t *testing.T) {
+	owner := testOwner()
+	config := testConfig()
+	fakeClient := createClusterStatefulSet(t, config, owner)
+
+	existing := getStatefulSet(t, fakeClient)
+	wantReplicas := *existing.Spec.Replicas
+	wantServiceName := existing.Spec.ServiceName
+
+	grace := int64(10)
+	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+		StatefulSet: &redisv1.PartialStatefulSet{
+			Spec: &redisv1.PartialStatefulSetSpec{
+				Template: &redisv1.PartialPodTemplateSpec{
+					Spec: redisv1.PartialPodSpec{
+						TerminationGracePeriodSeconds: &grace,
+						Tolerations: []corev1.Toleration{
+							{Key: "test", Operator: corev1.TolerationOpEqual, Value: "test", Effect: corev1.TaintEffectNoSchedule},
+						},
+						TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
+							{MaxSkew: 1, TopologyKey: "kubernetes.io/hostname", WhenUnsatisfiable: corev1.DoNotSchedule},
+						},
+						Containers: []corev1.Container{
+							{Name: "nginx", Image: "nginx"},
+							{Name: "redis", Env: []corev1.EnvVar{{Name: "test", Value: "test"}}},
+						},
+					},
+				},
+			},
+		},
+	}
+	if err := UpdateStatefulSetTemplate(context.Background(), fakeClient, "test-cluster", "default", config, owner, "checksum-1"); err != nil {
+		t.Fatalf("UpdateStatefulSetTemplate failed: %v", err)
+	}
+
+	sts := getStatefulSet(t, fakeClient)
+	podSpec := sts.Spec.Template.Spec
+
+	if podSpec.TerminationGracePeriodSeconds == nil || *podSpec.TerminationGracePeriodSeconds != 10 {
+		t.Errorf("expected terminationGracePeriodSeconds=10, got %v", podSpec.TerminationGracePeriodSeconds)
+	}
+	if len(podSpec.Tolerations) != 1 || podSpec.Tolerations[0].Key != "test" {
+		t.Errorf("expected test toleration, got %v", podSpec.Tolerations)
+	}
+	if len(podSpec.TopologySpreadConstraints) != 1 {
+		t.Errorf("expected one topology spread constraint, got %v", podSpec.TopologySpreadConstraints)
+	}
+	if !hasContainer(sts, "nginx") {
+		t.Error("expected nginx sidecar to be added")
+	}
+	// The redis container must remain at index 0 with the override env applied.
+	if podSpec.Containers[0].Name != "redis" {
+		t.Fatalf("expected redis container at index 0, got %q", podSpec.Containers[0].Name)
+	}
+	if len(podSpec.Containers[0].Env) == 0 || podSpec.Containers[0].Env[0].Name != "test" {
+		t.Errorf("expected env override on redis container, got %v", podSpec.Containers[0].Env)
+	}
+
+	// Identity preserved.
+	if *sts.Spec.Replicas != wantReplicas {
+		t.Errorf("expected replicas %d preserved, got %d", wantReplicas, *sts.Spec.Replicas)
+	}
+	if sts.Spec.ServiceName != wantServiceName {
+		t.Errorf("expected serviceName %q preserved, got %q", wantServiceName, sts.Spec.ServiceName)
+	}
+	if sts.Spec.Selector.MatchLabels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected selector preserved, got %v", sts.Spec.Selector.MatchLabels)
+	}
+	// Update strategy must be OnDelete for controlled upgrade recycling.
+	if sts.Spec.UpdateStrategy.Type != appsv1.OnDeleteStatefulSetStrategyType {
+		t.Errorf("expected OnDelete update strategy, got %q", sts.Spec.UpdateStrategy.Type)
+	}
+}
+
+// TestUpdateStatefulSetTemplate_RemovingOverrideReverts verifies that removing a
+// previously-set override reverts the StatefulSet to its base desired state.
+func TestUpdateStatefulSetTemplate_RemovingOverrideReverts(t *testing.T) {
+	owner := testOwner()
+	config := testConfig()
+	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+		StatefulSet: &redisv1.PartialStatefulSet{
+			Metadata: metav1.ObjectMeta{Labels: map[string]string{"inditex.dev/test": "test"}},
+			Spec: &redisv1.PartialStatefulSetSpec{
+				Template: &redisv1.PartialPodTemplateSpec{
+					Spec: redisv1.PartialPodSpec{
+						Tolerations: []corev1.Toleration{{Key: "test", Operator: corev1.TolerationOpExists}},
+					},
+				},
+			},
+		},
+	}
+	fakeClient := createClusterStatefulSet(t, config, owner)
+
+	// Remove the override and update.
+	config.Spec.Override = nil
+	if err := UpdateStatefulSetTemplate(context.Background(), fakeClient, "test-cluster", "default", config, owner, "checksum-2"); err != nil {
+		t.Fatalf("UpdateStatefulSetTemplate failed: %v", err)
+	}
+
+	sts := getStatefulSet(t, fakeClient)
+	if _, ok := sts.Labels["inditex.dev/test"]; ok {
+		t.Errorf("expected override label removed from StatefulSet metadata, got %v", sts.Labels)
+	}
+	if len(sts.Spec.Template.Spec.Tolerations) != 0 {
+		t.Errorf("expected tolerations removed after override removal, got %v", sts.Spec.Template.Spec.Tolerations)
 	}
 }
 
