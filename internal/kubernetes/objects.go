@@ -255,7 +255,7 @@ func ensureConfigMap(ctx context.Context, c client.Client, clusterName, namespac
 }
 
 func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyClusterConfig, password string) *corev1.ConfigMap {
-	redisConf := buildRedisConf(config.Spec.RedisConfig, password, config.Spec.Ephemeral, config.Spec.ReplicasPerPrimary)
+	redisConf := buildRedisConf(config.Spec.RedisConfig, password, config.Spec.Ephemeral, config.Spec.ReplicasPerPrimary, config.Spec.IsStandalone())
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterName,
@@ -287,8 +287,20 @@ var clusterDefaults = []string{
 	"cluster-allow-reads-when-down yes",
 }
 
-func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrimary int32) string {
-	lines := append([]string{}, clusterDefaults...)
+// standaloneDefaults contains the Redis configuration parameters Redkey applies to a
+// standalone (single-node, non-clustered) deployment. Redis Cluster mode is disabled;
+// no cluster topology metadata or slot-coverage settings are needed.
+var standaloneDefaults = []string{
+	"cluster-enabled no",
+}
+
+func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrimary int32, standalone bool) string {
+	var lines []string
+	if standalone {
+		lines = append(lines, standaloneDefaults...)
+	} else {
+		lines = append(lines, clusterDefaults...)
+	}
 
 	if ephemeral {
 		lines = append(lines, "appendonly no", "save \"\"")
@@ -809,6 +821,29 @@ func GetStatefulSetUpdateRevision(ctx context.Context, c client.Client, clusterN
 	return sts.Status.UpdateRevision, nil
 }
 
+// GetStatefulSetUpdateRevisionObserved returns the StatefulSet's UpdateRevision, but only
+// after the StatefulSet controller has observed the latest spec change — i.e. once
+// Status.ObservedGeneration has caught up with metadata.Generation. Until then it returns
+// ("", false, nil) so the caller waits instead of comparing against a stale revision.
+//
+// This guards against a race when the pod template is updated and the revision is checked
+// within the same reconcile pass: right after the spec Update the API server bumps
+// Generation, but the controller has not yet recomputed Status.UpdateRevision (it still
+// points at the previous template). Comparing then would wrongly conclude the pod already
+// runs the desired revision and skip recycling it.
+func GetStatefulSetUpdateRevisionObserved(
+	ctx context.Context, c client.Client, clusterName, namespace string,
+) (string, bool, error) {
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
+		return "", false, fmt.Errorf("getting StatefulSet %s for update revision: %w", clusterName, err)
+	}
+	if sts.Status.ObservedGeneration < sts.Generation {
+		return "", false, nil
+	}
+	return sts.Status.UpdateRevision, true, nil
+}
+
 // DeletePod deletes a specific pod by name. It is used during fast upgrade to force pod recreation.
 func DeletePod(ctx context.Context, c client.Client, podName, namespace string) error {
 	pod := &corev1.Pod{
@@ -845,7 +880,7 @@ func UpdateConfigMap(ctx context.Context, c client.Client, clusterName, namespac
 		return fmt.Errorf("getting ConfigMap %s: %w", clusterName, err)
 	}
 
-	conf := buildRedisConf(config.Spec.RedisConfig, password, config.Spec.Ephemeral, config.Spec.ReplicasPerPrimary)
+	conf := buildRedisConf(config.Spec.RedisConfig, password, config.Spec.Ephemeral, config.Spec.ReplicasPerPrimary, config.Spec.IsStandalone())
 	if cm.Data == nil {
 		cm.Data = make(map[string]string)
 	}

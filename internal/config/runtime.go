@@ -102,6 +102,11 @@ type RuntimeConfig struct {
 	// Written by the reconciler when it reads the RedkeyClusterConfig,
 	// read by the metrics server on every request to /debug/pprof/*.
 	profilingEnabled atomic.Bool
+
+	// standalone reports whether the deployment is a single-node, non-clustered
+	// Redis instance. Uses atomic.Bool for lock-free reads from the metrics
+	// collector. Written by the reconciler when it reads the RedkeyClusterConfig.
+	standalone atomic.Bool
 }
 
 // NewRuntimeConfig creates a RuntimeConfig with default values.
@@ -320,4 +325,15 @@ func (rc *RuntimeConfig) ProfilingEnabled() bool {
 // SetProfilingEnabled sets the profiling state. Used for bootstrap from CLI flags.
 func (rc *RuntimeConfig) SetProfilingEnabled(enabled bool) {
 	rc.profilingEnabled.Store(enabled)
+}
+
+// Standalone returns whether the deployment is a single-node, non-clustered
+// instance. Safe to call from any goroutine without locking (uses atomic.Bool).
+func (rc *RuntimeConfig) Standalone() bool {
+	return rc.standalone.Load()
+}
+
+// SetStandalone records whether the deployment is standalone.
+func (rc *RuntimeConfig) SetStandalone(standalone bool) {
+	rc.standalone.Store(standalone)
 }

@@ -206,6 +206,23 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 		// This must happen after copyPreviousClusterStatus (which sets Status to Ready)
 		// because ReconcileCluster dispatches on Status.Status.
 		if previousConfig != nil {
+			// Standalone deployments use a dedicated config-change handler that
+			// never issues CLUSTER commands. It fully drives the transition (it
+			// sets the next status and ensures objects when needed), so the next
+			// reconcile cycle resumes via ReconcileCluster.
+			if targetConfig.Spec.IsStandalone() {
+				schedule, err := r.clusterReconciler.handleStandaloneConfigChange(ctx, targetConfig, previousConfig)
+				if err != nil {
+					r.logger.Error("Standalone config change error", "error", err)
+					scheduleRequired = schedule
+					onReconcilingError = true
+					break
+				}
+				scheduleRequired = schedule
+				onReconcilingError = false
+				break
+			}
+
 			schedule, err := r.clusterReconciler.handleConfigChange(ctx, targetConfig, previousConfig)
 			if err != nil {
 				r.logger.Error("Config change detection error", "error", err)
@@ -408,6 +425,10 @@ func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyClusterConfig, previ
 
 	// Update topology for node discovery (always from the effective config).
 	r.runtimeConfig.SetTopology(effectiveConfig.Spec.Primaries, effectiveConfig.Spec.ReplicasPerPrimary)
+
+	// Track whether this is a standalone (single-node, non-clustered) deployment
+	// so the metrics collector can skip cluster-level collection.
+	r.runtimeConfig.SetStandalone(effectiveConfig.Spec.IsStandalone())
 
 	// Update auth secret name so the metrics collector can read the password.
 	r.runtimeConfig.SetAuthSecret(effectiveConfig.Spec.Auth.SecretName)

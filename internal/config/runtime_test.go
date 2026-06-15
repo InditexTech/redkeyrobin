@@ -12,9 +12,6 @@ import (
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 )
 
-//go:fix inline
-func intPtr(v int) *int { return new(v) }
-
 func TestNewRuntimeConfig_Defaults(t *testing.T) {
 	rc := NewRuntimeConfig()
 

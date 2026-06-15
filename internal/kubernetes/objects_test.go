@@ -743,7 +743,7 @@ func TestBuildRedisConf_ClusterDefaultsApplied(t *testing.T) {
 
 	for _, tc := range topologies {
 		t.Run(tc.name, func(t *testing.T) {
-			conf := buildRedisConf("", "", tc.ephemeral, tc.replicasPerPrimary)
+			conf := buildRedisConf("", "", tc.ephemeral, tc.replicasPerPrimary, false)
 			for _, param := range clusterDefaults {
 				if !contains(conf, param) {
 					t.Errorf("expected default param %q in redis.conf for topology %s", param, tc.name)
@@ -754,7 +754,7 @@ func TestBuildRedisConf_ClusterDefaultsApplied(t *testing.T) {
 }
 
 func TestBuildRedisConf_RequireFullCoverageNo(t *testing.T) {
-	conf := buildRedisConf("", "", true, 0)
+	conf := buildRedisConf("", "", true, 0, false)
 	if !contains(conf, "cluster-require-full-coverage no") {
 		t.Error("expected 'cluster-require-full-coverage no' in redis.conf")
 	}
@@ -762,12 +762,12 @@ func TestBuildRedisConf_RequireFullCoverageNo(t *testing.T) {
 
 func TestBuildRedisConf_AllowReadsWhenDownAllTopologies(t *testing.T) {
 	// cluster-allow-reads-when-down must be present even without replicas
-	conf := buildRedisConf("", "", true, 0)
+	conf := buildRedisConf("", "", true, 0, false)
 	if !contains(conf, "cluster-allow-reads-when-down yes") {
 		t.Error("expected 'cluster-allow-reads-when-down yes' for ephemeral no-replicas")
 	}
 
-	conf = buildRedisConf("", "", false, 0)
+	conf = buildRedisConf("", "", false, 0, false)
 	if !contains(conf, "cluster-allow-reads-when-down yes") {
 		t.Error("expected 'cluster-allow-reads-when-down yes' for persistent no-replicas")
 	}
@@ -776,7 +776,7 @@ func TestBuildRedisConf_AllowReadsWhenDownAllTopologies(t *testing.T) {
 func TestBuildRedisConf_UserConfigOverridesDefaults(t *testing.T) {
 	// User sets cluster-require-full-coverage yes — it should appear AFTER the default 'no'
 	userConf := "cluster-require-full-coverage yes"
-	conf := buildRedisConf(userConf, "", true, 0)
+	conf := buildRedisConf(userConf, "", true, 0, false)
 
 	// Both should be present (last-write-wins in Redis)
 	if !contains(conf, "cluster-require-full-coverage no") {
@@ -844,5 +844,91 @@ func TestGetConfigMapPassword(t *testing.T) {
 	}
 	if found {
 		t.Fatal("expected found=false for missing ConfigMap")
+	}
+}
+
+// --- Standalone (single-node, non-clustered) tests ---
+
+func standaloneConfig() *redisv1.RedkeyClusterConfig {
+	return &redisv1.RedkeyClusterConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-config-standalone",
+			Namespace: "default",
+		},
+		Spec: redisv1.RedkeyClusterConfigSpec{
+			Sequence:           1,
+			Mode:               redisv1.ModeStandalone,
+			Primaries:          1,
+			ReplicasPerPrimary: 0,
+			Ephemeral:          true,
+			Image:              "redis:7",
+		},
+	}
+}
+
+func TestBuildRedisConf_StandaloneDisablesCluster(t *testing.T) {
+	conf := buildRedisConf("", "", true, 0, true)
+	if !contains(conf, "cluster-enabled no") {
+		t.Error("expected 'cluster-enabled no' for standalone mode")
+	}
+	// None of the cluster-only defaults must be present in standalone mode.
+	for _, param := range clusterDefaults {
+		if contains(conf, param) {
+			t.Errorf("did not expect cluster default %q in standalone redis.conf", param)
+		}
+	}
+}
+
+func TestBuildConfigMap_Standalone(t *testing.T) {
+	config := standaloneConfig()
+	cm := buildConfigMap("test-cluster", "default", config, "")
+
+	conf := cm.Data["redis.conf"]
+	if !contains(conf, "cluster-enabled no") {
+		t.Error("expected 'cluster-enabled no' in standalone ConfigMap")
+	}
+	if contains(conf, "cluster-enabled yes") {
+		t.Error("did not expect 'cluster-enabled yes' in standalone ConfigMap")
+	}
+}
+
+func TestBuildStatefulSet_StandaloneSingleReplica(t *testing.T) {
+	config := standaloneConfig()
+	owner := testOwner()
+	owner.Spec.Mode = redisv1.ModeStandalone
+	owner.Spec.Primaries = 1
+	owner.Spec.ReplicasPerPrimary = 0
+
+	sts := buildStatefulSet("test-cluster", "default", config, owner)
+
+	if *sts.Spec.Replicas != 1 {
+		t.Fatalf("expected 1 replica for standalone, got %d", *sts.Spec.Replicas)
+	}
+}
+
+func TestBuildStatefulSet_StandaloneWithStorage(t *testing.T) {
+	config := standaloneConfig()
+	config.Spec.Ephemeral = false
+	config.Spec.Storage = "5Gi"
+
+	owner := testOwner()
+	owner.Spec.Mode = redisv1.ModeStandalone
+	owner.Spec.Primaries = 1
+	owner.Spec.ReplicasPerPrimary = 0
+	owner.Spec.Ephemeral = false
+	owner.Spec.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+
+	sts := buildStatefulSet("test-cluster", "default", config, owner)
+
+	if *sts.Spec.Replicas != 1 {
+		t.Fatalf("expected 1 replica for standalone, got %d", *sts.Spec.Replicas)
+	}
+	if len(sts.Spec.VolumeClaimTemplates) != 1 {
+		t.Fatalf("expected 1 VolumeClaimTemplate for standalone with storage, got %d", len(sts.Spec.VolumeClaimTemplates))
+	}
+	expectedStorage := resource.MustParse("5Gi")
+	actualStorage := sts.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage]
+	if !actualStorage.Equal(expectedStorage) {
+		t.Fatalf("expected storage '%s', got '%s'", expectedStorage.String(), actualStorage.String())
 	}
 }

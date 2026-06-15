@@ -77,6 +77,13 @@ func (cr *ClusterReconciler) Close() {
 // It returns whether the outer reconciliation loop should run immediately again
 // or wait for the configured interval.
 func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (schedule reconcileSchedule, err error) {
+	// Standalone (single-node, non-clustered) deployments follow a simplified
+	// lifecycle that never issues CLUSTER commands. Route them to a dedicated
+	// reconcile path.
+	if targetConfig.Spec.IsStandalone() {
+		return cr.reconcileStandalone(ctx, targetConfig, previousConfig)
+	}
+
 	switch targetConfig.Status.Status {
 	case "":
 		if previousConfig == nil {

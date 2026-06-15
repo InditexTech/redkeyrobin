@@ -54,9 +54,6 @@ func createAppliedConfig(name string, seq int, primaries, replicas int32) *redis
 	return cfg
 }
 
-//go:fix inline
-func intPtrHelper(v int) *int { return new(v) }
-
 var _ = Describe("Config Changes Detection (integration)", func() {
 	AfterEach(func() {
 		cleanup()

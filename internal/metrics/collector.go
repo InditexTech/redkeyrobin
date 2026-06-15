@@ -147,8 +147,14 @@ func (c *Collector) collect(ctx context.Context) {
 		}
 	}
 
-	// Collect cluster-level metrics regardless of INFO key selection.
-	c.collectClusterMetrics(ctx, nodes, password)
+	// Collect cluster-level metrics regardless of INFO key selection. In
+	// standalone (single-node, non-clustered) mode the node has cluster support
+	// disabled, so CLUSTER commands fail and cluster-level metrics do not apply.
+	if c.runtimeConfig.Standalone() {
+		c.logger.Debug("Standalone mode, skipping cluster-level metrics collection")
+	} else {
+		c.collectClusterMetrics(ctx, nodes, password)
+	}
 
 	c.logger.Info("Metrics collection cycle completed", "duration", time.Since(start).String(), "collectedNodes", collectedNodes, "failedNodes", failedNodes)
 }
