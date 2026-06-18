@@ -246,9 +246,22 @@ func ensureConfigMap(ctx context.Context, c client.Client, clusterName, namespac
 		return err
 	}
 
-	// Update if data changed
+	// Update if data, labels or annotations drifted. Setting the full desired maps
+	// also prunes keys that were removed from spec.labels / spec.annotations.
+	changed := false
 	if existing.Data["redis.conf"] != desired.Data["redis.conf"] {
 		existing.Data = desired.Data
+		changed = true
+	}
+	if !reflect.DeepEqual(existing.Labels, desired.Labels) {
+		existing.Labels = desired.Labels
+		changed = true
+	}
+	if !reflect.DeepEqual(existing.Annotations, desired.Annotations) {
+		existing.Annotations = desired.Annotations
+		changed = true
+	}
+	if changed {
 		return c.Update(ctx, existing)
 	}
 	return nil
@@ -256,11 +269,14 @@ func ensureConfigMap(ctx context.Context, c client.Client, clusterName, namespac
 
 func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyClusterConfig, password string) *corev1.ConfigMap {
 	redisConf := buildRedisConf(config.Spec.RedisConfig, password, config.Spec.Ephemeral, config.Spec.ReplicasPerPrimary, config.Spec.IsStandalone())
+	specLabels := derefMap(config.Spec.Labels)
+	specAnnotations := derefMap(config.Spec.Annotations)
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterName,
-			Namespace: namespace,
-			Labels:    clusterLabels(clusterName),
+			Name:        clusterName,
+			Namespace:   namespace,
+			Labels:      mergeMeta(specLabels, nil, clusterLabels(clusterName)),
+			Annotations: mergeMeta(specAnnotations, nil, nil),
 		},
 		Data: map[string]string{"redis.conf": redisConf},
 	}
@@ -332,10 +348,10 @@ func ReconcileService(ctx context.Context, c client.Client, config *redisv1.Redk
 }
 
 func ensureService(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
-	desired := buildService(clusterName, namespace)
+	desired := buildService(clusterName, namespace, config)
 	if config.Spec.Override != nil && config.Spec.Override.Service != nil {
 		var err error
-		desired, err = applyServiceOverride(desired, config.Spec.Override.Service)
+		desired, err = applyServiceOverride(desired, config.Spec.Override.Service, clusterName, derefMap(config.Spec.Labels), derefMap(config.Spec.Annotations))
 		if err != nil {
 			return err
 		}
@@ -374,12 +390,15 @@ func serviceNeedsUpdate(existing, desired *corev1.Service) bool {
 		!reflect.DeepEqual(existing.Annotations, desired.Annotations)
 }
 
-func buildService(clusterName, namespace string) *corev1.Service {
+func buildService(clusterName, namespace string, config *redisv1.RedkeyClusterConfig) *corev1.Service {
+	specLabels := derefMap(config.Spec.Labels)
+	specAnnotations := derefMap(config.Spec.Annotations)
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterName,
-			Namespace: namespace,
-			Labels:    clusterLabels(clusterName),
+			Name:        clusterName,
+			Namespace:   namespace,
+			Labels:      mergeMeta(specLabels, nil, clusterLabels(clusterName)),
+			Annotations: mergeMeta(specAnnotations, nil, nil),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -409,7 +428,7 @@ func ensureStatefulSet(ctx context.Context, c client.Client, clusterName, namesp
 	desired := buildStatefulSet(clusterName, namespace, config, owner)
 	if config.Spec.Override != nil && config.Spec.Override.StatefulSet != nil {
 		var err error
-		desired, err = applyStatefulSetOverride(desired, config.Spec.Override.StatefulSet)
+		desired, err = applyStatefulSetOverride(desired, config.Spec.Override.StatefulSet, clusterName, derefMap(config.Spec.Labels), derefMap(config.Spec.Annotations))
 		if err != nil {
 			return err
 		}
@@ -436,25 +455,24 @@ func buildStatefulSet(clusterName, namespace string, config *redisv1.RedkeyClust
 	labels := clusterLabels(clusterName)
 	podManagement := appsv1.ParallelPodManagement
 
-	// Build pod labels: base labels + custom labels from spec.
-	podLabels := clusterLabels(clusterName)
-	if config.Spec.Labels != nil {
-		maps.Copy(podLabels, *config.Spec.Labels)
-	}
+	specLabels := derefMap(config.Spec.Labels)
+	specAnnotations := derefMap(config.Spec.Annotations)
 
-	// Build pod annotations from spec.
-	var podAnnotations map[string]string
-	if config.Spec.Annotations != nil {
-		podAnnotations = make(map[string]string, len(*config.Spec.Annotations))
-		maps.Copy(podAnnotations, *config.Spec.Annotations)
-	}
+	// Object and pod metadata: spec.labels / spec.annotations decorate the objects,
+	// but the internal cluster labels (also the selector labels) always win. Separate
+	// maps are built for the StatefulSet metadata and the pod template so later
+	// mutations (e.g. the config-checksum annotation) cannot leak across them.
+	stsLabels := mergeMeta(specLabels, nil, clusterLabels(clusterName))
+	stsAnnotations := mergeMeta(specAnnotations, nil, nil)
+	podLabels := mergeMeta(specLabels, nil, clusterLabels(clusterName))
+	podAnnotations := mergeMeta(specAnnotations, nil, nil)
 
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        clusterName,
 			Namespace:   namespace,
-			Labels:      podLabels,
-			Annotations: podAnnotations,
+			Labels:      stsLabels,
+			Annotations: stsAnnotations,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas:            &replicas,
@@ -576,11 +594,16 @@ func ensurePDB(ctx context.Context, c client.Client, clusterName, namespace stri
 		return err
 	}
 
-	// Update the existing PDB if its spec drifted from the desired state.
+	// Update the existing PDB if its spec, labels or annotations drifted from the
+	// desired state. Setting the full desired maps also prunes removed keys.
 	if !reflect.DeepEqual(existing.Spec.MinAvailable, desired.Spec.MinAvailable) ||
-		!reflect.DeepEqual(existing.Spec.MaxUnavailable, desired.Spec.MaxUnavailable) {
+		!reflect.DeepEqual(existing.Spec.MaxUnavailable, desired.Spec.MaxUnavailable) ||
+		!reflect.DeepEqual(existing.Labels, desired.Labels) ||
+		!reflect.DeepEqual(existing.Annotations, desired.Annotations) {
 		existing.Spec.MinAvailable = desired.Spec.MinAvailable
 		existing.Spec.MaxUnavailable = desired.Spec.MaxUnavailable
+		existing.Labels = desired.Labels
+		existing.Annotations = desired.Annotations
 		return c.Update(ctx, existing)
 	}
 
@@ -588,11 +611,14 @@ func ensurePDB(ctx context.Context, c client.Client, clusterName, namespace stri
 }
 
 func buildPDB(pdbName, clusterName, namespace string, config *redisv1.RedkeyClusterConfig) *policyv1.PodDisruptionBudget {
+	specLabels := derefMap(config.Spec.Labels)
+	specAnnotations := derefMap(config.Spec.Annotations)
 	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pdbName,
-			Namespace: namespace,
-			Labels:    clusterLabels(clusterName),
+			Name:        pdbName,
+			Namespace:   namespace,
+			Labels:      mergeMeta(specLabels, nil, clusterLabels(clusterName)),
+			Annotations: mergeMeta(specAnnotations, nil, nil),
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
@@ -617,6 +643,42 @@ func clusterLabels(clusterName string) map[string]string {
 		ClusterLabel:   clusterName,
 		ComponentLabel: ComponentRedis,
 	}
+}
+
+// derefMap returns the map pointed to by m, or nil when m is nil. It is a
+// convenience for the optional spec.labels / spec.annotations pointer fields.
+func derefMap(m *map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	return *m
+}
+
+// mergeMeta computes the final labels (or annotations) for a managed object by
+// combining three sources with a fixed precedence:
+//
+//  1. spec: the user-provided spec.labels / spec.annotations from the RedkeyCluster.
+//  2. override: labels / annotations defined in an override block (Service,
+//     StatefulSet, or pod template). When the override defines any entry it fully
+//     REPLACES the spec source (block replacement); the spec entries are discarded.
+//  3. base: the internal labels / annotations Redkey requires for correct operation
+//     (cluster identity / selector labels, ...). These always win and are applied
+//     last so user input can never shadow them.
+//
+// The result is a freshly allocated map (independent per call), or nil when the
+// combined result would be empty.
+func mergeMeta(spec, override, base map[string]string) map[string]string {
+	out := make(map[string]string, len(spec)+len(override)+len(base))
+	if len(override) > 0 {
+		maps.Copy(out, override)
+	} else {
+		maps.Copy(out, spec)
+	}
+	maps.Copy(out, base)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func createProbe(initial, period int32) *corev1.Probe {
@@ -706,7 +768,7 @@ func UpdateStatefulSetTemplate(ctx context.Context, c client.Client, clusterName
 	base := buildStatefulSet(clusterName, namespace, config, owner)
 	if config.Spec.Override != nil && config.Spec.Override.StatefulSet != nil {
 		var err error
-		base, err = applyStatefulSetOverride(base, config.Spec.Override.StatefulSet)
+		base, err = applyStatefulSetOverride(base, config.Spec.Override.StatefulSet, clusterName, derefMap(config.Spec.Labels), derefMap(config.Spec.Annotations))
 		if err != nil {
 			return fmt.Errorf("applying StatefulSet override for template update: %w", err)
 		}

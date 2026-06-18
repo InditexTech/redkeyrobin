@@ -43,7 +43,7 @@ var requiredServicePortNames = map[string]struct{}{
 //   - spec.volumeClaimTemplates, unless the override sets its own
 //
 // A nil override returns the base unchanged.
-func applyStatefulSetOverride(base *appsv1.StatefulSet, override *redisv1.PartialStatefulSet) (*appsv1.StatefulSet, error) {
+func applyStatefulSetOverride(base *appsv1.StatefulSet, override *redisv1.PartialStatefulSet, clusterName string, specLabels, specAnnotations map[string]string) (*appsv1.StatefulSet, error) {
 	if override == nil {
 		return base, nil
 	}
@@ -87,6 +87,23 @@ func applyStatefulSetOverride(base *appsv1.StatefulSet, override *redisv1.Partia
 		result.Spec.VolumeClaimTemplates = baseVCT
 	}
 
+	// --- Labels / annotations precedence. ---
+	// The strategic merge above blends override metadata into the base key by key,
+	// which is not the desired semantics. Recompute the final metadata explicitly:
+	// an override block fully replaces spec.labels / spec.annotations for the level
+	// it targets (block replacement), and the internal cluster labels always win.
+	clusterBase := clusterLabels(clusterName)
+	result.Labels = mergeMeta(specLabels, override.Metadata.Labels, clusterBase)
+	result.Annotations = mergeMeta(specAnnotations, override.Metadata.Annotations, nil)
+
+	var tplLabels, tplAnnotations map[string]string
+	if overrideSpec != nil && overrideSpec.Template != nil {
+		tplLabels = overrideSpec.Template.Metadata.Labels
+		tplAnnotations = overrideSpec.Template.Metadata.Annotations
+	}
+	result.Spec.Template.Labels = mergeMeta(specLabels, tplLabels, clusterBase)
+	result.Spec.Template.Annotations = mergeMeta(specAnnotations, tplAnnotations, nil)
+
 	return result, nil
 }
 
@@ -100,7 +117,7 @@ func applyStatefulSetOverride(base *appsv1.StatefulSet, override *redisv1.Partia
 //   - the "client" and "gossip" ports
 //
 // A nil override returns the base unchanged.
-func applyServiceOverride(base *corev1.Service, override *redisv1.PartialService) (*corev1.Service, error) {
+func applyServiceOverride(base *corev1.Service, override *redisv1.PartialService, clusterName string, specLabels, specAnnotations map[string]string) (*corev1.Service, error) {
 	if override == nil {
 		return base, nil
 	}
@@ -131,6 +148,12 @@ func applyServiceOverride(base *corev1.Service, override *redisv1.PartialService
 	result.Spec.ClusterIP = baseClusterIP
 	result.Spec.Selector = baseSelector
 	restoreRequiredPorts(result, basePorts)
+
+	// --- Labels / annotations precedence. ---
+	// An override block fully replaces spec.labels / spec.annotations (block
+	// replacement), and the internal cluster labels always win.
+	result.Labels = mergeMeta(specLabels, override.Metadata.Labels, clusterLabels(clusterName))
+	result.Annotations = mergeMeta(specAnnotations, override.Metadata.Annotations, nil)
 
 	return result, nil
 }

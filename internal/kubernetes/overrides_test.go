@@ -24,7 +24,7 @@ import (
 
 func TestApplyStatefulSetOverride_Nil(t *testing.T) {
 	base := buildStatefulSet("test-cluster", "default", testConfig(), testOwner())
-	result, err := applyStatefulSetOverride(base, nil)
+	result, err := applyStatefulSetOverride(base, nil, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestApplyStatefulSetOverride_PodTemplateFields(t *testing.T) {
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestApplyStatefulSetOverride_ExtraVolumePreservesConfig(t *testing.T) {
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestApplyStatefulSetOverride_RedisContainerResources(t *testing.T) {
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestApplyStatefulSetOverride_SidecarKeepsRedisFirst(t *testing.T) {
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestApplyStatefulSetOverride_MetadataMerge(t *testing.T) {
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestApplyStatefulSetOverride_GuardRails(t *testing.T) {
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestApplyStatefulSetOverride_RemovingRedisContainerRestoresIt(t *testing.T)
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestApplyStatefulSetOverride_UpdateStrategy(t *testing.T) {
 		},
 	}
 
-	result, err := applyStatefulSetOverride(base, override)
+	result, err := applyStatefulSetOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -270,8 +270,8 @@ func TestApplyStatefulSetOverride_UpdateStrategy(t *testing.T) {
 // --- applyServiceOverride ---
 
 func TestApplyServiceOverride_Nil(t *testing.T) {
-	base := buildService("test-cluster", "default")
-	result, err := applyServiceOverride(base, nil)
+	base := buildService("test-cluster", "default", testConfig())
+	result, err := applyServiceOverride(base, nil, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestApplyServiceOverride_Nil(t *testing.T) {
 }
 
 func TestApplyServiceOverride_MetadataAndType(t *testing.T) {
-	base := buildService("test-cluster", "default")
+	base := buildService("test-cluster", "default", testConfig())
 	override := &redisv1.PartialService{
 		Metadata: metav1.ObjectMeta{
 			Annotations: map[string]string{"service.beta.kubernetes.io/aws-load-balancer-internal": "true"},
@@ -291,7 +291,7 @@ func TestApplyServiceOverride_MetadataAndType(t *testing.T) {
 		},
 	}
 
-	result, err := applyServiceOverride(base, override)
+	result, err := applyServiceOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestApplyServiceOverride_MetadataAndType(t *testing.T) {
 }
 
 func TestApplyServiceOverride_ExtraPortPreservesDefaults(t *testing.T) {
-	base := buildService("test-cluster", "default")
+	base := buildService("test-cluster", "default", testConfig())
 	override := &redisv1.PartialService{
 		Spec: &redisv1.PartialServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -314,7 +314,7 @@ func TestApplyServiceOverride_ExtraPortPreservesDefaults(t *testing.T) {
 		},
 	}
 
-	result, err := applyServiceOverride(base, override)
+	result, err := applyServiceOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestApplyServiceOverride_ExtraPortPreservesDefaults(t *testing.T) {
 }
 
 func TestApplyServiceOverride_GuardRails(t *testing.T) {
-	base := buildService("test-cluster", "default")
+	base := buildService("test-cluster", "default", testConfig())
 	override := &redisv1.PartialService{
 		Spec: &redisv1.PartialServiceSpec{
 			ClusterIP: "10.0.0.1",
@@ -339,7 +339,7 @@ func TestApplyServiceOverride_GuardRails(t *testing.T) {
 		},
 	}
 
-	result, err := applyServiceOverride(base, override)
+	result, err := applyServiceOverride(base, override, "test-cluster", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -586,9 +586,10 @@ func TestUpdateStatefulSetTemplate_SyncsTopLevelMetadata(t *testing.T) {
 	}
 }
 
-// TestUpdateStatefulSetTemplate_MergesPodTemplateMetadata verifies that pod
-// template metadata from the override is MERGED with the labels/annotations the
-// pods already carry (cluster selector labels + spec.labels), never replacing them.
+// TestUpdateStatefulSetTemplate_MergesPodTemplateMetadata verifies the labels /
+// annotations precedence on the pod template: a pod-template override BLOCK-REPLACES
+// spec.labels / spec.annotations (the spec entries are discarded), while the internal
+// cluster selector labels and the config checksum always win.
 func TestUpdateStatefulSetTemplate_MergesPodTemplateMetadata(t *testing.T) {
 	owner := testOwner()
 	config := testConfig()
@@ -620,20 +621,22 @@ func TestUpdateStatefulSetTemplate_MergesPodTemplateMetadata(t *testing.T) {
 	if podLabels["inditex.dev/test"] != "test" {
 		t.Errorf("expected override pod label, got %v", podLabels)
 	}
-	// Existing pod labels are preserved (merge, not replace).
+	// Internal cluster selector label is always preserved.
 	if podLabels[ClusterLabel] != "test-cluster" {
 		t.Errorf("expected cluster selector label preserved on pods, got %v", podLabels)
 	}
-	if podLabels["team"] != "a-team" {
-		t.Errorf("expected spec.labels preserved on pods, got %v", podLabels)
+	// Block replacement: spec.labels are discarded once the override defines labels.
+	if _, ok := podLabels["team"]; ok {
+		t.Errorf("expected spec.labels to be discarded by override, got %v", podLabels)
 	}
 
 	podAnnotations := sts.Spec.Template.Annotations
 	if podAnnotations["sidecar.io/inject"] != "true" {
 		t.Errorf("expected override pod annotation, got %v", podAnnotations)
 	}
-	if podAnnotations["custom-annotation"] != "custom-value" {
-		t.Errorf("expected spec.annotations preserved on pods, got %v", podAnnotations)
+	// Block replacement: spec.annotations are discarded once the override defines annotations.
+	if _, ok := podAnnotations["custom-annotation"]; ok {
+		t.Errorf("expected spec.annotations to be discarded by override, got %v", podAnnotations)
 	}
 	// The config checksum must always be stamped.
 	if podAnnotations[ConfigChecksumAnnotation] != "checksum-1" {

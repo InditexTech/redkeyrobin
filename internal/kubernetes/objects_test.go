@@ -119,7 +119,7 @@ func TestBuildConfigMap_NonEphemeral(t *testing.T) {
 }
 
 func TestBuildService(t *testing.T) {
-	svc := buildService("test-cluster", "default")
+	svc := buildService("test-cluster", "default", testConfig())
 
 	if svc.Name != "test-cluster" {
 		t.Fatalf("expected name 'test-cluster', got '%s'", svc.Name)
@@ -340,6 +340,99 @@ func TestBuildStatefulSet_WithLabelsAndAnnotations(t *testing.T) {
 	// Annotations
 	if sts.Spec.Template.Annotations["note"] != "test" {
 		t.Errorf("expected pod template annotation 'note'='test', got '%s'", sts.Spec.Template.Annotations["note"])
+	}
+}
+
+// TestBuildStatefulSet_BaseLabelsWin verifies that internal base labels always
+// win over colliding spec.labels on both the StatefulSet metadata and the pods.
+func TestBuildStatefulSet_BaseLabelsWin(t *testing.T) {
+	config := testConfig()
+	labels := map[string]string{
+		ClusterLabel:   "hijacked",
+		ComponentLabel: "hijacked",
+		"team":         "infra",
+	}
+	config.Spec.Labels = &labels
+	owner := testOwner()
+
+	sts := buildStatefulSet("test-cluster", "default", config, owner)
+
+	// Base labels win on collision at the pod level.
+	if sts.Spec.Template.Labels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected base ClusterLabel to win, got '%s'", sts.Spec.Template.Labels[ClusterLabel])
+	}
+	if sts.Spec.Template.Labels[ComponentLabel] != ComponentRedis {
+		t.Errorf("expected base ComponentLabel to win, got '%s'", sts.Spec.Template.Labels[ComponentLabel])
+	}
+	// Non-colliding spec label is still applied.
+	if sts.Spec.Template.Labels["team"] != "infra" {
+		t.Errorf("expected spec label 'team'='infra', got '%s'", sts.Spec.Template.Labels["team"])
+	}
+}
+
+// TestBuildConfigMap_PropagatesLabelsAnnotations verifies spec.labels /
+// spec.annotations are applied to the ConfigMap with base labels winning.
+func TestBuildConfigMap_PropagatesLabelsAnnotations(t *testing.T) {
+	config := testConfig()
+	labels := map[string]string{"team": "infra", ClusterLabel: "hijacked"}
+	annotations := map[string]string{"note": "test"}
+	config.Spec.Labels = &labels
+	config.Spec.Annotations = &annotations
+
+	cm := buildConfigMap("test-cluster", "default", config, "")
+
+	if cm.Labels["team"] != "infra" {
+		t.Errorf("expected ConfigMap label 'team'='infra', got '%s'", cm.Labels["team"])
+	}
+	if cm.Labels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected base ClusterLabel to win on ConfigMap, got '%s'", cm.Labels[ClusterLabel])
+	}
+	if cm.Annotations["note"] != "test" {
+		t.Errorf("expected ConfigMap annotation 'note'='test', got '%s'", cm.Annotations["note"])
+	}
+}
+
+// TestBuildService_PropagatesLabelsAnnotations verifies spec.labels /
+// spec.annotations are applied to the Service with base labels winning.
+func TestBuildService_PropagatesLabelsAnnotations(t *testing.T) {
+	config := testConfig()
+	labels := map[string]string{"team": "infra", ClusterLabel: "hijacked"}
+	annotations := map[string]string{"note": "test"}
+	config.Spec.Labels = &labels
+	config.Spec.Annotations = &annotations
+
+	svc := buildService("test-cluster", "default", config)
+
+	if svc.Labels["team"] != "infra" {
+		t.Errorf("expected Service label 'team'='infra', got '%s'", svc.Labels["team"])
+	}
+	if svc.Labels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected base ClusterLabel to win on Service, got '%s'", svc.Labels[ClusterLabel])
+	}
+	if svc.Annotations["note"] != "test" {
+		t.Errorf("expected Service annotation 'note'='test', got '%s'", svc.Annotations["note"])
+	}
+}
+
+// TestBuildPDB_PropagatesLabelsAnnotations verifies spec.labels /
+// spec.annotations are applied to the PDB with base labels winning.
+func TestBuildPDB_PropagatesLabelsAnnotations(t *testing.T) {
+	config := testConfig()
+	labels := map[string]string{"team": "infra", ClusterLabel: "hijacked"}
+	annotations := map[string]string{"note": "test"}
+	config.Spec.Labels = &labels
+	config.Spec.Annotations = &annotations
+
+	pdb := buildPDB("test-cluster", "test-cluster", "default", config)
+
+	if pdb.Labels["team"] != "infra" {
+		t.Errorf("expected PDB label 'team'='infra', got '%s'", pdb.Labels["team"])
+	}
+	if pdb.Labels[ClusterLabel] != "test-cluster" {
+		t.Errorf("expected base ClusterLabel to win on PDB, got '%s'", pdb.Labels[ClusterLabel])
+	}
+	if pdb.Annotations["note"] != "test" {
+		t.Errorf("expected PDB annotation 'note'='test', got '%s'", pdb.Annotations["note"])
 	}
 }
 

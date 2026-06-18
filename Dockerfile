@@ -72,8 +72,11 @@ COPY --from=builder /app/robin /robin
 # Copy the redis-cli binary from the redis-client stage
 COPY --from=builder /redis-client/redis/src/redis-cli /usr/local/bin/redis-cli
 
-# Switch to the non-root user
-USER robin
+# Switch to the non-root user. Use the numeric UID:GID so the container runtime
+# does not need to read /etc/passwd from the image rootfs to resolve the user at
+# container-creation time (a name-based USER triggers that lookup, which can fail
+# intermittently on some runtimes, e.g. containerd in kind).
+USER 10000:10000
 
 # Set the entry point
 ENTRYPOINT ["/robin"]
