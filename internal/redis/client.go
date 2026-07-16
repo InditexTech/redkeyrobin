@@ -378,3 +378,45 @@ func HasInFlightSlots(nodes []ClusterNode) bool {
 	}
 	return false
 }
+
+// TotalClusterSlots is the fixed number of hash slots in a Redis cluster.
+const TotalClusterSlots = 16384
+
+// SlotsFullyCovered reports whether the given nodes' masters collectively own every one
+// of the 16384 hash slots. In-flight (migrating/importing) slot tokens such as
+// "[<slot>->-<id>]" are ignored, since those describe a transfer in progress rather than
+// stable ownership. A gap in coverage (for example after an ephemeral primary is deleted
+// and rejoins empty with a new ID) makes redis-cli refuse to rebalance, so this check is
+// used to decide whether a cluster fix is required before rebalancing.
+func SlotsFullyCovered(nodes []ClusterNode) bool {
+	covered := make([]bool, TotalClusterSlots)
+	for _, n := range nodes {
+		if !strings.Contains(n.Flags, "master") {
+			continue
+		}
+		for _, token := range strings.Fields(n.Slots) {
+			// Skip in-flight migration/importing tokens ("[...]"); only stable
+			// ownership entries count toward coverage.
+			if strings.HasPrefix(token, "[") {
+				continue
+			}
+			ranges, err := ParseSlotRanges(token)
+			if err != nil {
+				continue
+			}
+			for _, r := range ranges {
+				for s := r.Start; s <= r.End && s < TotalClusterSlots; s++ {
+					if s >= 0 {
+						covered[s] = true
+					}
+				}
+			}
+		}
+	}
+	for _, c := range covered {
+		if !c {
+			return false
+		}
+	}
+	return true
+}

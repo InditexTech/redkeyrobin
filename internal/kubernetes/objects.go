@@ -295,12 +295,19 @@ func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyCluster
 //   - cluster-allow-reads-when-down yes: permits read operations even when the cluster
 //     detects partial failure states. Reduces impact on read-intensive workloads during
 //     transient conditions (node restart, network partition recovery).
+//   - cluster-allow-replica-migration no: disables Redis' automatic replica migration so
+//     the operator/robin retains full, deterministic control over topology. This prevents
+//     two unwanted behaviors during slot migrations (scale-down, upgrades): a primary that
+//     is drained to zero slots auto-converting into a replica of the node that absorbed its
+//     slots, and replicas auto-migrating between primaries. Both generate needless
+//     replication/sync traffic and can leave replicas in a cluster configured without them.
 var clusterDefaults = []string{
 	"cluster-enabled yes",
 	"cluster-config-file nodes.conf",
 	"cluster-node-timeout 5000",
 	"cluster-require-full-coverage no",
 	"cluster-allow-reads-when-down yes",
+	"cluster-allow-replica-migration no",
 }
 
 // standaloneDefaults contains the Redis configuration parameters Redkey applies to a

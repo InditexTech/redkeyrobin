@@ -84,3 +84,42 @@ func TestHasInFlightSlots(t *testing.T) {
 		t.Fatal("expected in-flight slots when a node is migrating")
 	}
 }
+
+func TestSlotsFullyCovered(t *testing.T) {
+	full := []ClusterNode{
+		{Flags: "myself,master", Slots: "0-5460"},
+		{Flags: "master", Slots: "5461-10922"},
+		{Flags: "master", Slots: "10923-16383"},
+	}
+	if !SlotsFullyCovered(full) {
+		t.Fatal("expected full coverage when all 16384 slots are owned")
+	}
+
+	// A gap (5461-10922 missing) left by a vanished primary must be detected.
+	gap := []ClusterNode{
+		{Flags: "myself,master", Slots: "0-5460"},
+		{Flags: "master", Slots: "10923-16383"},
+		{Flags: "master", Slots: ""},
+	}
+	if SlotsFullyCovered(gap) {
+		t.Fatal("expected coverage gap to be detected")
+	}
+
+	// Replica slot data must be ignored; only masters count.
+	replicaOnly := []ClusterNode{
+		{Flags: "slave", Slots: "0-16383"},
+	}
+	if SlotsFullyCovered(replicaOnly) {
+		t.Fatal("expected replicas not to count toward coverage")
+	}
+
+	// In-flight migration tokens must be ignored for stable coverage.
+	covered := SlotsFullyCovered([]ClusterNode{
+		{Flags: "myself,master", Slots: "0-5460 [5461-<-abc123]"},
+		{Flags: "master", Slots: "5461-10922"},
+		{Flags: "master", Slots: "10923-16383"},
+	})
+	if !covered {
+		t.Fatal("expected coverage to be satisfied ignoring in-flight tokens")
+	}
+}

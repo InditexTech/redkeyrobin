@@ -463,3 +463,13 @@ func isReplica(node redis.ClusterNode) bool {
 	flags := splitFlags(node.Flags)
 	return slicesContains(flags, "slave")
 }
+
+// ReplicaSpreadOK reports whether the cluster's primary/replica distribution matches the
+// desired topology: exactly desiredPrimaries active primaries, each with exactly
+// desiredReplicasPerPrimary replicas, and no orphaned or chained replicas. It is the
+// exported entry point used by the operation reconcilers to validate topology at the end
+// of scaling and upgrade operations, mirroring the check the health reconciler runs in the
+// steady state.
+func ReplicaSpreadOK(nodes []redis.ClusterNode, desiredPrimaries, desiredReplicasPerPrimary int) bool {
+	return replicaSpreadOK(nodes, desiredPrimaries, desiredReplicasPerPrimary)
+}

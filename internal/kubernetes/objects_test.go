@@ -866,6 +866,32 @@ func TestBuildRedisConf_AllowReadsWhenDownAllTopologies(t *testing.T) {
 	}
 }
 
+func TestBuildRedisConf_AllowReplicaMigrationDisabled(t *testing.T) {
+	// cluster-allow-replica-migration must be disabled across every topology so that
+	// primaries drained to zero slots during scale-down/upgrade are removed rather than
+	// auto-converted into replicas (which would generate needless sync traffic and leave
+	// replicas in a cluster configured without them).
+	topologies := []struct {
+		name               string
+		ephemeral          bool
+		replicasPerPrimary int32
+	}{
+		{"ephemeral_no_replicas", true, 0},
+		{"ephemeral_with_replicas", true, 1},
+		{"persistent_no_replicas", false, 0},
+		{"persistent_with_replicas", false, 1},
+	}
+
+	for _, tc := range topologies {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := buildRedisConf("", "", tc.ephemeral, tc.replicasPerPrimary, false)
+			if !contains(conf, "cluster-allow-replica-migration no") {
+				t.Errorf("expected 'cluster-allow-replica-migration no' in redis.conf for topology %s", tc.name)
+			}
+		})
+	}
+}
+
 func TestBuildRedisConf_UserConfigOverridesDefaults(t *testing.T) {
 	// User sets cluster-require-full-coverage yes — it should appear AFTER the default 'no'
 	userConf := "cluster-require-full-coverage yes"

@@ -8,9 +8,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 const clusterCLIErrorOutputLimit = 2000
+
+// clusterFixConfirmations answers the interactive prompts that redis-cli
+// --cluster fix raises while repairing slot coverage. redis-cli deliberately
+// ignores --cluster-yes for the slot-coverage prompts ("Fix these slots by
+// covering with a random node?", etc.) and always reads "yes" from stdin, so
+// the operator must provide the confirmations explicitly. There are up to three
+// such prompts (slots with keys in no node, one node, and multiple nodes); a
+// handful of "yes" lines safely covers every case.
+const clusterFixConfirmations = "yes\nyes\nyes\nyes\nyes\n"
 
 // ClusterFixResult holds the outcome of redis-cli --cluster fix.
 type ClusterFixResult struct {
@@ -19,9 +29,12 @@ type ClusterFixResult struct {
 }
 
 // ClusterFix executes redis-cli --cluster fix against the current node address.
-// It uses --cluster-yes so remediation can run non-interactively.
+// It uses --cluster-yes for the prompts that honor it and feeds "yes" on stdin
+// for the slot-coverage prompts that redis-cli always reads interactively, so
+// remediation can run non-interactively.
 func (c *Client) ClusterFix(ctx context.Context) (*ClusterFixResult, error) {
 	cmd := newRedisCLICommand(ctx, []string{"--cluster", "fix", c.addr, "--cluster-yes"}, c.redisCLIEnv())
+	cmd.SetStdin(strings.NewReader(clusterFixConfirmations))
 	cmd.Run()
 
 	if cmd.Err != nil {

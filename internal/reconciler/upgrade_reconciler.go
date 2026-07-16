@@ -217,6 +217,19 @@ func (cr *ClusterReconciler) handleFastUpgradeFormCluster(ctx context.Context, c
 		return reconcileAfterWaitInterval, nil
 	}
 
+	// Ensure the primary/replica distribution matches the spec before completing. Fast
+	// upgrade rebuilds the cluster from scratch, so this normally passes immediately, but
+	// the check guarantees we never declare Ready with an unexpected role distribution.
+	topologyOK, err := cr.ensureReplicaTopology(ctx, config)
+	if err != nil {
+		cr.logger.Warn("Fast upgrade: replica topology check failed while finishing, will retry", "error", err)
+		return reconcileAfterWaitInterval, nil
+	}
+	if !topologyOK {
+		cr.logger.Info("Fast upgrade: replica topology not yet correct, remediating before completing")
+		return reconcileAfterWaitInterval, nil
+	}
+
 	// Finish: set status to Ready and mark config as Applied
 	cr.logger.Info("Fast upgrade completed successfully",
 		"image", config.Spec.Image,
@@ -346,6 +359,17 @@ func (cr *ClusterReconciler) handleUpgradeScalingUp(ctx context.Context, config 
 
 	password := cr.getPassword(ctx, config)
 
+	// Heal membership before meeting the extra nodes: reintegrate any pod recreated by a
+	// concurrent disruption (forget its lingering entry, meet the replacement) so the meet
+	// and replica configuration below operate on a clean topology. meetMissing=true is safe
+	// here because this phase performs no empty-masters rebalance — the extra replicas are
+	// attached explicitly with CLUSTER REPLICATE and slot movement is an explicit reshard.
+	if changed, healErr := cr.healTopology(ctx, config, true); healErr != nil {
+		cr.logger.Warn("Rolling upgrade: failed to heal topology during scale up, continuing", "error", healErr)
+	} else if changed {
+		return reconcileImmediately, nil
+	}
+
 	// Initialize all nodes (including the new ones)
 	nodes, err := cr.initNodesWithCount(ctx, int(targetTotal), password)
 	if err != nil {
@@ -413,6 +437,18 @@ func (cr *ClusterReconciler) handleUpgradeResharding(ctx context.Context, config
 		"destOrdinal", destOrdinal)
 
 	password := cr.getPassword(ctx, config)
+
+	// Heal the topology before resharding: forget the lingering entries of any pod
+	// recreated since the last cycle (Kubernetes may move pods between nodes during the
+	// upgrade, so a replacement returns with a new IP while the old entry lingers, often
+	// still owning slots) and reintegrate the replacement. This runs before every reshard
+	// so the operation always operates on a clean, reachable topology.
+	if changed, healErr := cr.healTopology(ctx, config, true); healErr != nil {
+		cr.logger.Warn("Rolling upgrade: failed to heal topology before reshard, continuing",
+			"partition", partition, "error", healErr)
+	} else if changed {
+		return reconcileImmediately, nil
+	}
 
 	// Forget any dead (failed) nodes left over from the previous rolling update cycle.
 	// Without this, redis-cli --cluster reshard/fix tries to contact unreachable nodes
@@ -531,6 +567,19 @@ func (cr *ClusterReconciler) handleUpgradeResharding(ctx context.Context, config
 func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
 	partition := config.Status.Substatus.UpgradingPartition
 	podName := fmt.Sprintf("%s-%d", cr.clusterName, partition)
+
+	// Heal membership before touching this partition: reintegrate any OTHER pod recreated by
+	// a concurrent disruption (forget its lingering entry, meet the replacement) so the
+	// recycle and the cluster check below run on a clean topology. This does not interfere
+	// with the intentional recycle of the partition pod: on the entry that deletes it the
+	// pod is still live (its IP is a live pod, so it is never forgotten here), and its
+	// identity is managed explicitly by the flush/reset + meet steps that follow.
+	if changed, healErr := cr.healTopology(ctx, config, true); healErr != nil {
+		cr.logger.Warn("Rolling upgrade: failed to heal topology before recycling, continuing",
+			"partition", partition, "error", healErr)
+	} else if changed {
+		return reconcileImmediately, nil
+	}
 
 	// Determine whether this pod still runs an OUTDATED pod template by comparing its native
 	// controller-revision-hash label against the StatefulSet's UpdateRevision. This detects
@@ -716,6 +765,15 @@ func (cr *ClusterReconciler) handleUpgradeEnding(ctx context.Context, config *re
 
 	password := cr.getPassword(ctx, config)
 
+	// Heal the topology before the final reshard: forget the lingering entries of any pod
+	// recreated during the last recycle cycle and reintegrate its replacement, so the
+	// slot move from the extra node runs on a clean, reachable topology.
+	if changed, healErr := cr.healTopology(ctx, config, true); healErr != nil {
+		cr.logger.Warn("Rolling upgrade ending: failed to heal topology before reshard, continuing", "error", healErr)
+	} else if changed {
+		return reconcileImmediately, nil
+	}
+
 	// Get extra node info
 	extraAddr, err := cr.getPodAddr(ctx, extraOrdinal)
 	if err != nil {
@@ -850,6 +908,20 @@ func (cr *ClusterReconciler) handleUpgradeScalingDown(ctx context.Context, confi
 		return reconcileAfterWaitInterval, nil
 	}
 
+	// Heal the topology before the health check: a pod killed during this final phase
+	// (e.g. a chaos pod kill) is recreated empty with a new IP/ID while its old entry
+	// lingers in the gossip table, often still owning slots and unreachable. The cluster
+	// check below would then report errors forever and the healing performed later by
+	// ensureReplicaTopology — gated behind that very check — would never run, leaving the
+	// config stuck InProgress. Healing here forgets the ghost, re-covers its orphaned slots
+	// and reintegrates the replacement so the check can pass. meetMissing=true is safe:
+	// this phase runs no empty-masters rebalance.
+	if changed, healErr := cr.healTopology(ctx, config, true); healErr != nil {
+		cr.logger.Warn("Rolling upgrade: failed to heal topology before final health check, continuing", "error", healErr)
+	} else if changed {
+		return reconcileImmediately, nil
+	}
+
 	// Run cluster check to verify health
 	password := cr.getPassword(ctx, config)
 	node0Addr, err := cr.getPodAddr(ctx, 0)
@@ -870,14 +942,28 @@ func (cr *ClusterReconciler) handleUpgradeScalingDown(ctx context.Context, confi
 		return reconcileAfterWaitInterval, nil
 	}
 
-	// Ensure each primary has exactly its expected replica(s) assigned.
-	// Redis auto-migration (cluster-allow-replica-migration=yes, the default) can
-	// redistribute replicas during the upgrade, leaving some primaries unprotected.
+	// Ensure each primary has exactly its expected replica(s) assigned. Redkey disables
+	// Redis auto-migration (cluster-allow-replica-migration no), but this remains as a
+	// safeguard to repair any replica placement drift introduced during the upgrade.
 	if config.Spec.ReplicasPerPrimary > 0 {
 		if err := cr.rebalanceReplicas(ctx, config, password); err != nil {
 			cr.logger.Warn("Rolling upgrade: replica rebalance failed, will retry", "error", err)
 			return reconcileAfterWaitInterval, nil
 		}
+	}
+
+	// Ensure the primary/replica distribution matches the spec before completing. A pod
+	// recreated during the upgrade can rejoin with the wrong role; remediate and requeue
+	// until the topology is correct so we never mark Ready with the wrong number of
+	// primaries or replicas.
+	topologyOK, err := cr.ensureReplicaTopology(ctx, config)
+	if err != nil {
+		cr.logger.Warn("Rolling upgrade: replica topology check failed while finishing, will retry", "error", err)
+		return reconcileAfterWaitInterval, nil
+	}
+	if !topologyOK {
+		cr.logger.Info("Rolling upgrade: replica topology not yet correct, remediating before completing")
+		return reconcileAfterWaitInterval, nil
 	}
 
 	// Upgrade complete!

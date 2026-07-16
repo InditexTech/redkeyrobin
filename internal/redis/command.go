@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
@@ -69,6 +70,11 @@ func newCLICommand(ctx context.Context, executable string, args []string, env ma
 		stdout: &stdout,
 		stderr: &stderr,
 	}
+}
+
+// SetStdin sets the standard input for the command. It must be called before Run or Start.
+func (rcc *RedisCLICommand) SetStdin(r io.Reader) {
+	rcc.cmd.Stdin = r
 }
 
 func formatCommandEnv(env map[string]string) []string {

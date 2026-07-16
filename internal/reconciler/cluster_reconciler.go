@@ -404,6 +404,7 @@ func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.Re
 	}
 
 	// Run health reconciliation
+	cr.healthReconciler.SetEphemeral(config.Spec.Ephemeral)
 	schedule, err := cr.healthReconciler.Reconcile(ctx, nodes, password,
 		int(config.Spec.Primaries), int(config.Spec.ReplicasPerPrimary))
 	if err != nil {
@@ -674,6 +675,92 @@ func (cr *ClusterReconciler) getPassword(ctx context.Context, config *redisv1.Re
 		return ""
 	}
 	return password
+}
+
+// healTopology reconciles cluster membership against the live Kubernetes pods before a
+// mutating operation (scaling or upgrade) proceeds. When Kubernetes recreates one or more
+// pods — for example, moving them between nodes during the operation — each replacement
+// comes back with a new IP (and, for ephemeral clusters, a new node ID) while the old
+// entry lingers in the gossip table, often still owning slots. Left unattended this
+// derails the operation: redis-cli rebalances/reshards "across" the phantom masters and
+// never converges.
+//
+// healTopology forgets those lingering entries (keyed on the live pod IPs as the source
+// of truth) and re-covers any slots they orphaned with cluster fix. When meetMissing is
+// true it also reintegrates recreated members via CLUSTER MEET. A stale node that still
+// owns slots is only forgotten (and its slots reassigned) on EPHEMERAL clusters, where the
+// recreated pod has lost its data; on persistent clusters such a node keeps its identity
+// and reclaims its slots on rejoin, so it is left in place to avoid stranding data (see
+// HealMembership). It returns changed=true when the topology was modified, so the caller
+// should requeue and re-evaluate from a clean state rather than proceeding on stale
+// assumptions. It is a fast no-op on a healthy topology.
+//
+// meetMissing must be false for scale-up, whose empty-masters rebalance would otherwise
+// hand slots to a freshly met, not-yet-classified node destined to become a replica;
+// scale-up meets its own new nodes with explicit roles.
+func (cr *ClusterReconciler) healTopology(ctx context.Context, config *redisv1.RedkeyClusterConfig, meetMissing bool) (bool, error) {
+	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
+	if err != nil {
+		return false, fmt.Errorf("getting pod addresses for topology healing: %w", err)
+	}
+	if len(podAddrs) == 0 {
+		return false, nil
+	}
+	nodes := make([]health.Node, 0, len(podAddrs))
+	for name, addr := range podAddrs {
+		nodes = append(nodes, health.Node{Name: name, Addr: addr})
+	}
+	password := cr.getPassword(ctx, config)
+	return cr.healthReconciler.HealMembership(ctx, nodes, password, meetMissing, config.Spec.Ephemeral)
+}
+
+// ensureReplicaTopology guarantees the live cluster matches the desired primary/replica
+// distribution before an operation (scaling or upgrade) declares itself complete. Pod
+// recreation mid-operation can leave a pod integrated with the wrong role — most commonly
+// a replica that rejoined as an empty primary, leaving the wrong number of primaries or a
+// primary with too many/few replicas — which the slot/state checks in verifyCluster do not
+// detect.
+//
+// It first heals membership with meetMissing=true (safe here because the operation's slot
+// movement is already finished, so no empty-masters rebalance follows that could grab slots
+// from a freshly met node) to reintegrate any recreated member, then validates and, if
+// needed, remediates the replica spread. It returns ok=true only once the number of
+// primaries and the replicas-per-primary both match the spec; callers must requeue while ok
+// is false so the cluster never reaches Ready with the wrong topology.
+func (cr *ClusterReconciler) ensureReplicaTopology(ctx context.Context, config *redisv1.RedkeyClusterConfig) (bool, error) {
+	// A zero-primary cluster has no topology to validate.
+	if config.Spec.Primaries == 0 {
+		return true, nil
+	}
+
+	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
+	if err != nil {
+		return false, fmt.Errorf("getting pod addresses for replica topology check: %w", err)
+	}
+	if len(podAddrs) == 0 {
+		return true, nil
+	}
+	nodes := make([]health.Node, 0, len(podAddrs))
+	for name, addr := range podAddrs {
+		nodes = append(nodes, health.Node{Name: name, Addr: addr})
+	}
+	password := cr.getPassword(ctx, config)
+
+	// Reintegrate any recreated member first, then re-check on a clean topology.
+	changed, err := cr.healthReconciler.HealMembership(ctx, nodes, password, true, config.Spec.Ephemeral)
+	if err != nil {
+		return false, fmt.Errorf("healing membership before replica topology check: %w", err)
+	}
+	if changed {
+		return false, nil
+	}
+
+	ok, _, err := cr.healthReconciler.RemediateReplicaTopology(ctx, nodes, password,
+		int(config.Spec.Primaries), int(config.Spec.ReplicasPerPrimary))
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
 }
 
 // applyAuthToAllNodes applies the target configuration's auth settings to ALL

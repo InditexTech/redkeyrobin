@@ -27,6 +27,16 @@ type HealthReconciler struct {
 	clientFactory RedisClientFactory
 	runtimeConfig *config.RuntimeConfig
 	logger        *slog.Logger
+
+	// ephemeral records whether the cluster uses ephemeral (emptyDir) storage. It governs
+	// how membership remediation treats a stale node that still owns slots: on ephemeral
+	// clusters the recreated pod lost its data and rejoins with a new ID, so the phantom is
+	// forgotten and its slots reassigned; on persistent clusters the node keeps its identity
+	// and reclaims its slots on rejoin, so it is left untouched to avoid stranding data. It
+	// is set per-reconcile via SetEphemeral before Reconcile runs; the zero value (false =
+	// persistent) is the conservative default that never reassigns slots out from under a
+	// node that could still hold their data.
+	ephemeral bool
 }
 
 // NewHealthReconciler creates a new HealthReconciler.
@@ -55,8 +65,17 @@ func (hr *HealthReconciler) Close() {
 	}
 }
 
+// SetEphemeral records whether the cluster uses ephemeral storage, controlling how
+// membership remediation reclaims a stale slot-owning node (see the ephemeral field and
+// HealMembership). It must be called before Reconcile so remediation uses the correct
+// storage semantics.
+func (hr *HealthReconciler) SetEphemeral(ephemeral bool) {
+	hr.ephemeral = ephemeral
+}
+
 // Reconcile performs health checks and, if needed, remediation on the cluster.
-// Returns the recommended schedule for the next reconciliation.
+// Returns the recommended schedule for the next reconciliation. Membership remediation
+// uses the ephemeral setting recorded via SetEphemeral (see HealMembership).
 func (hr *HealthReconciler) Reconcile(ctx context.Context, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (reconcileSchedule, error) {
 	if len(nodes) == 0 {
 		return reconcileAfterInterval, fmt.Errorf("no nodes provided for health reconciliation")
@@ -102,9 +121,17 @@ func (hr *HealthReconciler) Reconcile(ctx context.Context, nodes []health.Node, 
 	}
 
 	if !report.ReplicaSpreadOK {
-		if remErr := hr.remediateReplicaSpread(ctx, report, nodes, password, desiredPrimaries, desiredReplicasPerPrimary); remErr != nil {
+		topologyChanged, remErr := hr.remediateReplicaSpread(ctx, report, nodes, password, desiredPrimaries, desiredReplicasPerPrimary)
+		if remErr != nil {
 			hr.logger.Error("Replica spread remediation failed", "error", remErr)
 			return reconcileAfterWaitInterval, remErr
+		}
+		if topologyChanged {
+			// Promoting or demoting nodes reshapes the cluster. The remaining checks
+			// (cluster check, balance) must run against fresh state, not the report
+			// captured before the change. Defer them to the next reconciliation cycle.
+			hr.logger.Info("Replica topology changed, deferring further checks to next cycle")
+			return reconcileAfterWaitInterval, nil
 		}
 	}
 
@@ -149,57 +176,131 @@ func (hr *HealthReconciler) logReport(report *health.Report) {
 // remediateMembership fixes cluster membership by:
 // - FOGETting nodes visible in the cluster that don't correspond to real K8s pods
 // - MEETing nodes that should be in the cluster but aren't visible
-func (hr *HealthReconciler) remediateMembership(ctx context.Context, report *health.Report, nodes []health.Node, password string) error {
+//
+// It delegates to HealMembership, the shared membership healer reused by the operation
+// reconcilers (scaling and upgrade) so that pod recreation is handled identically in the
+// steady state and mid-operation. The slot-owner protection uses the ephemeral setting
+// recorded via SetEphemeral.
+func (hr *HealthReconciler) remediateMembership(ctx context.Context, _ *health.Report, nodes []health.Node, password string) error {
 	hr.logger.Info("Remediating cluster membership")
+	_, err := hr.HealMembership(ctx, nodes, password, true, hr.ephemeral)
+	return err
+}
 
-	// Build set of expected IPs from K8s pod list
-	expectedIPs := make(map[string]struct{}, len(nodes))
-	for _, node := range nodes {
-		ip := extractIP(node.Addr)
-		expectedIPs[ip] = struct{}{}
+// HealMembership reconciles cluster membership against the set of live pods provided in
+// nodes, which is the source of truth. When Kubernetes recreates a pod (e.g. it is moved
+// to another node during scaling or upgrade), the pod comes back with a new IP — and, for
+// ephemeral clusters, a new node ID — while its former entry lingers in the gossip table,
+// often still owning slots. HealMembership:
+//   - FORGETs every cluster node whose IP is not among the live pod IPs (the lingering
+//     trace of a deleted or recreated pod), issuing the FORGET from every live node;
+//   - when meetMissing is true, MEETs every live pod not yet in the cluster view (a
+//     recreated member that must be reintegrated), issuing MEET from all in-cluster peers
+//     so a post-FORGET blacklist on any single node cannot silently drop it;
+//   - runs redis-cli --cluster fix once if a slot-owning node was forgotten, to re-cover
+//     the slots orphaned by the removal.
+//
+// The ephemeral flag governs how a stale node that STILL OWNS SLOTS is handled — the one
+// case where forgetting is destructive:
+//   - ephemeral=true: the recreated pod loses its data (emptyDir) and rejoins with a brand
+//     new node ID, so the old slot-owning entry is a true phantom that will never reclaim
+//     its slots. It is forgotten and its slots are re-covered with cluster fix.
+//   - ephemeral=false (persistent): the recreated pod keeps its PVC, hence its nodes.conf
+//     and node ID, and will reclaim those slots on rejoin (or a replica has already failed
+//     over). Forgetting and reassigning now would strand its data, so slot-owning stale
+//     entries are left untouched and simply waited out. Only slotless stale entries (which
+//     hold no data) are forgotten. This mirrors forgetFailedNodes' slot-owner protection.
+//
+// It returns changed=true if any node was forgotten or met, so callers can requeue and
+// re-evaluate from a clean topology; when nothing changed it is a fast no-op.
+//
+// meetMissing MUST be false for the scale-up flow: that flow rebalances slots across all
+// empty masters, so meeting a not-yet-classified empty node here could hand slots to a pod
+// destined to become a replica. Scale-up meets its own new nodes with explicit roles.
+func (hr *HealthReconciler) HealMembership(ctx context.Context, nodes []health.Node, password string, meetMissing, ephemeral bool) (bool, error) {
+	if len(nodes) == 0 {
+		return false, fmt.Errorf("no nodes provided for membership healing")
 	}
 
-	// Use the first reachable node as the command executor
+	// Build the set of expected IPs from the live pod list.
+	expectedIPs := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		expectedIPs[extractIP(node.Addr)] = struct{}{}
+	}
+
+	// Use the first reachable node as the command executor.
 	seedAddr := nodes[0].Addr
 	seedClient := hr.clientFactory(seedAddr, password)
 	defer func() { _ = seedClient.Close() }()
 
-	// Get current cluster view
 	clusterNodes, err := seedClient.GetClusterNodes(ctx)
 	if err != nil {
-		return fmt.Errorf("getting cluster nodes from seed %s: %w", seedAddr, err)
+		return false, fmt.Errorf("getting cluster nodes from seed %s: %w", seedAddr, err)
 	}
 
-	// Forget nodes that shouldn't be in the cluster
+	// FORGET nodes whose IP does not correspond to a live pod.
+	forgot := false
+	forgotSlotOwner := false
 	for _, cn := range clusterNodes {
 		if cn.IP == "" {
-			hr.logger.Warn("Skipping node with empty IP in membership remediation", "nodeID", cn.ID, "addr", cn.Addr)
+			hr.logger.Warn("Skipping node with empty IP in membership healing", "nodeID", cn.ID, "addr", cn.Addr)
 			continue
 		}
-		if _, expected := expectedIPs[cn.IP]; !expected {
-			hr.logger.Info("Forgetting stale node from cluster",
-				"nodeID", cn.ID, "nodeIP", cn.IP, "nodeFlags", cn.Flags)
-			// Forget from all reachable nodes
-			for _, node := range nodes {
-				client := hr.clientFactory(node.Addr, password)
-				if forgetErr := client.ClusterForget(ctx, cn.ID); forgetErr != nil {
-					hr.logger.Warn("Failed to forget node from peer",
-						"peer", node.Addr, "targetID", cn.ID, "error", forgetErr)
-				}
-				_ = client.Close()
+		if _, expected := expectedIPs[cn.IP]; expected {
+			continue
+		}
+		ownsSlots := redis.CountSlotsFromRanges(cn.Slots) > 0
+		if ownsSlots && !ephemeral {
+			// Persistent cluster: this node keeps its identity across recreation and will
+			// reclaim its slots on rejoin (or a replica has already failed over). Forgetting
+			// and reassigning now would strand its on-disk data, so leave it in place and
+			// wait for it to come back.
+			hr.logger.Info("Skipping forget of slot-owning stale node on persistent cluster",
+				"nodeID", cn.ID, "nodeIP", cn.IP, "nodeFlags", cn.Flags, "slots", cn.Slots)
+			continue
+		}
+		hr.logger.Info("Forgetting stale node from cluster",
+			"nodeID", cn.ID, "nodeIP", cn.IP, "nodeFlags", cn.Flags, "ownsSlots", ownsSlots)
+		for _, node := range nodes {
+			client := hr.clientFactory(node.Addr, password)
+			if forgetErr := client.ClusterForget(ctx, cn.ID); forgetErr != nil {
+				hr.logger.Warn("Failed to forget node from peer",
+					"peer", node.Addr, "targetID", cn.ID, "error", forgetErr)
 			}
+			_ = client.Close()
+		}
+		forgot = true
+		if ownsSlots {
+			forgotSlotOwner = true
 		}
 	}
 
-	// Meet nodes that are missing from cluster view
-	clusterIPs := make(map[string]struct{}, len(clusterNodes))
-	for _, cn := range clusterNodes {
-		clusterIPs[cn.IP] = struct{}{}
-	}
+	met := false
+	if meetMissing {
+		// Meet nodes that are missing from cluster view.
+		//
+		// The node we queried reports itself in CLUSTER NODES with an empty IP (the
+		// "myself" entry shows ":6379@16379"). If we indexed that empty string, the seed —
+		// which is always a live cluster member — would not be recognized as in-cluster.
+		// When the cluster has collapsed to a single surviving master (e.g. after a chaos
+		// event wiped every other node), that seed is the ONLY member able to issue MEET,
+		// so failing to recognize it leaves the meet loop unable to readmit any node and
+		// the healing spins forever. Resolve the empty self-IP to the seed's real IP.
+		seedIP := extractIP(seedAddr)
+		clusterIPs := make(map[string]struct{}, len(clusterNodes))
+		for _, cn := range clusterNodes {
+			ip := cn.IP
+			if ip == "" {
+				ip = seedIP
+			}
+			clusterIPs[ip] = struct{}{}
+		}
 
-	for _, node := range nodes {
-		ip := extractIP(node.Addr)
-		if _, inCluster := clusterIPs[ip]; !inCluster {
+		for _, node := range nodes {
+			ip := extractIP(node.Addr)
+			if _, inCluster := clusterIPs[ip]; inCluster {
+				continue
+			}
 			hr.logger.Info("Meeting missing node from all cluster members", "addr", node.Addr, "ip", ip)
 			// Issue CLUSTER MEET from all existing cluster nodes, not just the seed.
 			// After CLUSTER FORGET, each node maintains a 60-second blacklist for the
@@ -217,19 +318,49 @@ func (hr *HealthReconciler) remediateMembership(ctx context.Context, report *hea
 				}
 				_ = peerClient.Close()
 			}
+			met = true
 		}
 	}
 
-	// Wait for gossip convergence
-	meetWait := hr.runtimeConfig.ClusterMeetWait()
-	hr.logger.Info("Waiting for gossip convergence", "duration", meetWait)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(meetWait):
+	// Re-cover slots orphaned by forgetting a slot-owning node (only possible on ephemeral
+	// clusters, where the recreated pod lost its data). redis-cli refuses to rebalance or
+	// reshard a cluster with uncovered slots, so this repair is what lets the subsequent
+	// operation make progress. Forgetting slotless nodes orphans nothing, so no fix runs.
+	if forgotSlotOwner {
+		if fixErr := hr.clusterFix(ctx, seedClient); fixErr != nil {
+			hr.logger.Warn("Failed to fix cluster after forgetting stale slot owner, continuing", "error", fixErr)
+		}
 	}
 
-	hr.logger.Info("Membership remediation complete")
+	changed := forgot || met
+	if changed {
+		// Wait for gossip convergence before the caller re-evaluates the topology.
+		meetWait := hr.runtimeConfig.ClusterMeetWait()
+		hr.logger.Info("Membership changed, waiting for gossip convergence", "duration", meetWait)
+		select {
+		case <-ctx.Done():
+			return changed, ctx.Err()
+		case <-time.After(meetWait):
+		}
+	}
+
+	hr.logger.Info("Membership healing complete", "forgot", forgot, "forgotSlotOwner", forgotSlotOwner, "met", met)
+	return changed, nil
+}
+
+// clusterFix runs redis-cli --cluster fix from the given seed client, bounded by the
+// configured rebalance timeout. It both closes open (migrating/importing) slots and
+// reassigns slots left uncovered after forgetting a slot-owning stale node.
+func (hr *HealthReconciler) clusterFix(ctx context.Context, seed *redis.Client) error {
+	fixCtx := ctx
+	if timeout := hr.runtimeConfig.RebalanceTimeout(); timeout > 0 {
+		var cancel context.CancelFunc
+		fixCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	if _, err := seed.ClusterFix(fixCtx); err != nil {
+		return fmt.Errorf("cluster fix: %w", err)
+	}
 	return nil
 }
 
@@ -471,8 +602,10 @@ type replicaInfo struct {
 	primaryID string
 }
 
-// remediateReplicaSpread fixes the replica-to-primary mapping without changing node counts.
-func (hr *HealthReconciler) remediateReplicaSpread(ctx context.Context, report *health.Report, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) error {
+// remediateReplicaSpread fixes the replica-to-primary mapping. It returns true when it
+// reshaped the cluster topology (promoted or demoted nodes), signalling the caller to
+// defer the remaining health checks to the next cycle so they run against fresh state.
+func (hr *HealthReconciler) remediateReplicaSpread(ctx context.Context, report *health.Report, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (bool, error) {
 	hr.logger.Info("Remediating replica spread")
 
 	// Identify primaries and replicas from cluster state
@@ -502,10 +635,14 @@ func (hr *HealthReconciler) remediateReplicaSpread(ctx context.Context, report *
 			// Demote empty primaries (0 slots, not importing/migrating) to replicas of primaries that need them.
 			return hr.remediateExcessPrimaries(ctx, report, primaryIDs, replicas, password, desiredPrimaries, desiredReplicasPerPrimary)
 		}
-		// Fewer primaries than desired (scale-up scenario): skip, not our concern here.
-		hr.logger.Info("Primary count below desired, skipping replica spread remediation",
-			"actual", len(primaryIDs), "desired", desiredPrimaries)
-		return nil
+		// Fewer primaries than desired. If the cluster carries surplus replicas (more
+		// replicas than the target topology requires), promote them to empty primaries so
+		// the cluster can reach the desired primary count and a later balance step can
+		// distribute slots onto them. Without this, a chaos event that leaves the cluster
+		// with too few primaries but an extra replica (e.g. a node that rejoined as a
+		// replica during scale-up) deadlocks: replica spread stays broken forever because
+		// nothing ever promotes the surplus replica.
+		return hr.remediatePrimaryDeficit(ctx, primaryIDs, replicas, nodes, password, desiredPrimaries, desiredReplicasPerPrimary)
 	}
 
 	// Count replicas per primary
@@ -562,7 +699,7 @@ func (hr *HealthReconciler) remediateReplicaSpread(ctx context.Context, report *
 		client := hr.clientFactory(replica.addr, password)
 		if err := client.ClusterReplicate(ctx, targetPrimaryID); err != nil {
 			_ = client.Close()
-			return fmt.Errorf("replicating %s to primary %s: %w", replica.addr, targetPrimaryID, err)
+			return false, fmt.Errorf("replicating %s to primary %s: %w", replica.addr, targetPrimaryID, err)
 		}
 		_ = client.Close()
 	}
@@ -573,13 +710,64 @@ func (hr *HealthReconciler) remediateReplicaSpread(ctx context.Context, report *
 		hr.logger.Info("No replica reassignment needed")
 	}
 
-	return nil
+	// Reassigning replicas only changes which primary a replica follows; it does not
+	// change primary/replica counts, so the remaining health checks may safely proceed.
+	return false, nil
 }
 
-// remediateExcessPrimaries handles the failover scenario where more primaries exist
-// than desired. This happens when a replica is promoted to primary (auto-failover)
-// and the replacement pod joins as an empty master. The empty primaries are demoted
-// to replicas of primaries that are missing replicas.
+// RemediateReplicaTopology validates the cluster's primary/replica distribution against the
+// desired topology and remediates it if wrong. It is the operation-time counterpart of the
+// replica-spread step in Reconcile: the scaling and upgrade reconcilers call it just before
+// declaring an operation complete, so a cluster never reaches Ready with the wrong number of
+// primaries or with a primary that has the wrong number of replicas — a state that a pod
+// recreated mid-operation can leave behind when it rejoins with the wrong role, and which
+// the slot/state checks in verifyCluster do not catch.
+//
+// It returns ok=true when the topology already matches (nothing to do). Otherwise it runs
+// the replica-spread remediation and returns ok=false, with changed indicating whether a fix
+// was applied, so the caller can requeue and re-check on the next cycle.
+func (hr *HealthReconciler) RemediateReplicaTopology(ctx context.Context, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (ok bool, changed bool, err error) {
+	if len(nodes) == 0 {
+		return false, false, fmt.Errorf("no nodes provided for replica topology check")
+	}
+
+	// Read the current cluster view from the first reachable node.
+	var clusterNodes []redis.ClusterNode
+	for _, n := range nodes {
+		client := hr.clientFactory(n.Addr, password)
+		cn, e := client.GetClusterNodes(ctx)
+		_ = client.Close()
+		if e == nil && len(cn) > 0 {
+			clusterNodes = cn
+			break
+		}
+	}
+	if len(clusterNodes) == 0 {
+		return false, false, fmt.Errorf("no reachable node to read cluster topology")
+	}
+
+	if health.ReplicaSpreadOK(clusterNodes, desiredPrimaries, desiredReplicasPerPrimary) {
+		return true, false, nil
+	}
+
+	hr.logger.Info("Replica topology does not match desired, remediating",
+		"desiredPrimaries", desiredPrimaries, "desiredReplicasPerPrimary", desiredReplicasPerPrimary)
+	report := &health.Report{ClusterNodes: clusterNodes}
+	changed, err = hr.remediateReplicaSpread(ctx, report, nodes, password, desiredPrimaries, desiredReplicasPerPrimary)
+	return false, changed, err
+}
+
+// remediateExcessPrimaries handles the case where more primaries exist than desired —
+// typically after a failover where a replica was promoted and the replacement pod joined
+// as an empty master, but also after a topology corruption / split-brain that leaves a
+// surplus primary still holding slots.
+//
+// It prefers demoting EMPTY primaries (no data to move) to replicas of primaries that lack
+// them. When there are no empty primaries to demote but a surplus still holds slots, it
+// drains the surplus primaries' slots with a weight-0 rebalance so they become empty and
+// can be demoted on a subsequent cycle. This mirrors the old robin's convertNodesToReplica
+// (drain-then-convert) and guarantees the replica-topology gate can always converge instead
+// of deadlocking on a slot-owning excess primary.
 func (hr *HealthReconciler) remediateExcessPrimaries(
 	ctx context.Context,
 	report *health.Report,
@@ -587,104 +775,277 @@ func (hr *HealthReconciler) remediateExcessPrimaries(
 	replicas []replicaInfo,
 	password string,
 	desiredPrimaries, desiredReplicasPerPrimary int,
-) error {
-	hr.logger.Info("Detected excess primaries after failover, demoting empty primaries to replicas",
-		"actual", len(primaryIDs), "desired", desiredPrimaries)
-
-	// Identify empty primaries: those with 0 assigned slots and no importing/migrating state.
-	// These are newly joined replacement pods that have no cluster data.
-	type emptyPrimary struct {
-		id   string
-		addr string
+) (bool, error) {
+	excess := len(primaryIDs) - desiredPrimaries
+	if excess <= 0 {
+		return false, nil
 	}
-	var emptyPrimaries []emptyPrimary
+	hr.logger.Info("Detected excess primaries, remediating",
+		"actual", len(primaryIDs), "desired", desiredPrimaries, "excess", excess)
 
+	// Classify primaries into empty (0 slots, no in-flight migration) and non-empty (slot
+	// owners, with their slot count for deterministic drain selection).
+	type primaryNode struct {
+		id    string
+		addr  string
+		slots int
+	}
+	var emptyPrimaries, nonEmptyPrimaries []primaryNode
 	for _, cn := range report.ClusterNodes {
 		if cn.IP == "" || !strings.Contains(cn.Flags, "master") {
 			continue
 		}
-		// Skip if the node has importing/migrating markers (contains '[')
+		pn := primaryNode{id: cn.ID, addr: cn.IP + ":6379"}
+		// A node with an in-flight migration marker ('[') is treated as non-empty so we
+		// never demote a node mid-migration.
 		if strings.Contains(cn.Slots, "[") {
+			nonEmptyPrimaries = append(nonEmptyPrimaries, pn)
 			continue
 		}
-		// Check if the node has 0 slots
 		parsed, err := redis.ParseSlotRanges(cn.Slots)
-		if err != nil {
-			// Parse error but no '[' marker — treat as empty (unparseable empty string)
-			emptyPrimaries = append(emptyPrimaries, emptyPrimary{id: cn.ID, addr: cn.IP + ":6379"})
-			continue
+		if err == nil {
+			pn.slots = redis.CountSlots(parsed)
 		}
-		if redis.CountSlots(parsed) == 0 {
-			emptyPrimaries = append(emptyPrimaries, emptyPrimary{id: cn.ID, addr: cn.IP + ":6379"})
-		}
-	}
-
-	if len(emptyPrimaries) == 0 {
-		hr.logger.Info("No empty primaries found to demote, skipping")
-		return nil
-	}
-
-	// Determine how many primaries we need to demote
-	excess := len(primaryIDs) - desiredPrimaries
-	if excess <= 0 {
-		return nil
-	}
-	if excess > len(emptyPrimaries) {
-		excess = len(emptyPrimaries)
-	}
-
-	// Find primaries that need replicas (the promoted replicas that are now primaries with slots).
-	// Count current replicas per non-empty primary.
-	replicaCount := make(map[string]int)
-	emptyIDs := make(map[string]struct{}, len(emptyPrimaries))
-	for _, ep := range emptyPrimaries {
-		emptyIDs[ep.id] = struct{}{}
-	}
-
-	for _, r := range replicas {
-		if _, isTarget := primaryIDs[r.primaryID]; isTarget {
-			replicaCount[r.primaryID]++
+		if pn.slots > 0 {
+			nonEmptyPrimaries = append(nonEmptyPrimaries, pn)
+		} else {
+			emptyPrimaries = append(emptyPrimaries, pn)
 		}
 	}
 
-	// Collect primaries (non-empty) that have fewer replicas than desired
-	var needsReplicas []string
-	for id := range primaryIDs {
-		if _, isEmpty := emptyIDs[id]; isEmpty {
-			continue
+	// Prefer demoting empty primaries: they carry no data, so demotion is instant.
+	if len(emptyPrimaries) > 0 {
+		emptyIDs := make(map[string]struct{}, len(emptyPrimaries))
+		for _, ep := range emptyPrimaries {
+			emptyIDs[ep.id] = struct{}{}
 		}
-		deficit := desiredReplicasPerPrimary - replicaCount[id]
-		for range deficit {
-			needsReplicas = append(needsReplicas, id)
+
+		// Count replicas of each non-empty primary to find those below the desired count.
+		replicaCount := make(map[string]int)
+		for _, r := range replicas {
+			if _, isTarget := primaryIDs[r.primaryID]; isTarget {
+				replicaCount[r.primaryID]++
+			}
 		}
+		var needsReplicas []string
+		for id := range primaryIDs {
+			if _, isEmpty := emptyIDs[id]; isEmpty {
+				continue
+			}
+			deficit := desiredReplicasPerPrimary - replicaCount[id]
+			for range deficit {
+				needsReplicas = append(needsReplicas, id)
+			}
+		}
+
+		demoteEmpty := min(excess, len(emptyPrimaries))
+		demoted := 0
+		for i := range demoteEmpty {
+			if i >= len(needsReplicas) {
+				hr.logger.Warn("No more primaries needing replicas, stopping empty-primary demotion",
+					"demoted", demoted, "remaining", demoteEmpty-demoted)
+				break
+			}
+
+			ep := emptyPrimaries[i]
+			targetPrimaryID := needsReplicas[i]
+
+			hr.logger.Info("Demoting empty primary to replica",
+				"emptyPrimary", ep.addr, "emptyPrimaryID", ep.id,
+				"targetPrimary", targetPrimaryID)
+
+			client := hr.clientFactory(ep.addr, password)
+			if err := client.ClusterReplicate(ctx, targetPrimaryID); err != nil {
+				_ = client.Close()
+				return false, fmt.Errorf("demoting %s to replica of %s: %w", ep.addr, targetPrimaryID, err)
+			}
+			_ = client.Close()
+			demoted++
+		}
+
+		hr.logger.Info("Excess primary demotion complete", "demoted", demoted)
+		// Demoting reshapes the topology; defer the re-check to the next cycle. If excess
+		// remains (fewer empties than surplus), a later cycle drains the slot-owning surplus.
+		return demoted > 0, nil
 	}
 
-	// Demote empty primaries to replicas
-	demoted := 0
-	for i := range excess {
-		if i >= len(needsReplicas) {
-			hr.logger.Warn("No more primaries needing replicas, stopping demotion",
-				"demoted", demoted, "remaining", excess-demoted)
+	// No empty primaries, but a surplus of slot-owning primaries remains. Drain the surplus
+	// primaries (fewest slots first, to minimise data movement) so they become empty and can
+	// be demoted next cycle. Never drain below desiredPrimaries.
+	sort.Slice(nonEmptyPrimaries, func(i, j int) bool {
+		return nonEmptyPrimaries[i].slots < nonEmptyPrimaries[j].slots
+	})
+	drainCount := excess
+	if drainCount > len(nonEmptyPrimaries)-1 {
+		drainCount = len(nonEmptyPrimaries) - 1
+	}
+	if drainCount <= 0 {
+		hr.logger.Warn("Excess primaries but none can be safely drained, skipping",
+			"nonEmptyPrimaries", len(nonEmptyPrimaries))
+		return false, nil
+	}
+
+	drainSet := make(map[string]struct{}, drainCount)
+	drainIDs := make([]string, 0, drainCount)
+	for i := range drainCount {
+		drainIDs = append(drainIDs, nonEmptyPrimaries[i].id)
+		drainSet[nonEmptyPrimaries[i].id] = struct{}{}
+	}
+
+	// Seed the rebalance from a keeper primary (one not being drained) so its slots have
+	// a destination.
+	var seedAddr string
+	for id, addr := range primaryIDs {
+		if _, draining := drainSet[id]; !draining {
+			seedAddr = addr
 			break
 		}
-
-		ep := emptyPrimaries[i]
-		targetPrimaryID := needsReplicas[i]
-
-		hr.logger.Info("Demoting empty primary to replica after failover",
-			"emptyPrimary", ep.addr, "emptyPrimaryID", ep.id,
-			"targetPrimary", targetPrimaryID)
-
-		client := hr.clientFactory(ep.addr, password)
-		if err := client.ClusterReplicate(ctx, targetPrimaryID); err != nil {
-			_ = client.Close()
-			return fmt.Errorf("demoting %s to replica of %s: %w", ep.addr, targetPrimaryID, err)
-		}
-		_ = client.Close()
-		demoted++
+	}
+	if seedAddr == "" {
+		return false, fmt.Errorf("no keeper primary available to seed drain rebalance")
 	}
 
-	hr.logger.Info("Excess primary demotion complete", "demoted", demoted)
+	hr.logger.Info("Draining surplus primaries so they can be demoted next cycle",
+		"drainCount", drainCount, "drainIDs", drainIDs)
+	if err := hr.drainPrimaries(ctx, seedAddr, password, drainIDs); err != nil {
+		return false, fmt.Errorf("draining surplus primaries: %w", err)
+	}
+	return true, nil
+}
+
+// drainPrimaries moves all slots off the given primaries (by node ID) onto the remaining
+// primaries via a weight-0 rebalance seeded from seedAddr, bounded by the configured
+// rebalance timeout. The drained nodes end up as empty masters, ready to be demoted to
+// replicas.
+func (hr *HealthReconciler) drainPrimaries(ctx context.Context, seedAddr, password string, drainIDs []string) error {
+	weights := make(map[string]int, len(drainIDs))
+	for _, id := range drainIDs {
+		weights[id] = 0
+	}
+
+	rebalanceCtx := ctx
+	if timeout := hr.runtimeConfig.RebalanceTimeout(); timeout > 0 {
+		var cancel context.CancelFunc
+		rebalanceCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	client := hr.clientFactory(seedAddr, password)
+	defer func() { _ = client.Close() }()
+
+	if _, err := client.ClusterRebalanceWithWeights(rebalanceCtx, weights); err != nil {
+		return fmt.Errorf("weight-0 rebalance from %s: %w", seedAddr, err)
+	}
+	return nil
+}
+
+// remediatePrimaryDeficit handles the case where the cluster has fewer primaries than
+// desired but still carries replicas that can be promoted. This occurs after chaos events
+// (e.g. pod deletion during scale-up) leave a node attached as a replica instead of
+// becoming the expected empty primary, which would otherwise deadlock the health
+// reconciler: replica spread stays broken forever because no other step promotes the
+// surplus replica.
+//
+// Surplus replicas (those beyond what the target topology requires) are promoted to empty
+// primaries by detaching them from replication via CLUSTER RESET (soft) and re-MEETing
+// them, mirroring the original robin's convertNodesToPrimary flow. A later reconciliation
+// cycle then rebalances slots onto the newly empty primaries. If there are no surplus
+// replicas, the deficit must be resolved by adding pods (scale-up), which is outside the
+// health reconciler's scope, so it skips.
+//
+// It returns true when it promoted at least one replica, signalling the caller to defer
+// the remaining health checks to the next cycle.
+func (hr *HealthReconciler) remediatePrimaryDeficit(
+	ctx context.Context,
+	primaryIDs map[string]string,
+	replicas []replicaInfo,
+	nodes []health.Node,
+	password string,
+	desiredPrimaries, desiredReplicasPerPrimary int,
+) (bool, error) {
+	deficit := desiredPrimaries - len(primaryIDs)
+
+	// Replicas beyond the target topology's needs are surplus and may be promoted. The
+	// rest are still required to satisfy replica spread once the primary count recovers.
+	desiredReplicaTotal := desiredPrimaries * desiredReplicasPerPrimary
+	surplus := len(replicas) - desiredReplicaTotal
+	if surplus <= 0 {
+		hr.logger.Info("Primary count below desired and no surplus replicas to promote, skipping replica spread remediation",
+			"actual", len(primaryIDs), "desired", desiredPrimaries, "replicas", len(replicas))
+		return false, nil
+	}
+
+	promoteCount := min(deficit, surplus)
+	hr.logger.Info("Primary count below desired, promoting surplus replicas to empty primaries",
+		"actual", len(primaryIDs), "desired", desiredPrimaries,
+		"surplusReplicas", surplus, "promoting", promoteCount)
+
+	// Detach each selected replica into a standalone empty master via CLUSTER RESET SOFT.
+	promoted := make([]replicaInfo, 0, promoteCount)
+	for i := 0; i < promoteCount && i < len(replicas); i++ {
+		r := replicas[i]
+		hr.logger.Info("Promoting replica to empty primary",
+			"replica", r.addr, "replicaID", r.id, "fromPrimary", r.primaryID)
+
+		client := hr.clientFactory(r.addr, password)
+		if err := client.ClusterReset(ctx, false); err != nil {
+			_ = client.Close()
+			return false, fmt.Errorf("resetting replica %s to empty primary: %w", r.addr, err)
+		}
+		_ = client.Close()
+		promoted = append(promoted, r)
+	}
+
+	if len(promoted) == 0 {
+		return false, nil
+	}
+
+	// Re-MEET the reset nodes so they rejoin the cluster as empty primaries, then wait for
+	// gossip convergence before the next cycle rebalances slots onto them.
+	if err := hr.meetResetReplicas(ctx, promoted, nodes, password); err != nil {
+		return false, err
+	}
+
+	meetWait := hr.runtimeConfig.ClusterMeetWait()
+	hr.logger.Info("Waiting for gossip convergence after promoting replicas", "duration", meetWait)
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-time.After(meetWait):
+	}
+
+	hr.logger.Info("Replica promotion complete, deferring rebalance to next cycle", "promoted", len(promoted))
+	return true, nil
+}
+
+// meetResetReplicas re-introduces nodes that were just reset into empty primaries by
+// issuing CLUSTER MEET toward each of them from every other cluster member, so gossip
+// re-admits them. Meets are best-effort: a single peer failure is logged and tolerated
+// because any successful meet is enough for the node to rejoin.
+func (hr *HealthReconciler) meetResetReplicas(ctx context.Context, resetNodes []replicaInfo, nodes []health.Node, password string) error {
+	resetIPs := make(map[string]struct{}, len(resetNodes))
+	for _, r := range resetNodes {
+		resetIPs[extractIP(r.addr)] = struct{}{}
+	}
+
+	for _, r := range resetNodes {
+		targetIP := extractIP(r.addr)
+		for _, node := range nodes {
+			peerIP := extractIP(node.Addr)
+			if peerIP == "" {
+				continue
+			}
+			if _, isReset := resetIPs[peerIP]; isReset {
+				continue // don't meet from a node we just reset
+			}
+			peerClient := hr.clientFactory(node.Addr, password)
+			if meetErr := peerClient.ClusterMeet(ctx, targetIP, redis.DefaultPort); meetErr != nil {
+				hr.logger.Warn("Failed to meet promoted node from peer",
+					"peer", node.Addr, "target", targetIP, "error", meetErr)
+			}
+			_ = peerClient.Close()
+		}
+	}
 	return nil
 }
 

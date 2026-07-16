@@ -136,6 +136,27 @@ func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv
 		newPrimariesNeeded = 0
 	}
 	if newPrimariesNeeded > len(availableNodes) {
+		// A chaos event (e.g. a pod deleted mid-scale) can leave the cluster carrying
+		// surplus replicas — nodes attached as replicas beyond what the target topology
+		// requires — instead of the empty primaries scale-up expects. Those replicas are
+		// cluster members with a master, so they are excluded from availableNodes and the
+		// primary requirement can never be met from pending/new pods alone: scale-up would
+		// dead-end here retrying forever (observed as a 2->3 scale stuck with
+		// newPrimariesNeeded=2, availableNodes=1 and one stray replica). Promote the surplus
+		// replicas to empty primaries via the shared replica-topology remediation (CLUSTER
+		// RESET SOFT + re-MEET), then re-enter and reclassify on the healed topology so the
+		// promoted nodes count as available primaries.
+		desiredReplicaTotal := primaryCount * int(config.Spec.ReplicasPerPrimary)
+		if surplusReplicas := len(existingReplicas) - desiredReplicaTotal; surplusReplicas > 0 {
+			cr.logger.Info("Not enough available nodes but surplus replicas can be promoted, remediating replica topology",
+				"newPrimariesNeeded", newPrimariesNeeded, "availableNodes", len(availableNodes),
+				"surplusReplicas", surplusReplicas)
+			if _, err := cr.ensureReplicaTopology(ctx, config); err != nil {
+				cr.logger.Warn("Failed to promote surplus replicas during scale up, will retry", "error", err)
+				return reconcileAfterWaitInterval, nil
+			}
+			return reconcileImmediately, nil
+		}
 		cr.logger.Info("Not enough available nodes to satisfy primary requirement, will retry",
 			"newPrimariesNeeded", newPrimariesNeeded, "availableNodes", len(availableNodes))
 		return reconcileAfterWaitInterval, nil
@@ -145,6 +166,21 @@ func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv
 
 	// All primaries = existing + future primaries to add.
 	allPrimaries := append(existingPrimaries, futurePrimaries...)
+
+	// anchorNode is the cluster member used to issue cluster-wide commands (cluster
+	// fix, rebalance, slot-stability checks). It is normally an existing primary, but
+	// after a chaos event that wipes every primary's slots (e.g. ephemeral pods that
+	// restart and rejoin empty), existingPrimaries can be empty. In that case fall back
+	// to the first available primary so scale-up can still drive recovery instead of
+	// panicking on existingPrimaries[0].
+	var anchorNode *redis.Node
+	if len(existingPrimaries) > 0 {
+		anchorNode = existingPrimaries[0]
+	} else if len(allPrimaries) > 0 {
+		anchorNode = allPrimaries[0]
+	} else {
+		anchorNode = nodes[0]
+	}
 
 	cr.logger.Info("Scale-up topology discovery",
 		"existingPrimaries", len(existingPrimaries),
@@ -175,20 +211,18 @@ func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv
 		}
 	}
 
-	// Forget phantom nodes left behind by restarted ephemeral pods before doing any slot
-	// work. A restarted ephemeral pod rejoins with a new ID while its old ID lingers in
-	// the gossip table (still owning slots), which makes redis-cli rebalance across stale
-	// masters and never converge.
-	// Pass ALL nodes (existing + new) so existing replicas are not mistakenly pruned.
-	if pruned, err := cr.pruneStaleNodes(ctx, nodes); err != nil {
-		cr.logger.Warn("Failed to prune stale nodes during scale up", "error", err)
+	// Heal the topology before doing any slot work: forget the lingering entries of pods
+	// recreated mid-operation (a recreated ephemeral pod rejoins with a new ID while its
+	// old ID lingers in the gossip table, still owning slots, which makes redis-cli
+	// rebalance across stale masters and never converge) and re-cover any orphaned slots.
+	// meetMissing is false here: scale-up's empty-masters rebalance would otherwise hand
+	// slots to a freshly met, not-yet-classified node destined to become a replica —
+	// scale-up meets its own new nodes with explicit roles below.
+	if changed, err := cr.healTopology(ctx, config, false); err != nil {
+		cr.logger.Warn("Failed to heal topology during scale up", "error", err)
 		return reconcileAfterWaitInterval, nil
-	} else if pruned {
-		// Reassign any slots orphaned by the forgotten nodes, then re-evaluate from a
-		// clean topology on the next pass.
-		if err := cr.runClusterFix(ctx, existingPrimaries[0]); err != nil {
-			cr.logger.Warn("Failed to fix cluster after pruning stale nodes", "error", err)
-		}
+	} else if changed {
+		// Re-evaluate from a clean topology on the next pass.
 		return reconcileImmediately, nil
 	}
 
@@ -200,13 +234,13 @@ func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv
 	if len(futurePrimaries) > 0 {
 		cr.updateSubstatus(ctx, config, redisv1.SubstatusRebalancing)
 		cr.logger.Info("Starting rebalance to distribute slots to new primaries", "newPrimaries", len(futurePrimaries))
-		if err := cr.rebalanceWithRetry(ctx, existingPrimaries[0], nil); err != nil {
+		if err := cr.rebalanceWithRetry(ctx, anchorNode, nil); err != nil {
 			cr.logger.Error("Rebalance failed during scale up", "error", err)
 			return reconcileAfterWaitInterval, nil
 		}
 
 		// Wait until no slots remain in a migrating/importing state.
-		stable, err := cr.slotsStable(ctx, existingPrimaries[0])
+		stable, err := cr.slotsStable(ctx, anchorNode)
 		if err != nil {
 			cr.logger.Warn("Failed to check slot stability during scale up", "error", err)
 			return reconcileAfterWaitInterval, nil
@@ -293,6 +327,30 @@ func (cr *ClusterReconciler) handleScalingDown(ctx context.Context, config *redi
 	if fastScalingEligible(config) && !hasReplicaNodes(nodes) {
 		closeNodes(nodes)
 		return cr.handleFastScaling(ctx, config)
+	}
+
+	// Heal the topology before evaluating node counts or draining: forget the lingering
+	// entries of pods that were deleted (e.g. a chaos pod kill) or recreated mid-operation
+	// and reintegrate their replacements. A dead pod's old entry lingers in the gossip
+	// table flagged "fail" — often still owning slots and unreachable — so the drain
+	// rebalance would try to connect to that dead address (timing out) and reference a
+	// master redis-cli can no longer load ("No such master node"), deadlocking the
+	// scale-down. Healing evicts those ghosts and re-covers orphaned slots so the drain
+	// operates on a clean, reachable topology. meetMissing is true: scale-down adds no
+	// pods, so every live pod is a legitimate member and reintegrating a recreated one is
+	// safe.
+	//
+	// This must run BEFORE the currentTotal check below: when a slot-owning pod is killed
+	// mid-scale-down it goes briefly unreachable, so initAllNodes reports fewer nodes than
+	// targetTotal and the "nodes already removed" branch would otherwise verify a cluster
+	// whose slots the dead pod orphaned — a check that can never pass, leaving the config
+	// stuck InProgress (rkcl frozen in Configuring) forever.
+	if changed, err := cr.healTopology(ctx, config, true); err != nil {
+		cr.logger.Warn("Failed to heal topology during scale down", "error", err)
+		return reconcileAfterWaitInterval, nil
+	} else if changed {
+		// Re-evaluate from a clean topology on the next pass.
+		return reconcileImmediately, nil
 	}
 
 	currentTotal := len(nodes)
@@ -522,6 +580,24 @@ func (cr *ClusterReconciler) handleFastScaling(ctx context.Context, config *redi
 // finishScaling transitions the cluster to Ready, marks the config as applied, and
 // records the final node topology in the status.
 func (cr *ClusterReconciler) finishScaling(ctx context.Context, config *redisv1.RedkeyClusterConfig, nodes []*redis.Node, op string) (reconcileSchedule, error) {
+	// Before declaring the operation complete, ensure the cluster actually matches the
+	// desired primary/replica distribution. A pod recreated during scaling can rejoin with
+	// the wrong role (e.g. a replica comes back as an empty primary), leaving the wrong
+	// number of primaries or a primary with too many/few replicas — which the slot/state
+	// checks alone do not catch. Remediate and requeue until the topology is correct so we
+	// never mark Ready with a distribution that does not match the spec.
+	topologyOK, err := cr.ensureReplicaTopology(ctx, config)
+	if err != nil {
+		cr.logger.Warn("Replica topology check failed while finishing scaling, will retry",
+			"operation", op, "error", err)
+		return reconcileAfterWaitInterval, nil
+	}
+	if !topologyOK {
+		cr.logger.Info("Replica topology not yet correct, remediating before completing scaling",
+			"operation", op)
+		return reconcileAfterWaitInterval, nil
+	}
+
 	config.Status.Substatus.Status = ""
 	if err := cr.updateClusterStatus(ctx, config, redisv1.ClusterStatusReady); err != nil {
 		return reconcileAfterInterval, err
@@ -683,18 +759,24 @@ func (cr *ClusterReconciler) runRebalanceOnce(ctx context.Context, seed *redis.N
 }
 
 // recoverOpenSlots detects slots left in a migrating/importing state by a previously
-// interrupted rebalance and runs redis-cli --cluster fix to close them. It is a no-op
-// when the cluster has no in-flight slots.
+// interrupted rebalance, or a coverage gap left behind by a primary that vanished (for
+// example an ephemeral pod deleted mid-operation that rejoined empty with a new ID), and
+// runs redis-cli --cluster fix to repair them. redis-cli refuses to rebalance a cluster
+// with open OR uncovered slots, so this repair is what lets the operation make progress.
+// It is a no-op when the cluster has no in-flight slots and full slot coverage.
 func (cr *ClusterReconciler) recoverOpenSlots(ctx context.Context, seed *redis.Node) error {
 	clusterNodes, err := seed.Client().GetClusterNodes(ctx)
 	if err != nil {
 		return err
 	}
-	if !redis.HasInFlightSlots(clusterNodes) {
+	inFlight := redis.HasInFlightSlots(clusterNodes)
+	covered := redis.SlotsFullyCovered(clusterNodes)
+	if !inFlight && covered {
 		return nil
 	}
 
-	cr.logger.Info("Open slots detected from a previous rebalance, running cluster fix", "node", seed.Name)
+	cr.logger.Info("Slot problems detected before rebalance, running cluster fix",
+		"node", seed.Name, "inFlightSlots", inFlight, "fullyCovered", covered)
 	return cr.runClusterFix(ctx, seed)
 }
 
@@ -712,57 +794,6 @@ func (cr *ClusterReconciler) runClusterFix(ctx context.Context, seed *redis.Node
 		return fmt.Errorf("cluster fix: %w", err)
 	}
 	return nil
-}
-
-// pruneStaleNodes forgets any cluster node that is not part of the live, expected
-// topology. Ephemeral pods that restart during a long operation (for example, when an
-// interrupted rebalance kills them) rejoin with a brand new node ID while their previous
-// ID lingers in the gossip table — often still owning slots. redis-cli then rebalances
-// "across" those phantom masters and never converges. We detect them structurally: any ID
-// present in CLUSTER NODES but absent from the set of live nodes we just initialized is
-// stale and is forgotten from every surviving node. Nodes still in the handshake
-// state are skipped, as they are transient gossip entries rather than true phantoms. It
-// returns true if anything was pruned.
-func (cr *ClusterReconciler) pruneStaleNodes(ctx context.Context, nodes []*redis.Node) (bool, error) {
-	expected := make(map[string]struct{}, len(nodes))
-	for _, n := range nodes {
-		expected[n.ID] = struct{}{}
-	}
-
-	clusterNodes, err := nodes[0].Client().GetClusterNodes(ctx)
-	if err != nil {
-		return false, fmt.Errorf("getting cluster nodes to prune stale entries: %w", err)
-	}
-
-	pruned := false
-	for _, cn := range clusterNodes {
-		if cn.ID == "" {
-			continue
-		}
-		if _, ok := expected[cn.ID]; ok {
-			continue
-		}
-		// Nodes in the handshake state are transient gossip churn (a MEET still in
-		// progress), not phantom masters left behind by a restart. They resolve on their
-		// own, and CLUSTER FORGET on them just returns "ERR Unknown node", so skip them.
-		if strings.Contains(cn.Flags, "handshake") {
-			continue
-		}
-		cr.logger.Info("Forgetting stale cluster node",
-			"staleNodeID", cn.ID, "addr", cn.Addr, "flags", cn.Flags, "slots", cn.Slots)
-		for _, n := range nodes {
-			if n.ID == cn.ID {
-				continue
-			}
-			if err := n.Client().ClusterForget(ctx, cn.ID); err != nil {
-				// The node may already not know about the stale entry; log and continue.
-				cr.logger.Warn("Failed to forget stale node, continuing",
-					"from", n.Name, "staleNodeID", cn.ID, "error", err)
-			}
-		}
-		pruned = true
-	}
-	return pruned, nil
 }
 
 // slotsStable reports whether no node currently has slots in a migrating or importing state.
