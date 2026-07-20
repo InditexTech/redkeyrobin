@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
@@ -234,7 +235,7 @@ func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv
 	if len(futurePrimaries) > 0 {
 		cr.updateSubstatus(ctx, config, redisv1.SubstatusRebalancing)
 		cr.logger.Info("Starting rebalance to distribute slots to new primaries", "newPrimaries", len(futurePrimaries))
-		if err := cr.rebalanceWithRetry(ctx, anchorNode, nil); err != nil {
+		if err := cr.rebalanceWithRetry(ctx, config, anchorNode, nil, false); err != nil {
 			cr.logger.Error("Rebalance failed during scale up", "error", err)
 			return reconcileAfterWaitInterval, nil
 		}
@@ -247,6 +248,18 @@ func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv
 		}
 		if !stable {
 			cr.logger.Info("Slots still migrating during scale up, will retry")
+			return reconcileAfterWaitInterval, nil
+		}
+	} else {
+		// No new primaries need slots, but a primary killed mid-operation (chaos) can leave slots
+		// orphaned on the existing topology — the surviving masters then cover only part of the
+		// keyspace. rebalanceWithRetry, which repairs open/uncovered slots, only runs when there are
+		// future primaries, so repair here directly. Without this, verifyCluster fails on the missing
+		// coverage every pass and the scale-up loops forever (WaitingForPods -> InitializingNodes ->
+		// Verifying, never reaching Ready). nil weights: this is not a drain, so slots may be recovered
+		// onto any master.
+		if err := cr.recoverOpenSlots(ctx, anchorNode, password); err != nil {
+			cr.logger.Warn("Failed to repair orphaned slots during scale up, will retry", "error", err)
 			return reconcileAfterWaitInterval, nil
 		}
 	}
@@ -433,7 +446,7 @@ func (cr *ClusterReconciler) handleScalingDown(ctx context.Context, config *redi
 		}
 
 		if drainHasSlots {
-			if err := cr.rebalanceWithRetry(ctx, keepPrimaries[0], weights); err != nil {
+			if err := cr.rebalanceWithRetry(ctx, config, keepPrimaries[0], weights, true); err != nil {
 				cr.logger.Error("Rebalance failed during scale down", "error", err)
 				return reconcileAfterWaitInterval, nil
 			}
@@ -605,6 +618,11 @@ func (cr *ClusterReconciler) finishScaling(ctx context.Context, config *redisv1.
 	if err := cr.setConfigPhaseApplied(ctx, config); err != nil {
 		return reconcileAfterInterval, err
 	}
+
+	// Populate the data-plane health conditions now so reaching Ready reflects health immediately,
+	// rather than leaving them Unknown until the next reconcile cycle runs handleReady.
+	cr.refreshHealthConditions(ctx, config, cr.getPassword(ctx, config))
+
 	if err := cr.updateNodeStatus(ctx, config, nodes); err != nil {
 		cr.logger.Error("Failed to update node status after scaling", "error", err)
 		// Non-critical, continue.
@@ -706,17 +724,44 @@ func (cr *ClusterReconciler) refreshRoles(ctx context.Context, nodes []*redis.No
 //   - A failure is retried as long as the parent context is still alive. The per-attempt
 //     rebalance timeout cancels only an inner context, so a slow reshard is naturally
 //     retryable; cancellation of the parent context (e.g. shutdown) aborts immediately.
-func (cr *ClusterReconciler) rebalanceWithRetry(ctx context.Context, seed *redis.Node, weights map[string]int) error {
+func (cr *ClusterReconciler) rebalanceWithRetry(ctx context.Context, config *redisv1.RedkeyClusterConfig, seed *redis.Node, weights map[string]int, meetMissing bool) error {
 	backoff := cr.runtimeConfig.ClusterMeetWait()
 	if backoff <= 0 {
 		backoff = time.Second
 	}
+	password := cr.getPassword(ctx, config)
 
 	var lastErr error
 	for attempt := 1; attempt <= defaultRebalanceMaxAttempts; attempt++ {
-		// Heal leftover open slots (detected structurally from CLUSTER NODES) before
-		// rebalancing, then run the rebalance.
-		if err := cr.recoverOpenSlots(ctx, seed); err != nil {
+		// Heal membership before touching redis-cli: a pod deleted since the last attempt leaves a
+		// dead ghost in the gossip table that redis-cli --cluster fix/rebalance keeps hitting,
+		// stalling ~2 minutes on its connect timeout. If healing changed the topology, the weights
+		// map now references stale node IDs, so bail and let the caller re-classify nodes and rebuild
+		// the weights from the healed topology.
+		if changed, healErr := cr.healTopology(ctx, config, meetMissing); healErr != nil {
+			cr.logger.Warn("Failed to heal topology before rebalance, continuing", "error", healErr)
+		} else if changed {
+			if lastErr != nil {
+				return fmt.Errorf("topology changed while rebalancing from %s, re-evaluating from a clean state: %w", seed.Name, lastErr)
+			}
+			return fmt.Errorf("topology changed before rebalancing from %s, re-evaluating from a clean state", seed.Name)
+		}
+
+		// A pod deleted mid-operation can linger in the gossip table with an unreachable IP that
+		// healTopology cannot yet forget (Kubernetes still reports a pod at that IP, or gossip has not
+		// marked it fail). redis-cli --cluster fix/rebalance begins by connecting to every node, so it
+		// would hang ~2 minutes on that dead node's TCP connect timeout. Probe reachability first and
+		// bail if any master is unreachable, so the caller retries against a clean topology instead of
+		// blocking.
+		if !cr.mastersReachable(ctx, seed, password) {
+			if lastErr != nil {
+				return fmt.Errorf("rebalance from %s deferred, a cluster master is unreachable: %w", seed.Name, lastErr)
+			}
+			return fmt.Errorf("rebalance from %s deferred, a cluster master is unreachable", seed.Name)
+		}
+
+		// Repair any leftover open slots (detected structurally from CLUSTER NODES), then rebalance.
+		if err := cr.recoverOpenSlots(ctx, seed, password); err != nil {
 			cr.logger.Warn("Failed to recover open slots before rebalance, continuing", "error", err)
 		}
 
@@ -735,7 +780,20 @@ func (cr *ClusterReconciler) rebalanceWithRetry(ctx context.Context, seed *redis
 		if attempt == defaultRebalanceMaxAttempts {
 			break
 		}
+
 		cr.logger.Info("Rebalance attempt failed, will repair open slots and retry", "attempt", attempt, "error", err)
+
+		// redis-cli --cluster rebalance rejects a cluster for several reasons beyond open slots on the
+		// seed's own view — notably a leftover half-migration open on another node (whose importing/
+		// migrating marker is local and invisible to the seed) and "Nodes don't agree about
+		// configuration" epoch disagreements. redis-cli --cluster fix repairs all of them, and it
+		// connects to every node so it sees state the seed's view hides. recoverOpenSlots' structural
+		// detection cannot cover every refusal reason, so force a fix here after any failure to guarantee
+		// forward progress and never loop indefinitely refusing and retrying. The fix is a no-op when the
+		// cluster is already clean.
+		if fixErr := cr.runClusterFix(ctx, seed, password); fixErr != nil {
+			cr.logger.Warn("Post-failure cluster fix did not complete, will retry", "attempt", attempt, "error", fixErr)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -764,36 +822,160 @@ func (cr *ClusterReconciler) runRebalanceOnce(ctx context.Context, seed *redis.N
 // runs redis-cli --cluster fix to repair them. redis-cli refuses to rebalance a cluster
 // with open OR uncovered slots, so this repair is what lets the operation make progress.
 // It is a no-op when the cluster has no in-flight slots and full slot coverage.
-func (cr *ClusterReconciler) recoverOpenSlots(ctx context.Context, seed *redis.Node) error {
+//
+// Open-slot (importing/migrating) markers are LOCAL to the node that holds them: they appear only in
+// that node's own CLUSTER NODES line and are not propagated by gossip. The seed's view therefore
+// cannot see a slot left open on another node, so detection probes every master's own view — without
+// it, a leftover half-migration on a non-seed node stays invisible, the fix never runs, and redis-cli
+// rebalance (which checks all nodes) refuses forever. Slot coverage, by contrast, is gossiped and so
+// is read from the seed's view directly.
+func (cr *ClusterReconciler) recoverOpenSlots(ctx context.Context, seed *redis.Node, password string) error {
 	clusterNodes, err := seed.Client().GetClusterNodes(ctx)
 	if err != nil {
 		return err
 	}
-	inFlight := redis.HasInFlightSlots(clusterNodes)
 	covered := redis.SlotsFullyCovered(clusterNodes)
+	inFlight := redis.HasInFlightSlots(clusterNodes) || cr.anyMasterHasOpenSlots(ctx, clusterNodes, password)
 	if !inFlight && covered {
 		return nil
 	}
 
 	cr.logger.Info("Slot problems detected before rebalance, running cluster fix",
 		"node", seed.Name, "inFlightSlots", inFlight, "fullyCovered", covered)
-	return cr.runClusterFix(ctx, seed)
+	return cr.runClusterFix(ctx, seed, password)
 }
 
-// runClusterFix runs redis-cli --cluster fix from the seed node, bounded by the configured
-// rebalance timeout. The fix both closes open (migrating/importing) slots and reassigns
-// slots left uncovered, which is needed after forgetting a slot-owning stale node.
-func (cr *ClusterReconciler) runClusterFix(ctx context.Context, seed *redis.Node) error {
-	fixCtx := ctx
-	if timeout := cr.runtimeConfig.RebalanceTimeout(); timeout > 0 {
-		var cancel context.CancelFunc
-		fixCtx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
+// anyMasterHasOpenSlots reports whether any master currently holds a slot in a migrating or importing
+// state, by inspecting each master's OWN CLUSTER NODES view. These in-flight markers are local to the
+// node that owns them and are not propagated by gossip, so the seed's view alone cannot detect an open
+// slot left behind on another node — the blind spot that lets a leftover half-migration stall the
+// rebalance indefinitely. Masters are probed concurrently with a short per-node timeout; a probe error
+// is treated as "no marker" because reachability is already guarded upstream by mastersReachable.
+func (cr *ClusterReconciler) anyMasterHasOpenSlots(
+	ctx context.Context, clusterNodes []redis.ClusterNode, password string,
+) bool {
+	var open bool
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, cn := range clusterNodes {
+		if cn.IP == "" || !strings.Contains(cn.Flags, "master") {
+			continue
+		}
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			probeCtx, cancel := context.WithTimeout(ctx, rebalanceProbeTimeout)
+			defer cancel()
+			c := redis.NewClient(addr, password)
+			defer func() { _ = c.Close() }()
+			nodes, perr := c.GetClusterNodes(probeCtx)
+			if perr != nil {
+				return
+			}
+			if redis.HasInFlightSlots(nodes) {
+				mu.Lock()
+				open = true
+				mu.Unlock()
+			}
+		}(fmt.Sprintf("%s:%d", cn.IP, redis.DefaultPort))
 	}
+	wg.Wait()
+	return open
+}
+
+// clusterFixWatchdogInterval is how often the cluster-fix watchdog re-probes master reachability
+// while a fix is in flight. It must stay well below clusterFixTimeout so a mid-fix pod death is
+// detected and the fix aborted within a couple of probe cycles.
+const clusterFixWatchdogInterval = 3 * time.Second
+
+// runClusterFix runs redis-cli --cluster fix from the seed node, bounded by clusterFixTimeout (or
+// the configured rebalance timeout when it is shorter). The fix both closes open (migrating/
+// importing) slots and reassigns slots left uncovered, which is needed after forgetting a
+// slot-owning stale node. Bounding it well below RebalanceTimeout means a fix that hits a pod
+// deleted mid-operation fails fast on the dead node instead of stalling ~2 minutes on redis-cli's
+// own connect timeout, letting the retry loop heal membership and re-evaluate.
+//
+// The static timeout alone is a blunt instrument: large clusters (40-50 nodes) need a generous cap
+// for a legitimately slow but healthy fix, yet that same generous cap makes a mid-fix pod death stall
+// for the whole duration. A reachability watchdog resolves the tension: it re-probes the masters
+// while the fix runs and cancels it the instant one becomes unreachable, so a mid-fix death aborts
+// within a couple of probe cycles regardless of how high the timeout is set.
+func (cr *ClusterReconciler) runClusterFix(ctx context.Context, seed *redis.Node, password string) error {
+	timeout := clusterFixTimeout
+	if rebalance := cr.runtimeConfig.RebalanceTimeout(); rebalance > 0 && rebalance < timeout {
+		timeout = rebalance
+	}
+	fixCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Watchdog: mastersReachable already ran before this fix, but a pod can be deleted while the fix is
+	// in flight, and redis-cli would then block on that dead node's TCP connect for the full timeout.
+	// Poll reachability during the fix and cancel it the moment a master drops so the retry loop heals
+	// membership and re-evaluates, without shortening the timeout that healthy large clusters rely on.
+	watchdogDone := make(chan struct{})
+	defer close(watchdogDone)
+	go func() {
+		ticker := time.NewTicker(clusterFixWatchdogInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-watchdogDone:
+				return
+			case <-fixCtx.Done():
+				return
+			case <-ticker.C:
+				if !cr.mastersReachable(fixCtx, seed, password) {
+					cr.logger.Info("Master became unreachable during cluster fix, aborting to heal and retry",
+						"node", seed.Name)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
 	if _, err := seed.Client().ClusterFix(fixCtx); err != nil {
 		return fmt.Errorf("cluster fix: %w", err)
 	}
 	return nil
+}
+
+// rebalanceProbeTimeout bounds the per-node reachability probe run before a rebalance/fix.
+const rebalanceProbeTimeout = 3 * time.Second
+
+// mastersReachable probes every master in the seed's view concurrently with a short per-node timeout
+// and reports whether they all respond. redis-cli --cluster fix/rebalance starts by connecting to
+// every node, so a single unreachable master (a pod deleted mid-operation whose entry still lingers
+// in gossip) hangs the whole command for ~2 minutes on its TCP connect timeout. Probing first lets
+// the caller skip a doomed rebalance and retry once the topology is clean and reachable.
+func (cr *ClusterReconciler) mastersReachable(ctx context.Context, seed *redis.Node, password string) bool {
+	clusterNodes, err := seed.Client().GetClusterNodes(ctx)
+	if err != nil {
+		return false
+	}
+	reachable := true
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, cn := range clusterNodes {
+		if cn.IP == "" || !strings.Contains(cn.Flags, "master") {
+			continue
+		}
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			probeCtx, cancel := context.WithTimeout(ctx, rebalanceProbeTimeout)
+			defer cancel()
+			c := redis.NewClient(addr, password)
+			defer func() { _ = c.Close() }()
+			if _, perr := c.GetClusterInfo(probeCtx); perr != nil {
+				mu.Lock()
+				reachable = false
+				mu.Unlock()
+			}
+		}(fmt.Sprintf("%s:%d", cn.IP, redis.DefaultPort))
+	}
+	wg.Wait()
+	return reachable
 }
 
 // slotsStable reports whether no node currently has slots in a migrating or importing state.

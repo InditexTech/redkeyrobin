@@ -244,6 +244,9 @@ func (cr *ClusterReconciler) handleFastUpgradeFormCluster(ctx context.Context, c
 		return reconcileAfterInterval, err
 	}
 
+	// Populate the data-plane health conditions now so reaching Ready reflects health immediately.
+	cr.refreshHealthConditions(ctx, config, cr.getPassword(ctx, config))
+
 	return reconcileAfterInterval, nil
 }
 
@@ -979,6 +982,9 @@ func (cr *ClusterReconciler) handleUpgradeScalingDown(ctx context.Context, confi
 	if err := cr.setConfigPhaseApplied(ctx, config); err != nil {
 		return reconcileAfterInterval, err
 	}
+
+	// Populate the data-plane health conditions now so reaching Ready reflects health immediately.
+	cr.refreshHealthConditions(ctx, config, cr.getPassword(ctx, config))
 
 	return reconcileAfterInterval, nil
 }

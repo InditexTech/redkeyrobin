@@ -315,6 +315,18 @@ func (c *Client) ClusterReset(ctx context.Context, hard bool) error {
 	return nil
 }
 
+// ClusterFailoverTakeover force-promotes this replica to a primary without coordinating with its
+// master (CLUSTER FAILOVER TAKEOVER). Unlike a normal failover it ignores the master's reachability
+// and the replica validity factor, so it can promote a replica whose master is dead and whose
+// automatic failover is stuck. It bumps the config epoch and claims the master's slots.
+func (c *Client) ClusterFailoverTakeover(ctx context.Context) error {
+	err := c.client.Do(ctx, "CLUSTER", "FAILOVER", "TAKEOVER").Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER FAILOVER TAKEOVER on %s: %w", c.addr, err)
+	}
+	return nil
+}
+
 // ClusterForget removes a node from the cluster's node table.
 func (c *Client) ClusterForget(ctx context.Context, nodeID string) error {
 	err := c.client.ClusterForget(ctx, nodeID).Err()

@@ -8,8 +8,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -298,6 +301,10 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 		return reconcileAfterInterval, err
 	}
 
+	// Populate the data-plane health conditions now so reaching Ready reflects health immediately,
+	// rather than leaving them Unknown until the next reconcile cycle runs handleReady.
+	cr.refreshHealthConditions(ctx, config, password)
+
 	// Update node topology in status
 	if err := cr.updateNodeStatus(ctx, config, nodes); err != nil {
 		cr.logger.Error("Failed to update node status", "error", err)
@@ -326,6 +333,22 @@ func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.Re
 	// Step 2: Assign slots to primaries
 	primaries := nodes[:config.Spec.Primaries]
 	if err := cr.assignSlots(ctx, primaries); err != nil {
+		// A pod deleted mid-formation (e.g. by chaos) leaves its old node ID lingering in the
+		// survivors' gossip table, still claiming slots. When the pod is recreated it rejoins empty
+		// with a new ID, so assignSlots sees it as slot-less and runs ADDSLOTS — which fails with
+		// "slot N is already busy" because gossip still attributes the slot to the ghost. Without
+		// intervention this deadlocks the from-scratch formation forever (observed as fast scaling
+		// looping on "Slot 0 is already busy"). Forget the ghost via membership healing and retry on
+		// the next pass against a clean topology. This only triggers on the ghost condition, so a
+		// pristine initial formation is unaffected.
+		if strings.Contains(err.Error(), "already busy") {
+			cr.logger.Warn("Slot busy during cluster formation (stale ghost owner), healing membership and retrying",
+				"error", err)
+			if _, healErr := cr.healTopology(ctx, config, false); healErr != nil {
+				cr.logger.Warn("Failed to heal membership after slot-busy during formation", "error", healErr)
+			}
+			return false
+		}
 		cr.logger.Error("Failed to assign slots", "error", err)
 		return false
 	}
@@ -365,25 +388,11 @@ func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.Re
 
 // handleReady performs a health check on the ready cluster.
 func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
-	// Get fresh pod addresses from K8s
-	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
+	// Build the health node list from current K8s pod state.
+	nodes, err := cr.buildHealthNodes(ctx, config)
 	if err != nil {
 		return reconcileAfterInterval, fmt.Errorf("getting pod addresses for health check: %w", err)
 	}
-
-	// Build health node list from K8s pod state
-	totalNodes := int(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
-	nodes := make([]health.Node, 0, totalNodes)
-	for i := range totalNodes {
-		name := fmt.Sprintf("%s-%d", cr.clusterName, i)
-		addr, ok := podAddrs[name]
-		if !ok {
-			cr.logger.Warn("Pod not found for health check, skipping", "pod", name)
-			continue
-		}
-		nodes = append(nodes, health.Node{Name: name, Addr: addr})
-	}
-
 	if len(nodes) == 0 {
 		return reconcileAfterInterval, fmt.Errorf("no pods found for cluster health check")
 	}
@@ -407,6 +416,13 @@ func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.Re
 	cr.healthReconciler.SetEphemeral(config.Spec.Ephemeral)
 	schedule, err := cr.healthReconciler.Reconcile(ctx, nodes, password,
 		int(config.Spec.Primaries), int(config.Spec.ReplicasPerPrimary))
+	// Surface the live data-plane health of the applied cluster via status conditions and an
+	// informational substatus, even when remediation returned an error — the report still reflects
+	// what was observed. This does NOT change Status/ConfigPhase: a cluster stays Ready while the
+	// health-reconciler heals or rebalances.
+	if report := cr.healthReconciler.LastReport(); report != nil {
+		cr.applyHealthStatus(ctx, config, report)
+	}
 	if err != nil {
 		return schedule, err
 	}
@@ -632,6 +648,84 @@ func (cr *ClusterReconciler) updateSubstatus(ctx context.Context, config *redisv
 	if err := cr.client.Status().Update(ctx, config); err != nil {
 		cr.logger.Warn("Failed to update substatus (non-critical)", "substatus", substatus, "error", err)
 	}
+}
+
+// buildHealthNodes builds the health.Node list for the cluster from the current pod addresses,
+// shared by the periodic health check and the post-operation condition refresh.
+func (cr *ClusterReconciler) buildHealthNodes(ctx context.Context, config *redisv1.RedkeyClusterConfig) ([]health.Node, error) {
+	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
+	if err != nil {
+		return nil, err
+	}
+	total := int(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
+	nodes := make([]health.Node, 0, total)
+	for i := range total {
+		name := fmt.Sprintf("%s-%d", cr.clusterName, i)
+		if addr, ok := podAddrs[name]; ok {
+			nodes = append(nodes, health.Node{Name: name, Addr: addr})
+		} else {
+			cr.logger.Warn("Pod not found for health check, skipping", "pod", name)
+		}
+	}
+	return nodes, nil
+}
+
+// refreshHealthConditions runs a health check (without remediation) and records the resulting
+// conditions on the config, so that reaching Ready/Applied immediately reflects the cluster's health
+// instead of leaving the conditions Unknown until the next handleReady cycle. It is best-effort and
+// non-critical: on any error the next periodic health check populates them.
+func (cr *ClusterReconciler) refreshHealthConditions(ctx context.Context, config *redisv1.RedkeyClusterConfig, password string) {
+	nodes, err := cr.buildHealthNodes(ctx, config)
+	if err != nil || len(nodes) == 0 {
+		cr.logger.Warn("Skipping post-operation health condition refresh (no nodes)", "error", err)
+		return
+	}
+	cr.healthReconciler.SetEphemeral(config.Spec.Ephemeral)
+	if report := cr.healthReconciler.Check(ctx, nodes, password,
+		int(config.Spec.Primaries), int(config.Spec.ReplicasPerPrimary)); report != nil {
+		cr.applyHealthStatus(ctx, config, report)
+	}
+}
+
+// applyHealthStatus records the live data-plane health of an applied cluster on the config status:
+// the Healthy rollup plus one condition per health axis, and an informational Substatus of
+// Remediating while the cluster is not yet fully healthy. It never changes Status/ConfigPhase — a
+// cluster stays Ready while the health-reconciler heals or rebalances. Failures are non-critical:
+// the next reconciliation cycle refreshes the state.
+func (cr *ClusterReconciler) applyHealthStatus(ctx context.Context, config *redisv1.RedkeyClusterConfig, report *health.Report) {
+	setHealthCondition(config, redisv1.ConditionHealthy, report.Healthy, "AllChecksPassed", "SomeChecksFailed")
+	setHealthCondition(config, redisv1.ConditionMembershipHealthy, report.MembershipOK, "MembershipConsistent", "MembershipInconsistent")
+	setHealthCondition(config, redisv1.ConditionSlotsCovered, report.SlotsCoveredOK, "AllSlotsAssigned", "SlotsUncovered")
+	setHealthCondition(config, redisv1.ConditionSlotsBalanced, report.BalancedOK, "SlotsBalanced", "SlotsUnbalanced")
+	setHealthCondition(config, redisv1.ConditionReplicasBalanced, report.ReplicaSpreadOK, "ReplicasBalanced", "ReplicasUnbalanced")
+	setHealthCondition(config, redisv1.ConditionClusterCheckPassing, report.ClusterCheckOK, "ClusterCheckPassed", "ClusterCheckFailed")
+
+	if report.Healthy {
+		config.Status.Substatus.Status = ""
+	} else {
+		config.Status.Substatus.Status = redisv1.SubstatusRemediating
+	}
+
+	if err := cr.client.Status().Update(ctx, config); err != nil {
+		cr.logger.Warn("Failed to update health status conditions (non-critical)", "error", err)
+	}
+}
+
+// setHealthCondition upserts a boolean health condition on the config, mapping ok=true to
+// ConditionTrue with trueReason and ok=false to ConditionFalse with falseReason.
+func setHealthCondition(config *redisv1.RedkeyClusterConfig, condType string, ok bool, trueReason, falseReason string) {
+	status := metav1.ConditionFalse
+	reason := falseReason
+	if ok {
+		status = metav1.ConditionTrue
+		reason = trueReason
+	}
+	meta.SetStatusCondition(&config.Status.Conditions, metav1.Condition{
+		Type:               condType,
+		Status:             status,
+		Reason:             reason,
+		ObservedGeneration: config.Generation,
+	})
 }
 
 func (cr *ClusterReconciler) setConfigPhaseApplied(ctx context.Context, config *redisv1.RedkeyClusterConfig) error {

@@ -11,6 +11,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/inditextech/redkeyrobin/internal/config"
@@ -37,6 +38,11 @@ type HealthReconciler struct {
 	// persistent) is the conservative default that never reassigns slots out from under a
 	// node that could still hold their data.
 	ephemeral bool
+
+	// lastReport caches the health report evaluated by the most recent Reconcile call so the
+	// caller can surface health conditions/substatus without re-running the check. The reconcile
+	// loop drives a single HealthReconciler sequentially, so it needs no synchronization.
+	lastReport *health.Report
 }
 
 // NewHealthReconciler creates a new HealthReconciler.
@@ -76,7 +82,13 @@ func (hr *HealthReconciler) SetEphemeral(ephemeral bool) {
 // Reconcile performs health checks and, if needed, remediation on the cluster.
 // Returns the recommended schedule for the next reconciliation. Membership remediation
 // uses the ephemeral setting recorded via SetEphemeral (see HealMembership).
+//
+// The health report it evaluated is stored and exposed via LastReport so the caller can surface the
+// health state (conditions/substatus) without re-running the check. The reconcile loop drives a
+// single HealthReconciler sequentially, so this cached report is safe to read right after the call.
 func (hr *HealthReconciler) Reconcile(ctx context.Context, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) (reconcileSchedule, error) {
+	hr.lastReport = nil
+
 	if len(nodes) == 0 {
 		return reconcileAfterInterval, fmt.Errorf("no nodes provided for health reconciliation")
 	}
@@ -90,6 +102,7 @@ func (hr *HealthReconciler) Reconcile(ctx context.Context, nodes []health.Node, 
 	if report == nil {
 		return reconcileAfterInterval, fmt.Errorf("health check returned nil report: %w", err)
 	}
+	hr.lastReport = report
 
 	hr.logReport(report)
 
@@ -153,6 +166,28 @@ func (hr *HealthReconciler) Reconcile(ctx context.Context, nodes []health.Node, 
 	return reconcileAfterWaitInterval, nil
 }
 
+// LastReport returns the health report evaluated by the most recent Reconcile call, or nil if the
+// last call could not produce one (e.g. no nodes). Intended to be read immediately after Reconcile.
+func (hr *HealthReconciler) LastReport() *health.Report {
+	return hr.lastReport
+}
+
+// Check runs the health check WITHOUT remediation and returns the report (also cached for
+// LastReport). It lets operation-completion paths populate the health conditions the moment a
+// cluster becomes Ready, instead of leaving them Unknown until the next periodic Reconcile.
+func (hr *HealthReconciler) Check(ctx context.Context, nodes []health.Node, password string, desiredPrimaries, desiredReplicasPerPrimary int) *health.Report {
+	hr.lastReport = nil
+	if len(nodes) == 0 {
+		return nil
+	}
+	report, err := hr.checker.Check(ctx, nodes, password, desiredPrimaries, desiredReplicasPerPrimary)
+	if err != nil {
+		hr.logger.Warn("Post-operation health check completed with errors", "error", err)
+	}
+	hr.lastReport = report
+	return report
+}
+
 // logReport logs the health report details.
 func (hr *HealthReconciler) logReport(report *health.Report) {
 	hr.logger.Info("Health check report",
@@ -185,6 +220,92 @@ func (hr *HealthReconciler) remediateMembership(ctx context.Context, _ *health.R
 	hr.logger.Info("Remediating cluster membership")
 	_, err := hr.HealMembership(ctx, nodes, password, true, hr.ephemeral)
 	return err
+}
+
+// membershipPeerOpTimeout bounds each individual CLUSTER FORGET/MEET issued to a peer during
+// membership healing. Under pod churn some peers are transiently unreachable; without a per-op
+// bound each call would block on the client dial timeout and its retries (~15-25s), and the serial
+// fan-out over every peer would stall the whole reconcile loop for minutes. Bounding each op and
+// running the fan-out concurrently keeps membership healing to roughly one timeout regardless of how
+// many peers are unreachable, so the reconcile loop keeps making progress and re-evaluates against a
+// fresh topology on the next cycle.
+const membershipPeerOpTimeout = 3 * time.Second
+
+// forgetFromAllPeers issues CLUSTER FORGET <targetID> to every peer concurrently, each bounded by
+// membershipPeerOpTimeout so an unreachable peer fails fast instead of stalling the reconcile loop.
+func (hr *HealthReconciler) forgetFromAllPeers(ctx context.Context, nodes []health.Node, password, targetID string) {
+	var wg sync.WaitGroup
+	for _, node := range nodes {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			opCtx, cancel := context.WithTimeout(ctx, membershipPeerOpTimeout)
+			defer cancel()
+			client := hr.clientFactory(addr, password)
+			defer func() { _ = client.Close() }()
+			if forgetErr := client.ClusterForget(opCtx, targetID); forgetErr != nil {
+				hr.logger.Warn("Failed to forget node from peer", "peer", addr, "targetID", targetID, "error", forgetErr)
+			}
+		}(node.Addr)
+	}
+	wg.Wait()
+}
+
+// meetFromAllPeers issues CLUSTER MEET <targetIP> to every in-cluster peer concurrently, each bounded
+// by membershipPeerOpTimeout. Peers not yet in the cluster view are skipped.
+func (hr *HealthReconciler) meetFromAllPeers(ctx context.Context, nodes []health.Node, clusterIPs map[string]struct{}, password, targetIP string) {
+	var wg sync.WaitGroup
+	for _, peer := range nodes {
+		peerIP := extractIP(peer.Addr)
+		if _, peerInCluster := clusterIPs[peerIP]; !peerInCluster {
+			continue // skip nodes not yet in the cluster
+		}
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			opCtx, cancel := context.WithTimeout(ctx, membershipPeerOpTimeout)
+			defer cancel()
+			client := hr.clientFactory(addr, password)
+			defer func() { _ = client.Close() }()
+			if meetErr := client.ClusterMeet(opCtx, targetIP, redis.DefaultPort); meetErr != nil {
+				hr.logger.Warn("Failed to meet from peer", "peer", addr, "target", targetIP, "error", meetErr)
+			}
+		}(peer.Addr)
+	}
+	wg.Wait()
+}
+
+// promoteReplicaOfDeadMaster force-promotes the first reachable replica of the given (dead) master to
+// a primary via CLUSTER FAILOVER TAKEOVER, so the master's slots stay served by the replica's data
+// copy and the dead master — no longer anyone's master — can then be forgotten without a replica
+// refusing with "Can't forget my master". It is the failover Robin performs when Redis' own
+// auto-failover is stuck (e.g. the replica exceeded cluster-replica-validity-factor after a long
+// disconnect). Only one replica is promoted; any others re-replicate the new primary via gossip.
+func (hr *HealthReconciler) promoteReplicaOfDeadMaster(ctx context.Context, clusterNodes []redis.ClusterNode, expectedIPs map[string]struct{}, password, masterID string) bool {
+	for _, rn := range clusterNodes {
+		if rn.Primary != masterID || rn.IP == "" {
+			continue
+		}
+		if !strings.Contains(rn.Flags, "slave") || isConfirmedFail(rn.Flags) {
+			continue
+		}
+		if _, live := expectedIPs[rn.IP]; !live {
+			continue // only promote a replica backed by a live pod
+		}
+		addr := fmt.Sprintf("%s:%d", rn.IP, redis.DefaultPort)
+		client := hr.clientFactory(addr, password)
+		err := client.ClusterFailoverTakeover(ctx)
+		_ = client.Close()
+		if err != nil {
+			hr.logger.Warn("Failed to promote replica of dead master via takeover",
+				"replicaID", rn.ID, "replicaIP", rn.IP, "masterID", masterID, "error", err)
+			continue
+		}
+		hr.logger.Info("Promoted replica of dead master to primary via failover takeover",
+			"replicaID", rn.ID, "replicaIP", rn.IP, "masterID", masterID)
+		return true
+	}
+	return false
 }
 
 // HealMembership reconciles cluster membership against the set of live pods provided in
@@ -246,29 +367,47 @@ func (hr *HealthReconciler) HealMembership(ctx context.Context, nodes []health.N
 			hr.logger.Warn("Skipping node with empty IP in membership healing", "nodeID", cn.ID, "addr", cn.Addr)
 			continue
 		}
-		if _, expected := expectedIPs[cn.IP]; expected {
+		_, expected := expectedIPs[cn.IP]
+		// A master in confirmed fail is a dead pod. On ephemeral clusters the recreated pod
+		// rejoins with a brand-new node ID, so a fail entry is a true ghost even while its old
+		// IP is still (transiently) reported by Kubernetes. Forgetting it here — instead of only
+		// when its IP is no longer a live pod — clears the unreachable masters that otherwise make
+		// the subsequent redis-cli --cluster fix abort ("Fixing slots coverage with N unreachable
+		// masters is dangerous"), so slot re-coverage can make progress in this cycle rather than
+		// being deferred until gossip ages the entry out on its own. Only confirmed fail is treated
+		// as a ghost; transient pfail/fail? are left alone. Slot-owner protection below still keeps
+		// persistent slot owners in place so they can reclaim their data on rejoin.
+		staleGhost := expected && isConfirmedFail(cn.Flags)
+		if expected && !staleGhost {
 			continue
 		}
 		ownsSlots := redis.CountSlotsFromRanges(cn.Slots) > 0
-		if ownsSlots && !ephemeral {
-			// Persistent cluster: this node keeps its identity across recreation and will
-			// reclaim its slots on rejoin (or a replica has already failed over). Forgetting
-			// and reassigning now would strand its on-disk data, so leave it in place and
-			// wait for it to come back.
-			hr.logger.Info("Skipping forget of slot-owning stale node on persistent cluster",
-				"nodeID", cn.ID, "nodeIP", cn.IP, "nodeFlags", cn.Flags, "slots", cn.Slots)
-			continue
+		if ownsSlots {
+			// The stale node still owns slots. If it has a reachable replica, force that replica to
+			// take over: this preserves the slots (served by the replica's data copy) and, once the
+			// dead node is no longer anyone's master, lets the FORGET below succeed instead of being
+			// rejected with "Can't forget my master". This is the failover Robin performs when Redis'
+			// own auto-failover is stuck (e.g. the replica exceeded cluster-replica-validity-factor).
+			if hr.promoteReplicaOfDeadMaster(ctx, clusterNodes, expectedIPs, password, cn.ID) {
+				hr.logger.Info("Promoted a replica of a slot-owning stale node; deferring forget to next cycle",
+					"nodeID", cn.ID, "nodeIP", cn.IP)
+				forgot = true // topology changed — requeue and re-evaluate from the promoted state
+				continue
+			}
+			if !ephemeral {
+				// Persistent cluster with no replica to promote: this node keeps its identity and
+				// will reclaim its slots on rejoin. Forgetting and reassigning now would strand its
+				// on-disk data, so leave it in place and wait for it to come back.
+				hr.logger.Info("Skipping forget of slot-owning stale node on persistent cluster (no replica to promote)",
+					"nodeID", cn.ID, "nodeIP", cn.IP, "nodeFlags", cn.Flags, "slots", cn.Slots)
+				continue
+			}
+			// Ephemeral with no replica: the recreated pod lost its data, so the slot-owning entry is
+			// a true phantom. Fall through to forget it; its slots are re-covered by cluster fix.
 		}
 		hr.logger.Info("Forgetting stale node from cluster",
-			"nodeID", cn.ID, "nodeIP", cn.IP, "nodeFlags", cn.Flags, "ownsSlots", ownsSlots)
-		for _, node := range nodes {
-			client := hr.clientFactory(node.Addr, password)
-			if forgetErr := client.ClusterForget(ctx, cn.ID); forgetErr != nil {
-				hr.logger.Warn("Failed to forget node from peer",
-					"peer", node.Addr, "targetID", cn.ID, "error", forgetErr)
-			}
-			_ = client.Close()
-		}
+			"nodeID", cn.ID, "nodeIP", cn.IP, "nodeFlags", cn.Flags, "ownsSlots", ownsSlots, "staleGhost", staleGhost)
+		hr.forgetFromAllPeers(ctx, nodes, password, cn.ID)
 		forgot = true
 		if ownsSlots {
 			forgotSlotOwner = true
@@ -307,17 +446,7 @@ func (hr *HealthReconciler) HealMembership(ctx context.Context, nodes []health.N
 			// forgotten node's ID. CLUSTER MEET is silently dropped if the revealed ID
 			// is blacklisted. By meeting from all nodes we ensure the node is re-added
 			// as soon as any node's blacklist entry expires.
-			for _, peer := range nodes {
-				peerIP := extractIP(peer.Addr)
-				if _, peerInCluster := clusterIPs[peerIP]; !peerInCluster {
-					continue // skip nodes not yet in the cluster
-				}
-				peerClient := hr.clientFactory(peer.Addr, password)
-				if meetErr := peerClient.ClusterMeet(ctx, ip, redis.DefaultPort); meetErr != nil {
-					hr.logger.Warn("Failed to meet from peer", "peer", peer.Addr, "target", ip, "error", meetErr)
-				}
-				_ = peerClient.Close()
-			}
+			hr.meetFromAllPeers(ctx, nodes, clusterIPs, password, ip)
 			met = true
 		}
 	}
@@ -348,16 +477,25 @@ func (hr *HealthReconciler) HealMembership(ctx context.Context, nodes []health.N
 	return changed, nil
 }
 
-// clusterFix runs redis-cli --cluster fix from the given seed client, bounded by the
-// configured rebalance timeout. It both closes open (migrating/importing) slots and
-// reassigns slots left uncovered after forgetting a slot-owning stale node.
+// clusterFixTimeout bounds every redis-cli --cluster fix invocation (membership healing here, and
+// the scale reconciler's pre-rebalance open-slot repair). A legitimate open-slot repair or slot
+// re-cover completes in seconds; a fix that runs much longer is almost always blocked on the TCP
+// connect of a dead pod's IP that still lingers in the gossip table (redis-cli's own connect timeout
+// is very long, ~2 min). Bounding it here — well below the RebalanceTimeout used for genuine
+// rebalances — caps the worst-case stall so the reconcile loop fails fast and re-evaluates against a
+// fresher topology, instead of blocking for minutes on ghosts that will age out of gossip.
+const clusterFixTimeout = 45 * time.Second
+
+// clusterFix runs redis-cli --cluster fix from the given seed client, bounded by clusterFixTimeout
+// (or the configured rebalance timeout when it is shorter). It both closes open (migrating/importing)
+// slots and reassigns slots left uncovered after forgetting a slot-owning stale node.
 func (hr *HealthReconciler) clusterFix(ctx context.Context, seed *redis.Client) error {
-	fixCtx := ctx
-	if timeout := hr.runtimeConfig.RebalanceTimeout(); timeout > 0 {
-		var cancel context.CancelFunc
-		fixCtx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
+	timeout := clusterFixTimeout
+	if rebalance := hr.runtimeConfig.RebalanceTimeout(); rebalance > 0 && rebalance < timeout {
+		timeout = rebalance
 	}
+	fixCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	if _, err := seed.ClusterFix(fixCtx); err != nil {
 		return fmt.Errorf("cluster fix: %w", err)
 	}
