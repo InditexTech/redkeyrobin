@@ -31,8 +31,10 @@ const (
 	// labelInstanceId is the Prometheus label for the Redis node instance.
 	labelInstanceId = "instanceId"
 
-	// secretPasswordKey is the key in the auth Secret that holds the Redis password.
-	secretPasswordKey = "password"
+	// secretPasswordKey is the key in the auth Secret that holds the Redis
+	// password. It must match the key used by the reconciler
+	// (kubernetes.GetRedisPassword) and the Redis `requirepass` directive.
+	secretPasswordKey = "requirepass"
 )
 
 // Collector periodically collects Redis INFO metrics from all cluster nodes
