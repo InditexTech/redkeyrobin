@@ -198,7 +198,7 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 					Namespace: testNamespace,
 				},
 				Data: map[string][]byte{
-					"requirepass": []byte("secret123"),
+					"password": []byte("secret123"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())

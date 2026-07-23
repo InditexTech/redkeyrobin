@@ -203,7 +203,7 @@ var _ = Describe("Standalone Deployment (integration)", func() {
 					Namespace: testNamespace,
 				},
 				Data: map[string][]byte{
-					"requirepass": []byte("standalone-secret-123"),
+					"password": []byte("standalone-secret-123"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())

@@ -245,7 +245,7 @@ func TestClusterReconciler_GetPassword_WithSecret(t *testing.T) {
 			Namespace: "default",
 		},
 		Data: map[string][]byte{
-			"requirepass": []byte("mypass"),
+			"password": []byte("mypass"),
 		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(clusterTestScheme).WithObjects(secret).Build()

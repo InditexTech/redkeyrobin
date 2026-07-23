@@ -96,6 +96,12 @@ func ReconcilePDB(ctx context.Context, c client.Client, config *redisv1.RedkeyCl
 	return nil
 }
 
+// SecretPasswordKey is the data key inside the auth Secret that holds the Redis
+// password. It is the contract documented in the operator authentication guide
+// and is shared by every component that reads the password (reconciler and
+// metrics collector) to avoid divergence.
+const SecretPasswordKey = "password"
+
 // GetRedisPassword reads the auth secret and returns the password, or empty string if no secret is configured.
 func GetRedisPassword(ctx context.Context, c client.Client, secretName, namespace string) (string, error) {
 	if secretName == "" {
@@ -105,7 +111,7 @@ func GetRedisPassword(ctx context.Context, c client.Client, secretName, namespac
 	if err := c.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, secret); err != nil {
 		return "", fmt.Errorf("getting auth secret %s: %w", secretName, err)
 	}
-	if val, ok := secret.Data["requirepass"]; ok {
+	if val, ok := secret.Data[SecretPasswordKey]; ok {
 		return string(val), nil
 	}
 	return "", nil

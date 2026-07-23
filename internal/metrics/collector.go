@@ -20,6 +20,7 @@ import (
 
 	"github.com/inditextech/redkeyrobin/internal/config"
 	"github.com/inditextech/redkeyrobin/internal/health"
+	"github.com/inditextech/redkeyrobin/internal/kubernetes"
 	"github.com/inditextech/redkeyrobin/internal/redis"
 )
 
@@ -30,11 +31,6 @@ const (
 	labelNamespace = "namespace"
 	// labelInstanceId is the Prometheus label for the Redis node instance.
 	labelInstanceId = "instanceId"
-
-	// secretPasswordKey is the key in the auth Secret that holds the Redis
-	// password. It must match the key used by the reconciler
-	// (kubernetes.GetRedisPassword) and the Redis `requirepass` directive.
-	secretPasswordKey = "requirepass"
 )
 
 // Collector periodically collects Redis INFO metrics from all cluster nodes
@@ -618,9 +614,9 @@ func (c *Collector) getPassword(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("reading auth secret %s/%s: %w", c.namespace, authSecret, err)
 	}
 
-	pw, ok := secret.Data[secretPasswordKey]
+	pw, ok := secret.Data[kubernetes.SecretPasswordKey]
 	if !ok {
-		return "", fmt.Errorf("auth secret %s/%s missing key %q", c.namespace, authSecret, secretPasswordKey)
+		return "", fmt.Errorf("auth secret %s/%s missing key %q", c.namespace, authSecret, kubernetes.SecretPasswordKey)
 	}
 
 	c.cachedPassword = string(pw)

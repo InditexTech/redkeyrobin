@@ -504,7 +504,7 @@ func TestGetRedisPassword_WithSecret(t *testing.T) {
 			Namespace: "default",
 		},
 		Data: map[string][]byte{
-			"requirepass": []byte("mysecret"),
+			"password": []byte("mysecret"),
 		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(testScheme).WithObjects(secret).Build()

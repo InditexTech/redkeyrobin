@@ -280,7 +280,7 @@ func TestGetPassword_SecretExists(t *testing.T) {
 			Namespace: "default",
 		},
 		Data: map[string][]byte{
-			"requirepass": []byte("s3cr3t"),
+			"password": []byte("s3cr3t"),
 		},
 	}
 
@@ -363,7 +363,7 @@ func TestGetPassword_SecretMissingPasswordKey(t *testing.T) {
 
 	_, err := collector.getPassword(context.Background())
 	if err == nil {
-		t.Fatal("expected error for missing 'requirepass' key")
+		t.Fatal("expected error for missing 'password' key")
 	}
 }
 
@@ -376,14 +376,14 @@ func TestGetPassword_CacheInvalidationOnSecretNameChange(t *testing.T) {
 			Name:      "secret-a",
 			Namespace: "default",
 		},
-		Data: map[string][]byte{"requirepass": []byte("password-a")},
+		Data: map[string][]byte{"password": []byte("password-a")},
 	}
 	secretB := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "secret-b",
 			Namespace: "default",
 		},
-		Data: map[string][]byte{"requirepass": []byte("password-b")},
+		Data: map[string][]byte{"password": []byte("password-b")},
 	}
 
 	fakeClient := fake.NewClientBuilder().
@@ -429,7 +429,7 @@ func TestGetPassword_TransitionFromAuthToNoAuth(t *testing.T) {
 			Name:      "my-secret",
 			Namespace: "default",
 		},
-		Data: map[string][]byte{"requirepass": []byte("pw123")},
+		Data: map[string][]byte{"password": []byte("pw123")},
 	}
 
 	fakeClient := fake.NewClientBuilder().
