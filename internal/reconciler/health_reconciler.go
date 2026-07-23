@@ -308,6 +308,18 @@ func (hr *HealthReconciler) promoteReplicaOfDeadMaster(ctx context.Context, clus
 	return false
 }
 
+// isForgettableNoaddrGhost reports whether a cluster node is a Redis `noaddr` phantom that can be
+// forgotten safely: it has no address (":0@0"), carries the `noaddr` flag, and owns no slots. Such
+// an entry is left behind when a pod is deleted and recreated (e.g. during a rolling upgrade) and
+// the cluster loses its address; it is unreachable, holds no data, and otherwise keeps membership
+// unhealthy until it is removed. A node still mid-handshake has a real address and is therefore not
+// matched, and a slot-owning entry is excluded so its data is never stranded by a premature forget.
+func isForgettableNoaddrGhost(cn redis.ClusterNode) bool {
+	return cn.IP == "" &&
+		strings.Contains(cn.Flags, "noaddr") &&
+		redis.CountSlotsFromRanges(cn.Slots) == 0
+}
+
 // HealMembership reconciles cluster membership against the set of live pods provided in
 // nodes, which is the source of truth. When Kubernetes recreates a pod (e.g. it is moved
 // to another node during scaling or upgrade), the pod comes back with a new IP — and, for
@@ -342,7 +354,6 @@ func (hr *HealthReconciler) HealMembership(ctx context.Context, nodes []health.N
 	if len(nodes) == 0 {
 		return false, fmt.Errorf("no nodes provided for membership healing")
 	}
-
 	// Build the set of expected IPs from the live pod list.
 	expectedIPs := make(map[string]struct{}, len(nodes))
 	for _, node := range nodes {
@@ -364,6 +375,22 @@ func (hr *HealthReconciler) HealMembership(ctx context.Context, nodes []health.N
 	forgotSlotOwner := false
 	for _, cn := range clusterNodes {
 		if cn.IP == "" {
+			// A node with no address (":0@0") carries the Redis `noaddr` flag: the cluster kept an
+			// entry for a node whose address it lost — typically a pod deleted and recreated during a
+			// rolling upgrade, whose new incarnation rejoined under a fresh ID. It is unreachable and
+			// cannot be matched to a live pod, so membership stays unhealthy until it is removed, yet
+			// it does not always age out of gossip within a reconcile window (observed as a lingering
+			// 7th "known node" that fails the post-upgrade node-count check). Forget the phantom so the
+			// cluster converges. A node still mid-handshake has a real address (so it is untouched
+			// here), and a slot-owning entry is left in place (its data is reclaimed on rejoin / served
+			// by a replica) to avoid stranding data — mirroring the slot-owner protection below.
+			if isForgettableNoaddrGhost(cn) {
+				hr.logger.Info("Forgetting noaddr phantom node from cluster",
+					"nodeID", cn.ID, "addr", cn.Addr, "flags", cn.Flags)
+				hr.forgetFromAllPeers(ctx, nodes, password, cn.ID)
+				forgot = true
+				continue
+			}
 			hr.logger.Warn("Skipping node with empty IP in membership healing", "nodeID", cn.ID, "addr", cn.Addr)
 			continue
 		}

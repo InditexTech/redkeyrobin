@@ -268,6 +268,55 @@ func TestHealMembership_SeedUnreachable_Error(t *testing.T) {
 	}
 }
 
+// --- isForgettableNoaddrGhost ---
+
+func TestIsForgettableNoaddrGhost(t *testing.T) {
+	tests := []struct {
+		name string
+		node redis.ClusterNode
+		want bool
+	}{
+		{
+			name: "noaddr master without slots is a forgettable phantom",
+			node: redis.ClusterNode{ID: "ghost", IP: "", Addr: ":0@0", Flags: "master,fail,noaddr"},
+			want: true,
+		},
+		{
+			name: "noaddr replica without slots is a forgettable phantom",
+			node: redis.ClusterNode{ID: "ghost", IP: "", Addr: ":0@0", Flags: "slave,noaddr"},
+			want: true,
+		},
+		{
+			name: "noaddr node that still owns slots is protected",
+			node: redis.ClusterNode{ID: "ghost", IP: "", Addr: ":0@0", Flags: "master,noaddr", Slots: "0-5460"},
+			want: false,
+		},
+		{
+			name: "empty IP without the noaddr flag is not forgotten (e.g. handshake)",
+			node: redis.ClusterNode{ID: "joining", IP: "", Addr: ":0@0", Flags: "handshake"},
+			want: false,
+		},
+		{
+			name: "reachable node with an IP is never a noaddr ghost",
+			node: redis.ClusterNode{ID: "live", IP: "10.0.0.1", Addr: "10.0.0.1:6379@16379", Flags: "master,noaddr"},
+			want: false,
+		},
+		{
+			name: "healthy master is not a ghost",
+			node: redis.ClusterNode{ID: "live", IP: "10.0.0.1", Addr: "10.0.0.1:6379@16379", Flags: "master", Slots: "0-5460"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isForgettableNoaddrGhost(tt.node); got != tt.want {
+				t.Fatalf("isForgettableNoaddrGhost(%+v) = %v, want %v", tt.node, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRemediateReplicaTopology_EmptyNodes_Error(t *testing.T) {
 	hr := newTestHealthReconciler(healthyClusterView(), healthyInfo())
 
