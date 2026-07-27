@@ -31,33 +31,33 @@ func init() {
 }
 
 func newTestReconciler(objs ...client.Object) *Reconciler {
-	// Always include the owner RedkeyCluster so cluster reconciler can find it.
+	// Always include the owner Redkey so cluster reconciler can find it.
 	hasCluster := false
 	for _, obj := range objs {
-		if _, ok := obj.(*redisv1.RedkeyCluster); ok {
+		if _, ok := obj.(*redisv1.Redkey); ok {
 			hasCluster = true
 			break
 		}
 	}
 	if !hasCluster {
-		objs = append(objs, testRedkeyCluster())
+		objs = append(objs, testRedkey())
 	}
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 	return NewReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfigWithReconcilerIntervals(5*time.Second, 2*time.Second, 10*time.Second))
 }
 
-func testRedkeyCluster() *redisv1.RedkeyCluster {
-	return &redisv1.RedkeyCluster{
+func testRedkey() *redisv1.Redkey {
+	return &redisv1.Redkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-cluster",
 			Namespace: "default",
 		},
-		Spec: redisv1.RedkeyClusterSpec{
+		Spec: redisv1.RedkeySpec{
 			Primaries:          3,
 			ReplicasPerPrimary: 1,
 			Ephemeral:          true,
@@ -66,14 +66,14 @@ func testRedkeyCluster() *redisv1.RedkeyCluster {
 	}
 }
 
-func makeConfigWithLabels(name string, seq int, phase string, primaries, replicas int32) *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func makeConfigWithLabels(name string, seq int, phase string, primaries, replicas int32) *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "default",
 			Labels:    map[string]string{ClusterLabel: "test-cluster"},
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           seq,
 			Primaries:          primaries,
 			ReplicasPerPrimary: replicas,
@@ -81,7 +81,7 @@ func makeConfigWithLabels(name string, seq int, phase string, primaries, replica
 			Image:              "redis:7",
 			Version:            "7.0",
 		},
-		Status: redisv1.RedkeyClusterConfigStatus{
+		Status: redisv1.RedkeyConfigStatus{
 			ConfigPhase: phase,
 			Nodes:       map[string]*redisv1.RedisNode{},
 		},
@@ -247,7 +247,7 @@ func TestInitConfigPhase(t *testing.T) {
 	r := newTestReconciler(cfg)
 
 	// Re-fetch the object so we have the right resource version
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestInitConfigPhase(t *testing.T) {
 	}
 
 	// Verify the status was updated
-	var updated redisv1.RedkeyClusterConfig
+	var updated redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &updated); err != nil {
 		t.Fatalf("failed to get updated config: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestSetConfigPhaseInProgress(t *testing.T) {
 
 	r := newTestReconciler(cfg)
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestSetConfigPhaseInProgress(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var updated redisv1.RedkeyClusterConfig
+	var updated redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &updated); err != nil {
 		t.Fatalf("failed to get updated config: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestSelectConfig_InitialisesEmptyPhase(t *testing.T) {
 	}
 
 	// Verify the phase was initialised to Pending
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestSelectConfig_WithSuperseding(t *testing.T) {
 	}
 
 	// Verify cfg-skip is now Superseded in the cluster
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg2), &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestReconcile_PendingConfig_TransitionsToInProgress(t *testing.T) {
 	}
 
 	// Verify it transitioned to InProgress
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestReconcile_InProgressConfig_Resumes(t *testing.T) {
 	}
 
 	// Should still be InProgress (it resumes, doesn't re-transition)
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -461,7 +461,7 @@ func TestCopyPreviousStatus_DeepCopiesReferenceFieldsPreservesTargetConfigPhaseA
 	previous := makeConfigWithLabels("cfg-previous", 1, redisv1.ConfigPhaseApplied, 3, 1)
 	lastUpdatedAt := metav1.Now()
 
-	previous.Status = redisv1.RedkeyClusterConfigStatus{
+	previous.Status = redisv1.RedkeyConfigStatus{
 		ConfigPhase: redisv1.ConfigPhaseApplied,
 		Status:      redisv1.ClusterStatusReady,
 		Nodes: map[string]*redisv1.RedisNode{
@@ -476,12 +476,12 @@ func TestCopyPreviousStatus_DeepCopiesReferenceFieldsPreservesTargetConfigPhaseA
 	}
 	r := newTestReconciler(target, previous)
 
-	var fetchedTarget redisv1.RedkeyClusterConfig
+	var fetchedTarget redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(target), &fetchedTarget); err != nil {
 		t.Fatalf("failed to get target config: %v", err)
 	}
 
-	var fetchedPrevious redisv1.RedkeyClusterConfig
+	var fetchedPrevious redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(previous), &fetchedPrevious); err != nil {
 		t.Fatalf("failed to get previous config: %v", err)
 	}
@@ -497,7 +497,7 @@ func TestCopyPreviousStatus_DeepCopiesReferenceFieldsPreservesTargetConfigPhaseA
 		t.Fatalf("expected target ConfigPhase to remain %q, got %q", redisv1.ConfigPhasePending, fetchedTarget.Status.ConfigPhase)
 	}
 
-	var persisted redisv1.RedkeyClusterConfig
+	var persisted redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(target), &persisted); err != nil {
 		t.Fatalf("failed to get persisted target config: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestStart_RunsReconciliationThenStops(t *testing.T) {
 	}
 
 	// After running, the config should have been transitioned to InProgress
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg), &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -571,14 +571,14 @@ func TestApplySupersedingStatus_Success(t *testing.T) {
 	r := newTestReconciler(cfg1, cfg2, cfg3)
 
 	// Fetch cfg2 to have the right resource version
-	var fetchedCfg2 redisv1.RedkeyClusterConfig
+	var fetchedCfg2 redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg2), &fetchedCfg2); err != nil {
 		t.Fatalf("failed to get cfg2: %v", err)
 	}
 
 	sr := SupersedingResult{
 		Selected:   cfg3,
-		Superseded: []*redisv1.RedkeyClusterConfig{&fetchedCfg2},
+		Superseded: []*redisv1.RedkeyConfig{&fetchedCfg2},
 	}
 
 	result := r.applySupersedingStatus(context.Background(), cfg2, sr)
@@ -587,7 +587,7 @@ func TestApplySupersedingStatus_Success(t *testing.T) {
 	}
 
 	// Verify cfg-skip was marked as Superseded
-	var updated redisv1.RedkeyClusterConfig
+	var updated redisv1.RedkeyConfig
 	if err := r.client.Get(context.Background(), client.ObjectKeyFromObject(cfg2), &updated); err != nil {
 		t.Fatalf("failed to get updated cfg2: %v", err)
 	}
@@ -878,7 +878,7 @@ func TestSelectConfig_MultipleChainedSuperseded(t *testing.T) {
 
 	// All intermediate configs should be Superseded.
 	for _, name := range []string{"cfg-skip-1", "cfg-skip-2", "cfg-skip-3"} {
-		var fetched redisv1.RedkeyClusterConfig
+		var fetched redisv1.RedkeyConfig
 		key := client.ObjectKey{Name: name, Namespace: "default"}
 		if err := r.client.Get(context.Background(), key, &fetched); err != nil {
 			t.Fatalf("failed to get %s: %v", name, err)

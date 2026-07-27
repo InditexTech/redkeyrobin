@@ -27,14 +27,14 @@ const (
 	interval      = 250 * time.Millisecond
 )
 
-func newConfig(name string, seq int, phase string, primaries, replicas int32) *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func newConfig(name string, seq int, phase string, primaries, replicas int32) *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 			Labels:    map[string]string{clusterLabel: clusterName},
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           seq,
 			Primaries:          primaries,
 			ReplicasPerPrimary: replicas,
@@ -46,19 +46,19 @@ func newConfig(name string, seq int, phase string, primaries, replicas int32) *r
 }
 
 // createAndSetPhase creates the CR and then sets its status ConfigPhase.
-func createAndSetPhase(cfg *redisv1.RedkeyClusterConfig, phase string) {
+func createAndSetPhase(cfg *redisv1.RedkeyConfig, phase string) {
 	Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
 
 	// Update status subresource.
-	cfg.Status = redisv1.RedkeyClusterConfigStatus{
+	cfg.Status = redisv1.RedkeyConfigStatus{
 		ConfigPhase: phase,
 		Nodes:       map[string]*redisv1.RedisNode{},
 	}
 	Expect(k8sClient.Status().Update(ctx, cfg)).To(Succeed())
 }
 
-func listSorted() []redisv1.RedkeyClusterConfig {
-	var list redisv1.RedkeyClusterConfigList
+func listSorted() []redisv1.RedkeyConfig {
+	var list redisv1.RedkeyConfigList
 	ExpectWithOffset(1, k8sClient.List(ctx, &list,
 		client.InNamespace(testNamespace),
 		client.MatchingLabels{clusterLabel: clusterName},
@@ -70,14 +70,14 @@ func listSorted() []redisv1.RedkeyClusterConfig {
 }
 
 func cleanup() {
-	var list redisv1.RedkeyClusterConfigList
+	var list redisv1.RedkeyConfigList
 	_ = k8sClient.List(ctx, &list, client.InNamespace(testNamespace))
 	for i := range list.Items {
 		_ = k8sClient.Delete(ctx, &list.Items[i])
 	}
 	// Wait until all configs are gone.
 	Eventually(func() int {
-		var l redisv1.RedkeyClusterConfigList
+		var l redisv1.RedkeyConfigList
 		_ = k8sClient.List(ctx, &l, client.InNamespace(testNamespace))
 		return len(l.Items)
 	}, timeout, interval).Should(Equal(0))

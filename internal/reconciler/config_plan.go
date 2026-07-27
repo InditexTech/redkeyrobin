@@ -12,28 +12,28 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// selectConfig lists all RedkeyClusterConfig CRs for this cluster, initialises
+// selectConfig lists all RedkeyConfig CRs for this cluster, initialises
 // any that lack a status phase, applies superseding logic, and returns the
 // configuration that should be applied next (targetConfig) together with the
 // most recent previously-applied configuration (previousConfig), if one exists.
 // previousConfig is the config immediately before targetConfig in sequence order
 // and can be used later to detect what changed between the two.
-func (r *Reconciler) selectConfig(ctx context.Context) (previousConfig *redisv1.RedkeyClusterConfig, targetConfig *redisv1.RedkeyClusterConfig, err error) {
+func (r *Reconciler) selectConfig(ctx context.Context) (previousConfig *redisv1.RedkeyConfig, targetConfig *redisv1.RedkeyConfig, err error) {
 	// Get the list of configs for this cluster, sorted by sequence ascending.
 	configs, err := r.listConfigs(ctx, true)
 	if err != nil {
-		r.logger.Error("Failed to list RedkeyClusterConfigs", "error", err)
+		r.logger.Error("Failed to list RedkeyConfigs", "error", err)
 		return nil, nil, err
 	}
 
 	if len(configs) == 0 {
-		r.logger.Info("No RedkeyClusterConfig resources found")
+		r.logger.Info("No RedkeyConfig resources found")
 		return nil, nil, nil
 	}
 
 	// Log current state
 	for _, cfg := range configs {
-		r.logger.Info("Found RedkeyClusterConfig",
+		r.logger.Info("Found RedkeyConfig",
 			"name", cfg.Name,
 			"sequence", cfg.Spec.Sequence,
 			"configPhase", cfg.Status.ConfigPhase,
@@ -57,7 +57,7 @@ func (r *Reconciler) selectConfig(ctx context.Context) (previousConfig *redisv1.
 	// Select the next configuration to process.
 	previous, selected := SelectConfig(configs)
 	if selected == nil {
-		r.logger.Info("No actionable RedkeyClusterConfig found")
+		r.logger.Info("No actionable RedkeyConfig found")
 		return nil, nil, nil
 	}
 
@@ -71,9 +71,9 @@ func (r *Reconciler) selectConfig(ctx context.Context) (previousConfig *redisv1.
 	return previous, target, nil
 }
 
-// listConfigs lists all RedkeyClusterConfig CRs for this cluster. If sorted is true, the returned slice is sorted by sequence ascending.
-func (r *Reconciler) listConfigs(ctx context.Context, sorted bool) ([]redisv1.RedkeyClusterConfig, error) {
-	var configList redisv1.RedkeyClusterConfigList
+// listConfigs lists all RedkeyConfig CRs for this cluster. If sorted is true, the returned slice is sorted by sequence ascending.
+func (r *Reconciler) listConfigs(ctx context.Context, sorted bool) ([]redisv1.RedkeyConfig, error) {
+	var configList redisv1.RedkeyConfigList
 	if err := r.client.List(ctx, &configList,
 		client.InNamespace(r.namespace),
 		client.MatchingLabels{ClusterLabel: r.clusterName},
@@ -94,12 +94,12 @@ func (r *Reconciler) listConfigs(ctx context.Context, sorted bool) ([]redisv1.Re
 // subresource, so it must set ConfigPhase to Pending on first contact.
 // All required (non-omitempty) fields are initialised to their zero values so
 // that the API server accepts the update.
-func (r *Reconciler) initConfigPhase(ctx context.Context, cfg *redisv1.RedkeyClusterConfig) error {
+func (r *Reconciler) initConfigPhase(ctx context.Context, cfg *redisv1.RedkeyConfig) error {
 	r.logger.Info("Initialising ConfigPhase to Pending", "name", cfg.Name, "sequence", cfg.Spec.Sequence)
-	cfg.Status = redisv1.RedkeyClusterConfigStatus{
+	cfg.Status = redisv1.RedkeyConfigStatus{
 		ConfigPhase: redisv1.ConfigPhasePending,
 		Status:      "",
-		Substatus:   redisv1.RedkeyClusterSubstatus{},
+		Substatus:   redisv1.RedkeySubstatus{},
 		Nodes:       map[string]*redisv1.RedisNode{},
 	}
 	return r.client.Status().Update(ctx, cfg)
@@ -109,7 +109,7 @@ func (r *Reconciler) initConfigPhase(ctx context.Context, cfg *redisv1.RedkeyClu
 // supersedingResult.Superseded, in order. If a write fails, it stops and
 // returns the config that failed (which is still Pending and becomes the
 // active config). On full success it returns supersedingResult.Selected.
-func (r *Reconciler) applySupersedingStatus(ctx context.Context, originalSelected *redisv1.RedkeyClusterConfig, sr SupersedingResult) *redisv1.RedkeyClusterConfig {
+func (r *Reconciler) applySupersedingStatus(ctx context.Context, originalSelected *redisv1.RedkeyConfig, sr SupersedingResult) *redisv1.RedkeyConfig {
 	for _, cfg := range sr.Superseded {
 		r.logger.Info("Superseding configuration",
 			"name", cfg.Name, "sequence", cfg.Spec.Sequence)
@@ -125,12 +125,12 @@ func (r *Reconciler) applySupersedingStatus(ctx context.Context, originalSelecte
 }
 
 // setConfigPhaseInProgress transitions a config to InProgress.
-func (r *Reconciler) setConfigPhaseInProgress(ctx context.Context, cfg *redisv1.RedkeyClusterConfig) error {
+func (r *Reconciler) setConfigPhaseInProgress(ctx context.Context, cfg *redisv1.RedkeyConfig) error {
 	cfg.Status.ConfigPhase = redisv1.ConfigPhaseInProgress
 	return r.client.Status().Update(ctx, cfg)
 }
 
-// SelectConfig chooses the next RedkeyClusterConfig to process from a list
+// SelectConfig chooses the next RedkeyConfig to process from a list
 // that must already be sorted by Spec.Sequence ascending.
 //
 // It returns two values:
@@ -145,7 +145,7 @@ func (r *Reconciler) setConfigPhaseInProgress(ctx context.Context, cfg *redisv1.
 //     empty (not yet initialised).
 //   - If all configs are Applied (or Superseded), returns the last Applied one
 //     (highest sequence).
-func SelectConfig(configs []redisv1.RedkeyClusterConfig) (previousConfig *redisv1.RedkeyClusterConfig, targetConfig *redisv1.RedkeyClusterConfig) {
+func SelectConfig(configs []redisv1.RedkeyConfig) (previousConfig *redisv1.RedkeyConfig, targetConfig *redisv1.RedkeyConfig) {
 	if len(configs) == 0 {
 		return nil, nil
 	}
@@ -169,7 +169,7 @@ func SelectConfig(configs []redisv1.RedkeyClusterConfig) (previousConfig *redisv
 
 // lastAppliedBefore returns the last config with ConfigPhase==Applied that
 // appears before index i, or nil if none exists.
-func lastAppliedBefore(configs []redisv1.RedkeyClusterConfig, i int) *redisv1.RedkeyClusterConfig {
+func lastAppliedBefore(configs []redisv1.RedkeyConfig, i int) *redisv1.RedkeyConfig {
 	for j := i - 1; j >= 0; j-- {
 		if configs[j].Status.ConfigPhase == redisv1.ConfigPhaseApplied {
 			return &configs[j]
@@ -179,7 +179,7 @@ func lastAppliedBefore(configs []redisv1.RedkeyClusterConfig, i int) *redisv1.Re
 }
 
 // lastApplied returns the last config with ConfigPhase==Applied, or nil.
-func lastApplied(configs []redisv1.RedkeyClusterConfig) *redisv1.RedkeyClusterConfig {
+func lastApplied(configs []redisv1.RedkeyConfig) *redisv1.RedkeyConfig {
 	for i := len(configs) - 1; i >= 0; i-- {
 		if configs[i].Status.ConfigPhase == redisv1.ConfigPhaseApplied {
 			return &configs[i]

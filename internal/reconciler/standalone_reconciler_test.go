@@ -18,14 +18,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func testStandaloneOwner() *redisv1.RedkeyCluster {
-	return &redisv1.RedkeyCluster{
+func testStandaloneOwner() *redisv1.Redkey {
+	return &redisv1.Redkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-cluster",
 			Namespace: "default",
 			UID:       "test-uid-standalone",
 		},
-		Spec: redisv1.RedkeyClusterSpec{
+		Spec: redisv1.RedkeySpec{
 			Mode:               redisv1.ModeStandalone,
 			Primaries:          1,
 			ReplicasPerPrimary: 0,
@@ -35,13 +35,13 @@ func testStandaloneOwner() *redisv1.RedkeyCluster {
 	}
 }
 
-func testStandaloneConfig(status string, primaries int32) *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func testStandaloneConfig(status string, primaries int32) *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config",
 			Namespace: "default",
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           1,
 			Mode:               redisv1.ModeStandalone,
 			Primaries:          primaries,
@@ -49,7 +49,7 @@ func testStandaloneConfig(status string, primaries int32) *redisv1.RedkeyCluster
 			Ephemeral:          true,
 			Image:              "redis:7",
 		},
-		Status: redisv1.RedkeyClusterConfigStatus{
+		Status: redisv1.RedkeyConfigStatus{
 			ConfigPhase: redisv1.ConfigPhaseInProgress,
 			Status:      status,
 			Nodes:       map[string]*redisv1.RedisNode{},
@@ -64,7 +64,7 @@ func TestStandalone_New_CreatesObjectsAndInitializing(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -77,7 +77,7 @@ func TestStandalone_New_CreatesObjectsAndInitializing(t *testing.T) {
 		t.Fatalf("expected immediate reconcile, got %v", schedule)
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestStandalone_New_PrimariesZero_MarksApplied(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -127,7 +127,7 @@ func TestStandalone_ConfigChange_ScaleToZero(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(testStandaloneOwner(), target).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -140,7 +140,7 @@ func TestStandalone_ConfigChange_ScaleToZero(t *testing.T) {
 		t.Fatalf("expected immediate reconcile, got %v", schedule)
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestStandalone_ConfigChange_ScaleUpFromZero(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(testStandaloneOwner(), target).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -170,7 +170,7 @@ func TestStandalone_ConfigChange_ScaleUpFromZero(t *testing.T) {
 		t.Fatalf("expected immediate reconcile, got %v", schedule)
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestStandalone_ConfigChange_RedisConfig_Upgrading(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(testStandaloneOwner(), target).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -206,7 +206,7 @@ func TestStandalone_ConfigChange_RedisConfig_Upgrading(t *testing.T) {
 		t.Fatalf("expected immediate reconcile, got %v", schedule)
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestStandalone_Initializing_WaitsForPod(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(testStandaloneOwner(), cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -255,7 +255,7 @@ func TestStandalone_ScalingToZero_DeletesObjects(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(testStandaloneOwner(), cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -269,7 +269,7 @@ func TestStandalone_ScalingToZero_DeletesObjects(t *testing.T) {
 		t.Fatal("expected StatefulSet to be deleted on scale-to-zero")
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -304,7 +304,7 @@ func newStandaloneReconciler(objs ...client.Object) *ClusterReconciler {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 	return NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
 }
@@ -494,7 +494,7 @@ func TestStandalone_Upgrading_UpdatesStatefulSetTemplate(t *testing.T) {
 	}
 
 	// The config must remain in the Upgrading state until the pod is ready and reachable.
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := cr.client.Get(context.Background(),
 		types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)

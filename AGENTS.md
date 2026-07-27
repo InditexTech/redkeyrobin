@@ -12,17 +12,17 @@ Reference guide for AI agents and automated tools working on the Redkey Robin co
 
 ## Project Summary
 
-**Redkey Robin** is the companion runtime used by Redkey Operator to process configuration rollouts for a single `RedkeyCluster`.
+**Redkey Robin** is the companion runtime used by Redkey Operator to process configuration rollouts for a single `Redkey`.
 
 It runs as a standalone Go binary that:
 
 - connects to the Kubernetes API,
-- watches the `RedkeyClusterConfig` custom resources produced by Redkey Operator,
+- watches the `RedkeyConfig` custom resources produced by Redkey Operator,
 - selects the next actionable config revision for one cluster,
 - advances config lifecycle state sequentially through the reconciliation loop, and
 - exposes Prometheus metrics for the process.
 
-Today, Robin focuses on orchestration of `RedkeyClusterConfig` progression rather than cluster deployment. It operates per cluster instance, using `--cluster-name` and `--namespace` to scope its work.
+Today, Robin focuses on orchestration of `RedkeyConfig` progression rather than cluster deployment. It operates per cluster instance, using `--cluster-name` and `--namespace` to scope its work.
 
 ### Technology Stack
 
@@ -53,7 +53,7 @@ Key paths to understand before changing code:
 
 Operational assumptions:
 
-- Robin is a single-cluster runtime: one process instance is scoped to one `RedkeyCluster`.
+- Robin is a single-cluster runtime: one process instance is scoped to one `Redkey`.
 - The sibling checkout at `../redkeyoperator` is part of the expected local layout and provides the CRD/API types used by this module.
 - Integration tests load CRDs from `../redkeyoperator/config/crd/bases`.
 
@@ -201,8 +201,8 @@ There is currently no dedicated e2e target in this repository. Treat `make test-
 
 ### Architecture conventions
 
-- A Robin process is scoped to one `RedkeyCluster`.
-- The reconciliation loop polls `RedkeyClusterConfig` objects in sequence and should remain idempotent.
+- A Robin process is scoped to one `Redkey`.
+- The reconciliation loop polls `RedkeyConfig` objects in sequence and should remain idempotent.
 - State transitions that can continue synchronously may trigger an immediate re-poll, but waiting states (for example pods becoming Ready or cluster convergence) must use the configured wait interval; idle and error states use their respective configured intervals.
 - Changes to CRD types come from the operator repository, not from Robin directly; keep the local module replacement aligned with the sibling checkout.
 - REUSE compliance is required: every source file must have an `SPDX-FileCopyrightText` and `SPDX-License-Identifier` header.

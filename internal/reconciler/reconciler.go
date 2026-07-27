@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// ClusterLabel is the label key used to filter RedkeyClusterConfig CRs by cluster name.
+	// ClusterLabel is the label key used to filter RedkeyConfig CRs by cluster name.
 	ClusterLabel = "redkey.inditex.dev/cluster"
 )
 
@@ -29,8 +29,8 @@ const (
 	reconcileImmediately
 )
 
-// Reconciler implements the polling reconciliation loop for a single RedkeyCluster.
-// It periodically lists RedkeyClusterConfig CRs and processes them sequentially.
+// Reconciler implements the polling reconciliation loop for a single Redkey.
+// It periodically lists RedkeyConfig CRs and processes them sequentially.
 type Reconciler struct {
 	client            client.Client
 	clusterName       string
@@ -131,11 +131,11 @@ func (r *Reconciler) nextWaitDuration(schedule reconcileSchedule, onError bool) 
 func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule, onError bool) {
 	previousConfig, targetConfig, err := r.selectConfig(ctx)
 	if err != nil {
-		r.logger.Error("Failed to select RedkeyClusterConfig", "error", err)
+		r.logger.Error("Failed to select RedkeyConfig", "error", err)
 		return reconcileAfterInterval, true
 	}
 	if targetConfig == nil {
-		r.logger.Info("No actionable RedkeyClusterConfig found")
+		r.logger.Info("No actionable RedkeyConfig found")
 		return reconcileAfterInterval, false
 	}
 
@@ -311,11 +311,11 @@ func (r *Reconciler) reconcile(ctx context.Context) (schedule reconcileSchedule,
 	return scheduleRequired, onReconcilingError
 }
 
-// hasMoreActionableConfigs reports whether any RedkeyClusterConfig other than the
+// hasMoreActionableConfigs reports whether any RedkeyConfig other than the
 // just-applied one still needs processing (i.e. it has not reached a terminal
 // phase of Applied or Superseded). It is used to decide whether to reconcile
 // immediately after a configuration is applied instead of waiting a full interval.
-func (r *Reconciler) hasMoreActionableConfigs(ctx context.Context, applied *redisv1.RedkeyClusterConfig) bool {
+func (r *Reconciler) hasMoreActionableConfigs(ctx context.Context, applied *redisv1.RedkeyConfig) bool {
 	configs, err := r.listConfigs(ctx, false)
 	if err != nil {
 		r.logger.Warn("Failed to list configs while checking for pending configurations", "error", err)
@@ -334,7 +334,7 @@ func (r *Reconciler) hasMoreActionableConfigs(ctx context.Context, applied *redi
 }
 
 // copyPreviousClusterStatus copies the previous Status into the target configuration, preserving the target ConfigPhase and persisting the result.
-func (r *Reconciler) copyPreviousClusterStatus(ctx context.Context, targetConfig, previousConfig *redisv1.RedkeyClusterConfig) error {
+func (r *Reconciler) copyPreviousClusterStatus(ctx context.Context, targetConfig, previousConfig *redisv1.RedkeyConfig) error {
 	if targetConfig == nil || previousConfig == nil {
 		return nil
 	}
@@ -376,7 +376,7 @@ func (r *Reconciler) currentClusterRuntimeSnapshot() clusterRuntimeSnapshot {
 // updates the shared RuntimeConfig so that other components (metrics collector,
 // reconciler interval) pick up the changes.
 // It also stores the topology for node discovery by the metrics collector.
-func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyClusterConfig, previous *redisv1.RedkeyClusterConfig) {
+func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyConfig, previous *redisv1.RedkeyConfig) {
 	if r.runtimeConfig == nil {
 		return
 	}
@@ -386,7 +386,7 @@ func (r *Reconciler) applyRobinConfig(target *redisv1.RedkeyClusterConfig, previ
 	// - If the target is InProgress or Pending, use the previous (last Applied) if available,
 	//   since the new config hasn't been fully applied yet. But we also update topology
 	//   from the target so node discovery reflects the desired state.
-	var effectiveConfig *redisv1.RedkeyClusterConfig
+	var effectiveConfig *redisv1.RedkeyConfig
 	switch target.Status.ConfigPhase {
 	case redisv1.ConfigPhaseApplied:
 		effectiveConfig = target

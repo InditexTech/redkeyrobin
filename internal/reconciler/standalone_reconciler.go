@@ -21,7 +21,7 @@ import (
 // cluster-level health checks do not apply. The single node is provisioned as a
 // 1-replica StatefulSet with cluster-enabled disabled, and readiness is verified
 // with a simple connection (PING) check.
-func (cr *ClusterReconciler) reconcileStandalone(ctx context.Context, targetConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) reconcileStandalone(ctx context.Context, targetConfig, previousConfig *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	switch targetConfig.Status.Status {
 	case "":
 		if previousConfig == nil {
@@ -57,7 +57,7 @@ func (cr *ClusterReconciler) reconcileStandalone(ctx context.Context, targetConf
 // standalone cluster. Auth changes are hot-applied via CONFIG SET; topology
 // changes toggle between zero and one node; any other change re-applies the
 // Redis/Kubernetes configuration via the Upgrading status.
-func (cr *ClusterReconciler) handleStandaloneConfigChange(ctx context.Context, targetConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleStandaloneConfigChange(ctx context.Context, targetConfig, previousConfig *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	report := DetectChanges(previousConfig.Spec, targetConfig.Spec)
 
 	cr.logger.Info("Detected standalone configuration changes",
@@ -117,10 +117,10 @@ func (cr *ClusterReconciler) handleStandaloneConfigChange(ctx context.Context, t
 
 // ensureStandaloneObjects (re)creates the single-node Kubernetes objects and
 // transitions the cluster to Initializing.
-func (cr *ClusterReconciler) ensureStandaloneObjects(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) ensureStandaloneObjects(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	owner, err := cr.getOwner(ctx)
 	if err != nil {
-		return reconcileAfterInterval, fmt.Errorf("getting owner RedkeyCluster: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("getting owner Redkey: %w", err)
 	}
 
 	password, err := kubernetes.GetRedisPassword(ctx, cr.client, config.Spec.Auth.SecretName, cr.namespace)
@@ -142,7 +142,7 @@ func (cr *ClusterReconciler) ensureStandaloneObjects(ctx context.Context, config
 
 // handleStandaloneInitializing waits for the single Redis pod to be ready and
 // reachable, then transitions to Ready.
-func (cr *ClusterReconciler) handleStandaloneInitializing(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleStandaloneInitializing(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	ready, err := kubernetes.AllPodsReady(ctx, cr.client, cr.clusterName, cr.namespace, 1)
 	if err != nil {
 		return reconcileAfterInterval, fmt.Errorf("checking standalone pod readiness: %w", err)
@@ -177,7 +177,7 @@ func (cr *ClusterReconciler) handleStandaloneInitializing(ctx context.Context, c
 // handleStandaloneReady performs a lightweight health check on the running
 // standalone node: it reconciles any out-of-band password rotation and verifies
 // the node still responds to PING.
-func (cr *ClusterReconciler) handleStandaloneReady(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleStandaloneReady(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	password := cr.getPassword(ctx, config)
 
 	// Detect and apply an out-of-band password rotation (Secret edited in place).
@@ -208,10 +208,10 @@ func (cr *ClusterReconciler) handleStandaloneReady(ctx context.Context, config *
 //
 // The revision guard makes this handler idempotent across the repeated reconcile
 // cycles that occur while waiting for the pod to be recreated.
-func (cr *ClusterReconciler) handleStandaloneUpgrading(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleStandaloneUpgrading(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	owner, err := cr.getOwner(ctx)
 	if err != nil {
-		return reconcileAfterInterval, fmt.Errorf("getting owner RedkeyCluster: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("getting owner Redkey: %w", err)
 	}
 
 	password := cr.getPassword(ctx, config)
@@ -351,7 +351,7 @@ func (cr *ClusterReconciler) standaloneNodeReachable(ctx context.Context, passwo
 
 // updateStandaloneNodeStatus records the single node in the config status as a
 // primary, without querying CLUSTER metadata.
-func (cr *ClusterReconciler) updateStandaloneNodeStatus(ctx context.Context, config *redisv1.RedkeyClusterConfig, addr string) error {
+func (cr *ClusterReconciler) updateStandaloneNodeStatus(ctx context.Context, config *redisv1.RedkeyConfig, addr string) error {
 	name := fmt.Sprintf("%s-0", cr.clusterName)
 	ip := addr
 	if idx := strings.Index(addr, ":"); idx > 0 {

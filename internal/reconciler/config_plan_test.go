@@ -11,12 +11,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// helper to build a minimal RedkeyClusterConfig for testing.
-func makeConfig(name string, sequence int, phase string) redisv1.RedkeyClusterConfig {
-	return redisv1.RedkeyClusterConfig{
+// helper to build a minimal RedkeyConfig for testing.
+func makeConfig(name string, sequence int, phase string) redisv1.RedkeyConfig {
+	return redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       redisv1.RedkeyClusterConfigSpec{Sequence: sequence},
-		Status:     redisv1.RedkeyClusterConfigStatus{ConfigPhase: phase},
+		Spec:       redisv1.RedkeyConfigSpec{Sequence: sequence},
+		Status:     redisv1.RedkeyConfigStatus{ConfigPhase: phase},
 	}
 }
 
@@ -29,7 +29,7 @@ func TestSelectConfig_EmptyList(t *testing.T) {
 		t.Fatalf("expected nil prev, got %v", prev)
 	}
 
-	prev, result = SelectConfig([]redisv1.RedkeyClusterConfig{})
+	prev, result = SelectConfig([]redisv1.RedkeyConfig{})
 	if result != nil {
 		t.Fatalf("expected nil for empty slice, got %v", result)
 	}
@@ -52,7 +52,7 @@ func TestSelectConfig_SingleConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := makeConfig("cfg-1", 1, tt.phase)
-			prev, result := SelectConfig([]redisv1.RedkeyClusterConfig{cfg})
+			prev, result := SelectConfig([]redisv1.RedkeyConfig{cfg})
 			if result == nil {
 				t.Fatal("expected non-nil result")
 			}
@@ -69,7 +69,7 @@ func TestSelectConfig_SingleConfig(t *testing.T) {
 func TestSelectConfig_SingleSuperseded(t *testing.T) {
 	// A single Superseded config with no Applied configs: prev is nil.
 	cfg := makeConfig("cfg-1", 1, redisv1.ConfigPhaseSuperseded)
-	prev, result := SelectConfig([]redisv1.RedkeyClusterConfig{cfg})
+	prev, result := SelectConfig([]redisv1.RedkeyConfig{cfg})
 	if result == nil || result.Name != "cfg-1" {
 		t.Fatalf("expected cfg-1, got %v", result)
 	}
@@ -79,7 +79,7 @@ func TestSelectConfig_SingleSuperseded(t *testing.T) {
 }
 
 func TestSelectConfig_FirstNonApplied(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeConfig("cfg-1", 1, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-2", 2, redisv1.ConfigPhasePending),
 		makeConfig("cfg-3", 3, redisv1.ConfigPhasePending),
@@ -95,7 +95,7 @@ func TestSelectConfig_FirstNonApplied(t *testing.T) {
 }
 
 func TestSelectConfig_FirstIsPending(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeConfig("cfg-1", 1, redisv1.ConfigPhasePending),
 		makeConfig("cfg-2", 2, redisv1.ConfigPhasePending),
 	}
@@ -110,7 +110,7 @@ func TestSelectConfig_FirstIsPending(t *testing.T) {
 }
 
 func TestSelectConfig_InProgressSelected(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeConfig("cfg-1", 1, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-2", 2, redisv1.ConfigPhaseInProgress),
 		makeConfig("cfg-3", 3, redisv1.ConfigPhasePending),
@@ -128,7 +128,7 @@ func TestSelectConfig_InProgressSelected(t *testing.T) {
 func TestSelectConfig_SupersededSkipped(t *testing.T) {
 	// Superseded configs are skipped; the first Pending after them is selected.
 	// previousConfig should be the last Applied, not the Superseded one.
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeConfig("cfg-1", 1, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-2", 2, redisv1.ConfigPhaseSuperseded),
 		makeConfig("cfg-3", 3, redisv1.ConfigPhasePending),
@@ -146,7 +146,7 @@ func TestSelectConfig_SupersededSkipped(t *testing.T) {
 func TestSelectConfig_MultipleSupersededSkipped(t *testing.T) {
 	// Multiple Applied followed by multiple Superseded: target is the first Pending,
 	// previousConfig is the last Applied before it.
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeConfig("cfg-1", 1, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-2", 2, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-3", 3, redisv1.ConfigPhaseSuperseded),
@@ -164,7 +164,7 @@ func TestSelectConfig_MultipleSupersededSkipped(t *testing.T) {
 }
 
 func TestSelectConfig_AllApplied(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeConfig("cfg-1", 1, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-2", 2, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-3", 3, redisv1.ConfigPhaseApplied),
@@ -181,7 +181,7 @@ func TestSelectConfig_AllApplied(t *testing.T) {
 
 func TestSelectConfig_EmptyPhaseIsNotApplied(t *testing.T) {
 	// An empty ConfigPhase (not yet initialised) should be treated as non-Applied.
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeConfig("cfg-1", 1, redisv1.ConfigPhaseApplied),
 		makeConfig("cfg-2", 2, ""),
 		makeConfig("cfg-3", 3, redisv1.ConfigPhasePending),

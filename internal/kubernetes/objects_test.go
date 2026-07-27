@@ -28,14 +28,14 @@ func init() {
 	_ = redisv1.AddToScheme(testScheme)
 }
 
-func testOwner() *redisv1.RedkeyCluster {
-	return &redisv1.RedkeyCluster{
+func testOwner() *redisv1.Redkey {
+	return &redisv1.Redkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-cluster",
 			Namespace: "default",
 			UID:       "test-uid-1234",
 		},
-		Spec: redisv1.RedkeyClusterSpec{
+		Spec: redisv1.RedkeySpec{
 			Primaries:          3,
 			ReplicasPerPrimary: 1,
 			Ephemeral:          true,
@@ -45,13 +45,13 @@ func testOwner() *redisv1.RedkeyCluster {
 	}
 }
 
-func testConfig() *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func testConfig() *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config-1",
 			Namespace: "default",
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           1,
 			Primaries:          3,
 			ReplicasPerPrimary: 1,
@@ -458,7 +458,7 @@ func TestEnsureClusterObjects_CreatesAll(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(owner).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	err := EnsureClusterObjects(context.Background(), fakeClient, config, owner, "")
@@ -968,13 +968,13 @@ func TestGetConfigMapPassword(t *testing.T) {
 
 // --- Standalone (single-node, non-clustered) tests ---
 
-func standaloneConfig() *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func standaloneConfig() *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config-standalone",
 			Namespace: "default",
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           1,
 			Mode:               redisv1.ModeStandalone,
 			Primaries:          1,

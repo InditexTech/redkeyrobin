@@ -27,7 +27,7 @@ type Server struct {
 }
 
 // NewServer creates a metrics Server that reads profiling state from the shared
-// RuntimeConfig. Profiling can be toggled at runtime via the RedkeyClusterConfig
+// RuntimeConfig. Profiling can be toggled at runtime via the RedkeyConfig
 // CRD without restarting the pod. Pass nil gatherer to use prometheus.DefaultGatherer.
 func NewServer(bindAddr string, gatherer prometheus.Gatherer, rc *config.RuntimeConfig) *Server {
 	if gatherer == nil {
@@ -56,7 +56,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Register pprof handlers behind a guard that checks runtime config.
 	// The pprofGuard middleware returns 404 when profiling is disabled,
-	// allowing hot enable/disable via the RedkeyClusterConfig CRD.
+	// allowing hot enable/disable via the RedkeyConfig CRD.
 	mux.HandleFunc("/debug/pprof/", s.pprofGuard(pprof.Index))
 	mux.HandleFunc("/debug/pprof/cmdline", s.pprofGuard(pprof.Cmdline))
 	mux.HandleFunc("/debug/pprof/profile", s.pprofGuard(pprof.Profile))

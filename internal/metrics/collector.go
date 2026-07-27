@@ -585,7 +585,7 @@ func boolToFloat(value bool) float64 {
 }
 
 // getPassword reads the Redis password from the Kubernetes Secret referenced
-// in the RuntimeConfig (originally from RedkeyClusterConfig.spec.auth.secret).
+// in the RuntimeConfig (originally from RedkeyConfig.spec.auth.secret).
 // It caches the result and re-reads when the secret name changes.
 func (c *Collector) getPassword(ctx context.Context) (string, error) {
 	authSecret := c.runtimeConfig.AuthSecret()

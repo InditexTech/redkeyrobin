@@ -99,13 +99,13 @@ type RuntimeConfig struct {
 
 	// profilingEnabled controls whether pprof endpoints are served.
 	// Uses atomic.Bool for lock-free reads from the HTTP handler hot path.
-	// Written by the reconciler when it reads the RedkeyClusterConfig,
+	// Written by the reconciler when it reads the RedkeyConfig,
 	// read by the metrics server on every request to /debug/pprof/*.
 	profilingEnabled atomic.Bool
 
 	// standalone reports whether the deployment is a single-node, non-clustered
 	// Redis instance. Uses atomic.Bool for lock-free reads from the metrics
-	// collector. Written by the reconciler when it reads the RedkeyClusterConfig.
+	// collector. Written by the reconciler when it reads the RedkeyConfig.
 	standalone atomic.Bool
 }
 
@@ -139,7 +139,7 @@ func NewRuntimeConfigWithReconcilerIntervals(interval, intervalOnError, interval
 }
 
 // SetFromRobinConfig updates the runtime configuration from a RobinConfig obtained
-// from a RedkeyClusterConfig resource. Reconciler intervals fall back to their
+// from a RedkeyConfig resource. Reconciler intervals fall back to their
 // bootstrap defaults when omitted from the CR.
 func (rc *RuntimeConfig) SetFromRobinConfig(cfg *redisv1.RobinConfig) {
 	rc.mu.Lock()

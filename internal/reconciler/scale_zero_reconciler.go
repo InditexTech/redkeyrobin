@@ -15,7 +15,7 @@ import (
 // handleScalingToZero deletes all cluster objects managed by Robin (StatefulSet, Service,
 // ConfigMap, PDB, and optionally PVCs) then marks the config as Applied.
 // All deletions are idempotent — missing resources are treated as success.
-func (cr *ClusterReconciler) handleScalingToZero(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleScalingToZero(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	cr.logger.Info("Scaling to zero: deleting cluster objects", "config", config.Name)
 	cr.updateSubstatus(ctx, config, redisv1.SubstatusDeletingResources)
 

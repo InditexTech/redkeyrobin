@@ -44,12 +44,12 @@ const (
 )
 
 // EnsureClusterObjects creates or updates all Kubernetes objects required for the Redis cluster.
-// It uses the RedkeyCluster as the owner reference so objects are garbage-collected on deletion.
+// It uses the Redkey as the owner reference so objects are garbage-collected on deletion.
 func EnsureClusterObjects(
 	ctx context.Context,
 	c client.Client,
-	config *redisv1.RedkeyClusterConfig,
-	owner *redisv1.RedkeyCluster,
+	config *redisv1.RedkeyConfig,
+	owner *redisv1.Redkey,
 	password string,
 ) error {
 	clusterName := owner.Name
@@ -81,7 +81,7 @@ func EnsureClusterObjects(
 // ReconcilePDB creates, updates, or deletes the cluster's PodDisruptionBudget so it
 // matches the desired configuration. The PDB is only kept when it is enabled and the
 // cluster has more than one primary; otherwise any existing PDB is removed.
-func ReconcilePDB(ctx context.Context, c client.Client, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
+func ReconcilePDB(ctx context.Context, c client.Client, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) error {
 	clusterName := owner.Name
 	namespace := owner.Namespace
 	if config.Spec.Pdb.Enabled && config.Spec.Primaries > 1 {
@@ -237,7 +237,7 @@ func GetPodAddresses(ctx context.Context, c client.Client, clusterName, namespac
 
 // --- ConfigMap ---
 
-func ensureConfigMap(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster, password string) error {
+func ensureConfigMap(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyConfig, owner *redisv1.Redkey, password string) error {
 	desired := buildConfigMap(clusterName, namespace, config, password)
 	if err := controllerutil.SetOwnerReference(owner, desired, c.Scheme()); err != nil {
 		return err
@@ -273,7 +273,7 @@ func ensureConfigMap(ctx context.Context, c client.Client, clusterName, namespac
 	return nil
 }
 
-func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyClusterConfig, password string) *corev1.ConfigMap {
+func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyConfig, password string) *corev1.ConfigMap {
 	redisConf := buildRedisConf(config.Spec.RedisConfig, password, config.Spec.Ephemeral, config.Spec.ReplicasPerPrimary, config.Spec.IsStandalone())
 	specLabels := derefMap(config.Spec.Labels)
 	specAnnotations := derefMap(config.Spec.Annotations)
@@ -356,11 +356,11 @@ func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrim
 // ReconcileService creates or updates the cluster's headless Service, applying the
 // optional Service override from the configuration. It is safe to call repeatedly:
 // an existing Service is only updated when its override-managed fields drift.
-func ReconcileService(ctx context.Context, c client.Client, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
+func ReconcileService(ctx context.Context, c client.Client, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) error {
 	return ensureService(ctx, c, owner.Name, owner.Namespace, config, owner)
 }
 
-func ensureService(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
+func ensureService(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) error {
 	desired := buildService(clusterName, namespace, config)
 	if config.Spec.Override != nil && config.Spec.Override.Service != nil {
 		var err error
@@ -403,7 +403,7 @@ func serviceNeedsUpdate(existing, desired *corev1.Service) bool {
 		!reflect.DeepEqual(existing.Annotations, desired.Annotations)
 }
 
-func buildService(clusterName, namespace string, config *redisv1.RedkeyClusterConfig) *corev1.Service {
+func buildService(clusterName, namespace string, config *redisv1.RedkeyConfig) *corev1.Service {
 	specLabels := derefMap(config.Spec.Labels)
 	specAnnotations := derefMap(config.Spec.Annotations)
 	return &corev1.Service{
@@ -437,7 +437,7 @@ func buildService(clusterName, namespace string, config *redisv1.RedkeyClusterCo
 
 // --- StatefulSet ---
 
-func ensureStatefulSet(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
+func ensureStatefulSet(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) error {
 	desired := buildStatefulSet(clusterName, namespace, config, owner)
 	if config.Spec.Override != nil && config.Spec.Override.StatefulSet != nil {
 		var err error
@@ -458,7 +458,7 @@ func ensureStatefulSet(ctx context.Context, c client.Client, clusterName, namesp
 	return err
 }
 
-func buildStatefulSet(clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) *appsv1.StatefulSet {
+func buildStatefulSet(clusterName, namespace string, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) *appsv1.StatefulSet {
 	replicas := int32(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
 	image := config.Spec.Image
 	if image == "" {
@@ -545,7 +545,7 @@ func buildStatefulSet(clusterName, namespace string, config *redisv1.RedkeyClust
 	return sts
 }
 
-func addStorage(sts *appsv1.StatefulSet, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) {
+func addStorage(sts *appsv1.StatefulSet, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) {
 	accessModes := owner.Spec.AccessModes
 	if len(accessModes) == 0 {
 		accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
@@ -591,7 +591,7 @@ func addStorage(sts *appsv1.StatefulSet, config *redisv1.RedkeyClusterConfig, ow
 
 // --- PodDisruptionBudget ---
 
-func ensurePDB(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) error {
+func ensurePDB(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) error {
 	pdbName := clusterName + "-pdb"
 	desired := buildPDB(pdbName, clusterName, namespace, config)
 	if err := controllerutil.SetOwnerReference(owner, desired, c.Scheme()); err != nil {
@@ -623,7 +623,7 @@ func ensurePDB(ctx context.Context, c client.Client, clusterName, namespace stri
 	return nil
 }
 
-func buildPDB(pdbName, clusterName, namespace string, config *redisv1.RedkeyClusterConfig) *policyv1.PodDisruptionBudget {
+func buildPDB(pdbName, clusterName, namespace string, config *redisv1.RedkeyConfig) *policyv1.PodDisruptionBudget {
 	specLabels := derefMap(config.Spec.Labels)
 	specAnnotations := derefMap(config.Spec.Annotations)
 	pdb := &policyv1.PodDisruptionBudget{
@@ -670,7 +670,7 @@ func derefMap(m *map[string]string) map[string]string {
 // mergeMeta computes the final labels (or annotations) for a managed object by
 // combining three sources with a fixed precedence:
 //
-//  1. spec: the user-provided spec.labels / spec.annotations from the RedkeyCluster.
+//  1. spec: the user-provided spec.labels / spec.annotations from the Redkey.
 //  2. override: labels / annotations defined in an override block (Service,
 //     StatefulSet, or pod template). When the override defines any entry it fully
 //     REPLACES the spec source (block replacement); the spec entries are discarded.
@@ -768,7 +768,7 @@ const ConfigChecksumAnnotation = "redkey.inditex.dev/config-checksum"
 // The update strategy is set to OnDelete so that no pods are automatically recreated — the
 // reconciler controls which specific pods are recycled via manual deletion, ensuring only drained
 // primaries and their replicas are affected (preserving HA for active shards).
-func UpdateStatefulSetTemplate(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster, configChecksum string) error {
+func UpdateStatefulSetTemplate(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyConfig, owner *redisv1.Redkey, configChecksum string) error {
 	sts := &appsv1.StatefulSet{}
 	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, sts); err != nil {
 		return fmt.Errorf("getting StatefulSet %s for template update: %w", clusterName, err)
@@ -969,7 +969,7 @@ func DeleteAllPods(ctx context.Context, c client.Client, clusterName, namespace 
 
 // UpdateConfigMap updates the ConfigMap content for the cluster. This is called during
 // an upgrade when redis.conf content changes.
-func UpdateConfigMap(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyClusterConfig, password string) error {
+func UpdateConfigMap(ctx context.Context, c client.Client, clusterName, namespace string, config *redisv1.RedkeyConfig, password string) error {
 	cm := &corev1.ConfigMap{}
 	if err := c.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: namespace}, cm); err != nil {
 		return fmt.Errorf("getting ConfigMap %s: %w", clusterName, err)

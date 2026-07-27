@@ -29,14 +29,14 @@ func init() {
 	_ = redisv1.AddToScheme(clusterTestScheme)
 }
 
-func testOwnerCluster() *redisv1.RedkeyCluster {
-	return &redisv1.RedkeyCluster{
+func testOwnerCluster() *redisv1.Redkey {
+	return &redisv1.Redkey{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-cluster",
 			Namespace: "default",
 			UID:       "test-uid-cluster",
 		},
-		Spec: redisv1.RedkeyClusterSpec{
+		Spec: redisv1.RedkeySpec{
 			Primaries:          3,
 			ReplicasPerPrimary: 0,
 			Ephemeral:          true,
@@ -45,20 +45,20 @@ func testOwnerCluster() *redisv1.RedkeyCluster {
 	}
 }
 
-func testClusterConfig(status string) *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func testClusterConfig(status string) *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config",
 			Namespace: "default",
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           1,
 			Primaries:          3,
 			ReplicasPerPrimary: 0,
 			Ephemeral:          true,
 			Image:              "redis:7",
 		},
-		Status: redisv1.RedkeyClusterConfigStatus{
+		Status: redisv1.RedkeyConfigStatus{
 			ConfigPhase: redisv1.ConfigPhaseInProgress,
 			Status:      status,
 			Nodes:       map[string]*redisv1.RedisNode{},
@@ -73,7 +73,7 @@ func TestClusterReconciler_HandleNew_CreatesObjectsAndSetsInitializing(t *testin
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -87,7 +87,7 @@ func TestClusterReconciler_HandleNew_CreatesObjectsAndSetsInitializing(t *testin
 	}
 
 	// Verify status transitioned to Initializing
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestClusterReconciler_HandleInitializing_WaitsForPods(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -167,7 +167,7 @@ func TestClusterReconciler_HandleReady_NoOp(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithRuntimeObjects(objs...).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -195,7 +195,7 @@ func TestClusterReconciler_UnhandledStatus(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -266,7 +266,7 @@ func TestClusterReconciler_UpdateClusterStatus(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -276,7 +276,7 @@ func TestClusterReconciler_UpdateClusterStatus(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestClusterReconciler_SetConfigPhaseApplied(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -302,7 +302,7 @@ func TestClusterReconciler_SetConfigPhaseApplied(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestClusterReconciler_UpdateNodeStatus(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -334,7 +334,7 @@ func TestClusterReconciler_UpdateNodeStatus(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestClusterReconciler_HandleInitializing_PodsReady_ButNoPodsFound(t *testin
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -384,7 +384,7 @@ func TestClusterReconciler_HandleInitializing_NotReady(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())

@@ -146,7 +146,7 @@ build: ##	Build program binary
 LOG_DEBUG ?= false
 
 NAMESPACE ?= redkey-operator
-CLUSTER_NAME ?= redkeycluster-sample
+CLUSTER_NAME ?= redkey-sample
 .PHONY: run
 run: ##	Execute the program locally
 	go run ./cmd/main.go --cluster-name=$(CLUSTER_NAME) --namespace=$(NAMESPACE) $(if $(filter true,$(LOG_DEBUG)),--log-level=debug)

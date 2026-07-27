@@ -13,9 +13,9 @@ import (
 // SupersedingResult holds the outcome of the superseding process.
 type SupersedingResult struct {
 	// Selected is the final config to process after superseding.
-	Selected *redisv1.RedkeyClusterConfig
+	Selected *redisv1.RedkeyConfig
 	// Superseded contains configs that should be marked as Superseded (in order).
-	Superseded []*redisv1.RedkeyClusterConfig
+	Superseded []*redisv1.RedkeyConfig
 }
 
 // ApplySuperseding evaluates whether the selected config can be superseded by
@@ -34,7 +34,7 @@ type SupersedingResult struct {
 // continue past it.
 //
 // configs must be sorted by Spec.Sequence ascending.
-func ApplySuperseding(configs []redisv1.RedkeyClusterConfig, selected *redisv1.RedkeyClusterConfig) SupersedingResult {
+func ApplySuperseding(configs []redisv1.RedkeyConfig, selected *redisv1.RedkeyConfig) SupersedingResult {
 	result := SupersedingResult{Selected: selected}
 
 	// Pre-condition checks.
@@ -89,8 +89,8 @@ func ApplySuperseding(configs []redisv1.RedkeyClusterConfig, selected *redisv1.R
 
 // findBaseline returns the last Applied config with a sequence lower than
 // selected. Returns nil if no such config exists.
-func findBaseline(configs []redisv1.RedkeyClusterConfig, selected *redisv1.RedkeyClusterConfig) *redisv1.RedkeyClusterConfig {
-	var baseline *redisv1.RedkeyClusterConfig
+func findBaseline(configs []redisv1.RedkeyConfig, selected *redisv1.RedkeyConfig) *redisv1.RedkeyConfig {
+	var baseline *redisv1.RedkeyConfig
 	for i := range configs {
 		if configs[i].Spec.Sequence >= selected.Spec.Sequence {
 			break
@@ -104,7 +104,7 @@ func findBaseline(configs []redisv1.RedkeyClusterConfig, selected *redisv1.Redke
 
 // indexOfConfig returns the index of cfg in configs, matched by Spec.Sequence.
 // Returns -1 if not found.
-func indexOfConfig(configs []redisv1.RedkeyClusterConfig, cfg *redisv1.RedkeyClusterConfig) int {
+func indexOfConfig(configs []redisv1.RedkeyConfig, cfg *redisv1.RedkeyConfig) int {
 	for i := range configs {
 		if configs[i].Spec.Sequence == cfg.Spec.Sequence {
 			return i
@@ -117,7 +117,7 @@ func indexOfConfig(configs []redisv1.RedkeyClusterConfig, cfg *redisv1.RedkeyClu
 // in Primaries and/or ReplicasPerPrimary (and the control fields Sequence and
 // SkipIfSuperseded, which are always expected to differ).
 // All other spec fields must be identical.
-func onlyTopologyChange(a, b redisv1.RedkeyClusterConfigSpec) bool {
+func onlyTopologyChange(a, b redisv1.RedkeyConfigSpec) bool {
 	// Normalise the fields we allow to differ.
 	aNorm := a
 	bNorm := b

@@ -19,8 +19,8 @@ import (
 func boolPtr(v bool) *bool    { return &v }
 func int32Ptr(v int32) *int32 { return &v }
 
-func baseSpec() redisv1.RedkeyClusterConfigSpec {
-	return redisv1.RedkeyClusterConfigSpec{
+func baseSpec() redisv1.RedkeyConfigSpec {
+	return redisv1.RedkeyConfigSpec{
 		Sequence:             1,
 		SkipIfSuperseded:     true,
 		Primaries:            3,
@@ -365,7 +365,7 @@ func TestDetectChanges_KubernetesOnly_Override(t *testing.T) {
 	previous := baseSpec()
 	target := baseSpec()
 	target.Sequence = 2
-	target.Override = &redisv1.RedkeyClusterOverrideSpec{
+	target.Override = &redisv1.RedkeyOverrideSpec{
 		StatefulSet: &redisv1.PartialStatefulSet{
 			Spec: &redisv1.PartialStatefulSetSpec{
 				MinReadySeconds: int32Ptr(10),

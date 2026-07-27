@@ -124,7 +124,7 @@ func TestHandleUpgrading_SelectsFastUpgrade(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts, cm).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -140,7 +140,7 @@ func TestHandleUpgrading_SelectsFastUpgrade(t *testing.T) {
 	}
 
 	// Verify substatus changed to SubstatusFastUpgrading
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestHandleUpgrading_SelectsRollingUpgrade(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts, cm).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -207,7 +207,7 @@ func TestHandleUpgrading_SelectsRollingUpgrade(t *testing.T) {
 	}
 
 	// Verify substatus changed to SubstatusUpgradeScalingUp
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestHandleFastUpgrade_WaitReady_NotReady(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -274,7 +274,7 @@ func TestHandleFastUpgrade_WaitReady_AllReady(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -289,7 +289,7 @@ func TestHandleFastUpgrade_WaitReady_AllReady(t *testing.T) {
 	}
 
 	// Verify substatus
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestHandleUpgradeScalingUp_WaitsForPods(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -356,7 +356,7 @@ func TestHandleUpgradeScalingDown_WaitsForPods(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -407,7 +407,7 @@ func TestRollingUpgradeSubstatusRouting(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(clusterTestScheme).
 				WithObjects(owner, cfg, sts).
-				WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+				WithStatusSubresource(&redisv1.RedkeyConfig{}).
 				Build()
 
 			cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -466,7 +466,7 @@ func TestHandleUpgradeRollingUpdate_DeletesPodWithOldImageOnce(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts, oldPod).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -514,7 +514,7 @@ func TestHandleUpgradeRollingUpdate_DoesNotDeletePodWithNewImage(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts, newPod).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())

@@ -26,7 +26,7 @@ const defaultRebalanceMaxAttempts = 5
 // recreates the cluster from scratch (losing all data) instead of migrating slots.
 // It is only safe for ephemeral clusters with no replicas where the operator has
 // explicitly opted in via purgeKeysOnRebalance.
-func fastScalingEligible(config *redisv1.RedkeyClusterConfig) bool {
+func fastScalingEligible(config *redisv1.RedkeyConfig) bool {
 	if !config.Spec.Ephemeral {
 		return false
 	}
@@ -37,14 +37,14 @@ func fastScalingEligible(config *redisv1.RedkeyClusterConfig) bool {
 }
 
 // totalNodes returns the desired total node count for a topology.
-func totalNodes(config *redisv1.RedkeyClusterConfig) int {
+func totalNodes(config *redisv1.RedkeyConfig) int {
 	return int(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
 }
 
 // handleScalingUp grows the cluster: it adds the new primaries and replicas, rebalances
 // the slots onto the new (empty) primaries, and finally attaches the replicas.
 // See docs/operator-guide/scaling.md (Scale Up flow) for the detailed protocol.
-func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	if fastScalingEligible(config) {
 		return cr.handleFastScaling(ctx, config)
 	}
@@ -318,7 +318,7 @@ func (cr *ClusterReconciler) handleScalingUp(ctx context.Context, config *redisv
 // handleScalingDown shrinks the cluster: it drains the highest-ordinal primaries, removes
 // the surplus replicas and primaries, and finally shrinks the StatefulSet.
 // See docs/operator-guide/scaling.md (Scale Down flow) for the detailed protocol.
-func (cr *ClusterReconciler) handleScalingDown(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleScalingDown(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	targetTotal := totalNodes(config)
 	targetPrimaries := int(config.Spec.Primaries)
 	cr.logger.Info("Starting scale-down reconciliation", "targetTotal", targetTotal, "targetPrimaries", targetPrimaries)
@@ -357,7 +357,7 @@ func (cr *ClusterReconciler) handleScalingDown(ctx context.Context, config *redi
 	// mid-scale-down it goes briefly unreachable, so initAllNodes reports fewer nodes than
 	// targetTotal and the "nodes already removed" branch would otherwise verify a cluster
 	// whose slots the dead pod orphaned — a check that can never pass, leaving the config
-	// stuck InProgress (rkcl frozen in Configuring) forever.
+	// stuck InProgress (rk frozen in Configuring) forever.
 	if changed, err := cr.healTopology(ctx, config, true); err != nil {
 		cr.logger.Warn("Failed to heal topology during scale down", "error", err)
 		return reconcileAfterWaitInterval, nil
@@ -518,7 +518,7 @@ func (cr *ClusterReconciler) handleScalingDown(ctx context.Context, config *redi
 // handleFastScaling recreates the cluster from scratch at the new topology. It is only
 // used for eligible clusters (ephemeral, no replicas, purgeKeysOnRebalance) and accepts
 // full data loss in exchange for a much faster operation.
-func (cr *ClusterReconciler) handleFastScaling(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleFastScaling(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	targetTotal := totalNodes(config)
 	cr.logger.Info("Starting fast scaling reconciliation", "targetTotal", targetTotal)
 
@@ -592,7 +592,7 @@ func (cr *ClusterReconciler) handleFastScaling(ctx context.Context, config *redi
 
 // finishScaling transitions the cluster to Ready, marks the config as applied, and
 // records the final node topology in the status.
-func (cr *ClusterReconciler) finishScaling(ctx context.Context, config *redisv1.RedkeyClusterConfig, nodes []*redis.Node, op string) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) finishScaling(ctx context.Context, config *redisv1.RedkeyConfig, nodes []*redis.Node, op string) (reconcileSchedule, error) {
 	// Before declaring the operation complete, ensure the cluster actually matches the
 	// desired primary/replica distribution. A pod recreated during scaling can rejoin with
 	// the wrong role (e.g. a replica comes back as an empty primary), leaving the wrong
@@ -724,7 +724,7 @@ func (cr *ClusterReconciler) refreshRoles(ctx context.Context, nodes []*redis.No
 //   - A failure is retried as long as the parent context is still alive. The per-attempt
 //     rebalance timeout cancels only an inner context, so a slow reshard is naturally
 //     retryable; cancellation of the parent context (e.g. shutdown) aborts immediately.
-func (cr *ClusterReconciler) rebalanceWithRetry(ctx context.Context, config *redisv1.RedkeyClusterConfig, seed *redis.Node, weights map[string]int, meetMissing bool) error {
+func (cr *ClusterReconciler) rebalanceWithRetry(ctx context.Context, config *redisv1.RedkeyConfig, seed *redis.Node, weights map[string]int, meetMissing bool) error {
 	backoff := cr.runtimeConfig.ClusterMeetWait()
 	if backoff <= 0 {
 		backoff = time.Second

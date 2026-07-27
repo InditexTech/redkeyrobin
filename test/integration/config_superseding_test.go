@@ -17,14 +17,14 @@ import (
 	"github.com/inditextech/redkeyrobin/internal/reconciler"
 )
 
-func newSkippableConfig(name string, seq int, phase string, primaries, replicas int32, skip bool) *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func newSkippableConfig(name string, seq int, phase string, primaries, replicas int32, skip bool) *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 			Labels:    map[string]string{clusterLabel: clusterName},
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           seq,
 			SkipIfSuperseded:   skip,
 			Primaries:          primaries,
@@ -69,7 +69,7 @@ var _ = Describe("Configuration Superseding (integration)", func() {
 
 		// Verify persisted status.
 		Eventually(func() string {
-			var fetched redisv1.RedkeyClusterConfig
+			var fetched redisv1.RedkeyConfig
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(result.Superseded[0]), &fetched)
 			if err != nil {
 				return ""
@@ -106,7 +106,7 @@ var _ = Describe("Configuration Superseding (integration)", func() {
 
 		// Verify persisted status.
 		Eventually(func() string {
-			var fetched redisv1.RedkeyClusterConfig
+			var fetched redisv1.RedkeyConfig
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(result.Superseded[0]), &fetched)
 			if err != nil {
 				return ""
@@ -189,7 +189,7 @@ var _ = Describe("Configuration Superseding (integration)", func() {
 		// Verify both are superseded in the cluster.
 		for _, cfg := range result.Superseded {
 			Eventually(func() string {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)
 				if err != nil {
 					return ""
@@ -231,7 +231,7 @@ var _ = Describe("Configuration Superseding (integration)", func() {
 		// Verify both are superseded in the cluster.
 		for _, cfg := range result.Superseded {
 			Eventually(func() string {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)
 				if err != nil {
 					return ""

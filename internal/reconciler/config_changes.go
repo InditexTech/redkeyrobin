@@ -26,7 +26,7 @@ const (
 	ScaleToZero
 )
 
-// ChangeReport holds the categorized results of comparing two RedkeyClusterConfigSpec values.
+// ChangeReport holds the categorized results of comparing two RedkeyConfigSpec values.
 type ChangeReport struct {
 	// HasRobinChanges is true when the RobinConfig operational settings differ.
 	HasRobinChanges bool
@@ -82,9 +82,9 @@ func (r ChangeReport) HasAnyChange() bool {
 		r.HasPurgeKeysOnRebalanceChange
 }
 
-// DetectChanges compares two RedkeyClusterConfigSpec values and returns a categorized
+// DetectChanges compares two RedkeyConfigSpec values and returns a categorized
 // report of what changed. Control fields (Sequence, SkipIfSuperseded) are ignored.
-func DetectChanges(previous, target redisv1.RedkeyClusterConfigSpec) ChangeReport {
+func DetectChanges(previous, target redisv1.RedkeyConfigSpec) ChangeReport {
 	var report ChangeReport
 
 	// Topology changes: Primaries and ReplicasPerPrimary.
@@ -139,7 +139,7 @@ func determineScaleDirection(primariesDelta, replicasDelta int32, targetPrimarie
 }
 
 // detectKubernetesChanges returns true if any field affecting Kubernetes objects differs.
-func detectKubernetesChanges(previous, target redisv1.RedkeyClusterConfigSpec) bool {
+func detectKubernetesChanges(previous, target redisv1.RedkeyConfigSpec) bool {
 	if previous.Image != target.Image {
 		return true
 	}
@@ -175,7 +175,7 @@ func detectKubernetesChanges(previous, target redisv1.RedkeyClusterConfigSpec) b
 
 // detectRedisConfigChanges returns true if any Redis configuration field differs
 // (RedisConfig, Version). Auth changes are detected separately via HasAuthChanges.
-func detectRedisConfigChanges(previous, target redisv1.RedkeyClusterConfigSpec) bool {
+func detectRedisConfigChanges(previous, target redisv1.RedkeyConfigSpec) bool {
 	if previous.RedisConfig != target.RedisConfig {
 		return true
 	}
@@ -227,7 +227,7 @@ func resourcesEqual(a, b *v1.ResourceRequirements) bool {
 	return reflect.DeepEqual(*a, *b)
 }
 
-func overrideEqual(a, b *redisv1.RedkeyClusterOverrideSpec) bool {
+func overrideEqual(a, b *redisv1.RedkeyOverrideSpec) bool {
 	if a == nil && b == nil {
 		return true
 	}

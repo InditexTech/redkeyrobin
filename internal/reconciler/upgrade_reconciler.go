@@ -22,7 +22,7 @@ import (
 // IMPORTANT: This upgrade mechanism assumes compatible images (same major version).
 // For incompatible major version upgrades, the side-by-side strategy (Phase 13) must
 // be used instead.
-func (cr *ClusterReconciler) handleUpgrading(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleUpgrading(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	if fastUpgradeEligible(config) {
 		return cr.handleFastUpgrade(ctx, config)
 	}
@@ -34,7 +34,7 @@ func (cr *ClusterReconciler) handleUpgrading(ctx context.Context, config *redisv
 // when the cluster is ephemeral, has no replicas, AND purgeKeysOnRebalance is explicitly
 // set to true. Clusters with replicas always use the rolling N+1 strategy to avoid
 // service disruption.
-func fastUpgradeEligible(config *redisv1.RedkeyClusterConfig) bool {
+func fastUpgradeEligible(config *redisv1.RedkeyConfig) bool {
 	return config.Spec.Ephemeral &&
 		config.Spec.ReplicasPerPrimary == 0 &&
 		config.Spec.PurgeKeysOnRebalance != nil && *config.Spec.PurgeKeysOnRebalance
@@ -48,7 +48,7 @@ func fastUpgradeEligible(config *redisv1.RedkeyClusterConfig) bool {
 // Substatus lifecycle:
 //   - SubstatusFastUpgrading: update StatefulSet template + ConfigMap, delete all pods
 //   - SubstatusEndingFastUpgrade: wait for pods to be Ready, then trigger cluster formation
-func (cr *ClusterReconciler) handleFastUpgrade(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleFastUpgrade(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	switch config.Status.Substatus.Status {
 	case redisv1.SubstatusFastUpgrading:
 		return cr.handleFastUpgradeWaitReady(ctx, config)
@@ -59,7 +59,7 @@ func (cr *ClusterReconciler) handleFastUpgrade(ctx context.Context, config *redi
 	}
 }
 
-func (cr *ClusterReconciler) handleFastUpgradeStart(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleFastUpgradeStart(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	cr.logger.Info("Starting fast upgrade (purgeKeysOnRebalance=true)",
 		"config", config.Name,
 		"image", config.Spec.Image)
@@ -109,7 +109,7 @@ func (cr *ClusterReconciler) handleFastUpgradeStart(ctx context.Context, config 
 	return reconcileAfterWaitInterval, nil
 }
 
-func (cr *ClusterReconciler) handleFastUpgradeWaitReady(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleFastUpgradeWaitReady(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	totalNodes := int32(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
 	ready, err := kubernetes.AllPodsReady(ctx, cr.client, cr.clusterName, cr.namespace, totalNodes)
 	if err != nil {
@@ -125,7 +125,7 @@ func (cr *ClusterReconciler) handleFastUpgradeWaitReady(ctx context.Context, con
 	return reconcileImmediately, nil
 }
 
-func (cr *ClusterReconciler) handleFastUpgradeFormCluster(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleFastUpgradeFormCluster(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	// Reuse the Configuring handler logic — it forms the cluster from scratch.
 	// First, reset the status to Configuring so the existing handler picks it up.
 	cr.logger.Info("Fast upgrade: forming cluster from scratch")
@@ -235,7 +235,7 @@ func (cr *ClusterReconciler) handleFastUpgradeFormCluster(ctx context.Context, c
 		"image", config.Spec.Image,
 		"primaries", config.Spec.Primaries)
 
-	config.Status.Substatus = redisv1.RedkeyClusterSubstatus{}
+	config.Status.Substatus = redisv1.RedkeySubstatus{}
 	config.Status.Status = redisv1.ClusterStatusReady
 	if err := cr.client.Status().Update(ctx, config); err != nil {
 		return reconcileAfterInterval, fmt.Errorf("updating status to Ready after fast upgrade: %w", err)
@@ -262,7 +262,7 @@ func (cr *ClusterReconciler) handleFastUpgradeFormCluster(ctx context.Context, c
 //   - SubstatusUpgradeRollingUpdate: set partition, wait for pod recreation with new image
 //   - SubstatusUpgradeEnding: migrate slots from extra node back to node 0
 //   - SubstatusUpgradeScalingDown: scale down, verify, set Ready
-func (cr *ClusterReconciler) handleRollingUpgrade(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleRollingUpgrade(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	switch config.Status.Substatus.Status {
 	case redisv1.SubstatusUpgradeScalingUp:
 		return cr.handleUpgradeScalingUp(ctx, config)
@@ -280,17 +280,17 @@ func (cr *ClusterReconciler) handleRollingUpgrade(ctx context.Context, config *r
 }
 
 // originalPrimaries returns the number of primaries before the +1 scale up for upgrade.
-func originalPrimaries(config *redisv1.RedkeyClusterConfig) int32 {
+func originalPrimaries(config *redisv1.RedkeyConfig) int32 {
 	return config.Spec.Primaries
 }
 
 // upgradeExtraNodes returns how many extra nodes are added during upgrade (1 primary + replicas).
-func upgradeExtraNodes(config *redisv1.RedkeyClusterConfig) int32 {
+func upgradeExtraNodes(config *redisv1.RedkeyConfig) int32 {
 	return 1 + config.Spec.ReplicasPerPrimary
 }
 
 // handleUpgradeStart initiates the Rolling N+1 upgrade by scaling up the StatefulSet.
-func (cr *ClusterReconciler) handleUpgradeStart(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleUpgradeStart(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	cr.logger.Info("Starting rolling N+1 upgrade",
 		"config", config.Name,
 		"image", config.Spec.Image,
@@ -344,7 +344,7 @@ func (cr *ClusterReconciler) handleUpgradeStart(ctx context.Context, config *red
 }
 
 // handleUpgradeScalingUp waits for the extra pods to be ready, then meets them into the cluster.
-func (cr *ClusterReconciler) handleUpgradeScalingUp(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleUpgradeScalingUp(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	currentTotal := int32(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
 	extra := upgradeExtraNodes(config)
 	targetTotal := currentTotal + extra
@@ -421,7 +421,7 @@ func (cr *ClusterReconciler) handleUpgradeScalingUp(ctx context.Context, config 
 // destination node. The destination is partition+1: for the first iteration (partition=N-1)
 // that equals N (the extra node); for subsequent iterations it's the previously recycled node
 // which already runs the new image.
-func (cr *ClusterReconciler) handleUpgradeResharding(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleUpgradeResharding(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	partition := config.Status.Substatus.UpgradingPartition
 
 	// Determine destination ordinal:
@@ -567,7 +567,7 @@ func (cr *ClusterReconciler) handleUpgradeResharding(ctx context.Context, config
 // ensuring that replicas of active (non-drained) primaries are never restarted.
 // This preserves HA throughout the entire upgrade process as described in section 6.2:
 // "Solo se reciclan los pares que ya están vacíos."
-func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	partition := config.Status.Substatus.UpgradingPartition
 	podName := fmt.Sprintf("%s-%d", cr.clusterName, partition)
 
@@ -762,7 +762,7 @@ func (cr *ClusterReconciler) handleUpgradeRollingUpdate(ctx context.Context, con
 // handleUpgradeEnding migrates slots from the extra node (which holds the first batch
 // of slots from the very first iteration) back to node 0 (which was just recycled and
 // is empty). Then forgets the extra node and proceeds to scale down.
-func (cr *ClusterReconciler) handleUpgradeEnding(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleUpgradeEnding(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	// The extra primary sits right after all original pods (primaries + replicas)
 	extraOrdinal := int32(config.Spec.Primaries + config.Spec.Primaries*config.Spec.ReplicasPerPrimary)
 
@@ -884,7 +884,7 @@ func (cr *ClusterReconciler) handleUpgradeEnding(ctx context.Context, config *re
 
 // handleUpgradeScalingDown scales the StatefulSet back to the original size, restores
 // the RollingUpdate strategy, runs a health check, and transitions to Ready.
-func (cr *ClusterReconciler) handleUpgradeScalingDown(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleUpgradeScalingDown(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	originalTotal := int32(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
 
 	cr.logger.Info("Rolling upgrade: scaling down to original size", "targetTotal", originalTotal)
@@ -974,7 +974,7 @@ func (cr *ClusterReconciler) handleUpgradeScalingDown(ctx context.Context, confi
 		"image", config.Spec.Image,
 		"primaries", config.Spec.Primaries)
 
-	config.Status.Substatus = redisv1.RedkeyClusterSubstatus{}
+	config.Status.Substatus = redisv1.RedkeySubstatus{}
 	config.Status.Status = redisv1.ClusterStatusReady
 	if err := cr.client.Status().Update(ctx, config); err != nil {
 		return reconcileAfterInterval, fmt.Errorf("updating status to Ready after rolling upgrade: %w", err)
@@ -1146,7 +1146,7 @@ func (cr *ClusterReconciler) flushAndPersistNode(ctx context.Context, addr, pass
 
 // forgetReplicasOfNode forgets all replicas of a given primary node ID from the cluster.
 // This removes the replica nodes from cluster topology so they can be safely recycled.
-func (cr *ClusterReconciler) forgetReplicasOfNode(ctx context.Context, primaryID, password string, config *redisv1.RedkeyClusterConfig) error {
+func (cr *ClusterReconciler) forgetReplicasOfNode(ctx context.Context, primaryID, password string, config *redisv1.RedkeyConfig) error {
 	// Get cluster topology from any node
 	node0Addr, err := cr.getPodAddr(ctx, 0)
 	if err != nil {
@@ -1179,7 +1179,7 @@ func (cr *ClusterReconciler) forgetReplicasOfNode(ctx context.Context, primaryID
 // recycleReplicasForPrimary deletes and re-attaches ONLY the replica pods of a specific
 // primary that was just drained and recycled. Unlike the old partition-based approach,
 // this never touches replicas of other primaries that still hold slots, preserving HA.
-func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, config *redisv1.RedkeyClusterConfig, primaryOrdinal int, password string) error {
+func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, config *redisv1.RedkeyConfig, primaryOrdinal int, password string) error {
 	primaries := int(config.Spec.Primaries)
 	replicasPerPrimary := int(config.Spec.ReplicasPerPrimary)
 
@@ -1308,7 +1308,7 @@ func (cr *ClusterReconciler) recycleReplicasForPrimary(ctx context.Context, conf
 // ensurePivotReplica verifies that the extra primary (pivot) has its expected replica
 // attached. If the replica was lost (due to Redis auto-migration, timing issues, or pod
 // recreation), it re-meets and re-attaches it.
-func (cr *ClusterReconciler) ensurePivotReplica(ctx context.Context, config *redisv1.RedkeyClusterConfig, password string) error {
+func (cr *ClusterReconciler) ensurePivotReplica(ctx context.Context, config *redisv1.RedkeyConfig, password string) error {
 	primaries := int(config.Spec.Primaries)
 	replicasPerPrimary := int(config.Spec.ReplicasPerPrimary)
 
@@ -1401,7 +1401,7 @@ func (cr *ClusterReconciler) ensurePivotReplica(ctx context.Context, config *red
 // After the upgrade, Redis auto-migration may have redistributed replicas incorrectly.
 // This function forces the correct assignment based on the known ordinal layout:
 // primary P → replica at ordinal (primaries + P*replicasPerPrimary + R).
-func (cr *ClusterReconciler) rebalanceReplicas(ctx context.Context, config *redisv1.RedkeyClusterConfig, password string) error {
+func (cr *ClusterReconciler) rebalanceReplicas(ctx context.Context, config *redisv1.RedkeyConfig, password string) error {
 	primaries := int(config.Spec.Primaries)
 	replicasPerPrimary := int(config.Spec.ReplicasPerPrimary)
 
@@ -1453,7 +1453,7 @@ func (cr *ClusterReconciler) rebalanceReplicas(ctx context.Context, config *redi
 }
 
 // forgetExtraReplicas forgets extra replica nodes that were part of the upgrade scale-up.
-func (cr *ClusterReconciler) forgetExtraReplicas(ctx context.Context, config *redisv1.RedkeyClusterConfig, password string) error {
+func (cr *ClusterReconciler) forgetExtraReplicas(ctx context.Context, config *redisv1.RedkeyConfig, password string) error {
 	extraPrimaryOrdinal := int32(config.Spec.Primaries + config.Spec.Primaries*config.Spec.ReplicasPerPrimary)
 	allMembers := int(config.Spec.Primaries + config.Spec.Primaries*config.Spec.ReplicasPerPrimary)
 
@@ -1498,7 +1498,7 @@ func (cr *ClusterReconciler) forgetExtraReplicas(ctx context.Context, config *re
 // and removes them from all cluster members. This is critical for performance: without
 // this cleanup, redis-cli --cluster reshard attempts to send SETSLOT to unreachable
 // nodes on every slot migration, making each reshard extremely slow.
-func (cr *ClusterReconciler) forgetFailedNodes(ctx context.Context, seedClient *redis.Client, password string, config *redisv1.RedkeyClusterConfig) error {
+func (cr *ClusterReconciler) forgetFailedNodes(ctx context.Context, seedClient *redis.Client, password string, config *redisv1.RedkeyConfig) error {
 	nodes, err := seedClient.GetClusterNodes(ctx)
 	if err != nil {
 		return fmt.Errorf("getting cluster nodes to find failed entries: %w", err)

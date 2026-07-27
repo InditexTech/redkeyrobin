@@ -20,11 +20,11 @@ import (
 	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
 )
 
-// standaloneOwner creates a standalone-mode RedkeyCluster owner.
-func standaloneOwner(primaries int32) *redisv1.RedkeyCluster {
-	owner := &redisv1.RedkeyCluster{
+// standaloneOwner creates a standalone-mode Redkey owner.
+func standaloneOwner(primaries int32) *redisv1.Redkey {
+	owner := &redisv1.Redkey{
 		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: testNamespace},
-		Spec: redisv1.RedkeyClusterSpec{
+		Spec: redisv1.RedkeySpec{
 			Mode:               redisv1.ModeStandalone,
 			Primaries:          primaries,
 			ReplicasPerPrimary: 0,
@@ -37,14 +37,14 @@ func standaloneOwner(primaries int32) *redisv1.RedkeyCluster {
 }
 
 // newStandaloneConfig builds a standalone-mode config with the given sequence and topology.
-func newStandaloneConfig(name string, seq int, primaries int32) *redisv1.RedkeyClusterConfig {
-	cfg := &redisv1.RedkeyClusterConfig{
+func newStandaloneConfig(name string, seq int, primaries int32) *redisv1.RedkeyConfig {
+	cfg := &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 			Labels:    map[string]string{clusterLabel: clusterName},
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           seq,
 			Mode:               redisv1.ModeStandalone,
 			Primaries:          primaries,
@@ -59,10 +59,10 @@ func newStandaloneConfig(name string, seq int, primaries int32) *redisv1.RedkeyC
 
 // createAppliedStandaloneConfig creates a standalone config already in the
 // Applied/Ready state, simulating an existing standalone cluster.
-func createAppliedStandaloneConfig(name string, seq int, primaries int32) *redisv1.RedkeyClusterConfig {
+func createAppliedStandaloneConfig(name string, seq int, primaries int32) *redisv1.RedkeyConfig {
 	cfg := newStandaloneConfig(name, seq, primaries)
 	Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
-	cfg.Status = redisv1.RedkeyClusterConfigStatus{
+	cfg.Status = redisv1.RedkeyConfigStatus{
 		ConfigPhase: redisv1.ConfigPhaseApplied,
 		Status:      redisv1.ClusterStatusReady,
 		Nodes:       map[string]*redisv1.RedisNode{},
@@ -90,7 +90,7 @@ var _ = Describe("Standalone Deployment (integration)", func() {
 
 			// Reaches Initializing (no kubelet in envtest, so it stays here).
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 			}, timeout, interval).Should(Succeed())
@@ -151,7 +151,7 @@ var _ = Describe("Standalone Deployment (integration)", func() {
 			// New config requests zero primaries.
 			target := newStandaloneConfig("standalone-stz-2", 2, 0)
 			Expect(k8sClient.Create(ctx, target)).To(Succeed())
-			target.Status = redisv1.RedkeyClusterConfigStatus{
+			target.Status = redisv1.RedkeyConfigStatus{
 				ConfigPhase: redisv1.ConfigPhasePending,
 				Nodes:       map[string]*redisv1.RedisNode{},
 			}
@@ -176,7 +176,7 @@ var _ = Describe("Standalone Deployment (integration)", func() {
 
 			target := newStandaloneConfig("standalone-up-2", 2, 1)
 			Expect(k8sClient.Create(ctx, target)).To(Succeed())
-			target.Status = redisv1.RedkeyClusterConfigStatus{
+			target.Status = redisv1.RedkeyConfigStatus{
 				ConfigPhase: redisv1.ConfigPhasePending,
 				Nodes:       map[string]*redisv1.RedisNode{},
 			}
@@ -223,7 +223,7 @@ var _ = Describe("Standalone Deployment (integration)", func() {
 
 			// Reaches Initializing (no kubelet in envtest, so it stays here).
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 			}, timeout, interval).Should(Succeed())

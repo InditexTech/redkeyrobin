@@ -22,7 +22,7 @@ import (
 var _ = Describe("Object Overrides (integration)", func() {
 	AfterEach(func() {
 		cleanup()
-		_ = k8sClient.Delete(ctx, &redisv1.RedkeyCluster{
+		_ = k8sClient.Delete(ctx, &redisv1.Redkey{
 			ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: testNamespace},
 		})
 		var stsList appsv1.StatefulSetList
@@ -41,9 +41,9 @@ var _ = Describe("Object Overrides (integration)", func() {
 	})
 
 	createOwner := func() {
-		owner := &redisv1.RedkeyCluster{
+		owner := &redisv1.Redkey{
 			ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: testNamespace},
-			Spec: redisv1.RedkeyClusterSpec{
+			Spec: redisv1.RedkeySpec{
 				Primaries:          3,
 				ReplicasPerPrimary: 0,
 				Ephemeral:          true,
@@ -53,9 +53,9 @@ var _ = Describe("Object Overrides (integration)", func() {
 		Expect(k8sClient.Create(ctx, owner)).To(Succeed())
 	}
 
-	waitForInitializing := func(cfg *redisv1.RedkeyClusterConfig) {
+	waitForInitializing := func(cfg *redisv1.RedkeyConfig) {
 		Eventually(func(g Gomega) {
-			var fetched redisv1.RedkeyClusterConfig
+			var fetched redisv1.RedkeyConfig
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 			g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 		}, timeout, interval).Should(Succeed())
@@ -67,7 +67,7 @@ var _ = Describe("Object Overrides (integration)", func() {
 
 			cfg := newConfig("override-sts-1", 1, "", 3, 0)
 			cfg.Spec.Ephemeral = true
-			cfg.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+			cfg.Spec.Override = &redisv1.RedkeyOverrideSpec{
 				StatefulSet: &redisv1.PartialStatefulSet{
 					Metadata: metav1.ObjectMeta{
 						Annotations: map[string]string{"backup.io/enabled": "true"},
@@ -115,7 +115,7 @@ var _ = Describe("Object Overrides (integration)", func() {
 
 			cfg := newConfig("override-svc-1", 1, "", 3, 0)
 			cfg.Spec.Ephemeral = true
-			cfg.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+			cfg.Spec.Override = &redisv1.RedkeyOverrideSpec{
 				Service: &redisv1.PartialService{
 					Metadata: metav1.ObjectMeta{
 						Annotations: map[string]string{"team": "infra"},
@@ -183,9 +183,9 @@ var _ = Describe("Object Overrides (integration)", func() {
 		// missed the bug where top-level StatefulSet metadata and other spec fields
 		// were dropped on update.
 		It("applies top-level metadata and merges pod template metadata on the existing StatefulSet", func() {
-			owner := &redisv1.RedkeyCluster{
+			owner := &redisv1.Redkey{
 				ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: testNamespace},
-				Spec: redisv1.RedkeyClusterSpec{
+				Spec: redisv1.RedkeySpec{
 					Primaries:          3,
 					ReplicasPerPrimary: 0,
 					Ephemeral:          true,
@@ -207,7 +207,7 @@ var _ = Describe("Object Overrides (integration)", func() {
 
 			// Apply an override that adds StatefulSet-level metadata AND pod template
 			// metadata, then drive the exact upgrade-path function on the existing object.
-			cfg.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+			cfg.Spec.Override = &redisv1.RedkeyOverrideSpec{
 				StatefulSet: &redisv1.PartialStatefulSet{
 					Metadata: metav1.ObjectMeta{
 						Annotations: map[string]string{"backup.io/enabled": "true"},

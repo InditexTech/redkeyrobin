@@ -79,7 +79,7 @@ func (cr *ClusterReconciler) Close() {
 // ReconcileCluster processes the cluster creation/configuration state machine.
 // It returns whether the outer reconciliation loop should run immediately again
 // or wait for the configured interval.
-func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (schedule reconcileSchedule, err error) {
+func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig *redisv1.RedkeyConfig, previousConfig *redisv1.RedkeyConfig) (schedule reconcileSchedule, err error) {
 	// Standalone (single-node, non-clustered) deployments follow a simplified
 	// lifecycle that never issues CLUSTER commands. Route them to a dedicated
 	// reconcile path.
@@ -130,7 +130,7 @@ func (cr *ClusterReconciler) ReconcileCluster(ctx context.Context, targetConfig 
 // If auth changes are detected, they are applied via CONFIG SET to all running
 // nodes BEFORE any cluster operation, ensuring all nodes share the same auth
 // configuration throughout the upgrade/scaling process.
-func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfig *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfig *redisv1.RedkeyConfig, previousConfig *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	report := DetectChanges(previousConfig.Spec, targetConfig.Spec)
 
 	cr.logger.Info("Detected configuration changes",
@@ -190,7 +190,7 @@ func (cr *ClusterReconciler) handleConfigChange(ctx context.Context, targetConfi
 }
 
 // handleNew ensures Kubernetes objects exist and transitions to Initializing.
-func (cr *ClusterReconciler) handleNew(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleNew(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	// New cluster with 0 primaries: nothing to create, mark Applied immediately.
 	if config.Spec.Primaries == 0 {
 		cr.logger.Info("New cluster with 0 primaries, marking config as Applied", "config", config.Name)
@@ -209,7 +209,7 @@ func (cr *ClusterReconciler) handleNew(ctx context.Context, config *redisv1.Redk
 
 	owner, err := cr.getOwner(ctx)
 	if err != nil {
-		return reconcileAfterInterval, fmt.Errorf("getting owner RedkeyCluster: %w", err)
+		return reconcileAfterInterval, fmt.Errorf("getting owner Redkey: %w", err)
 	}
 
 	password, err := kubernetes.GetRedisPassword(ctx, cr.client, config.Spec.Auth.SecretName, cr.namespace)
@@ -232,7 +232,7 @@ func (cr *ClusterReconciler) handleNew(ctx context.Context, config *redisv1.Redk
 }
 
 // handleInitializing waits for all pods to be ready, then inits nodes.
-func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	expectedReplicas := config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary)
 
 	ready, err := kubernetes.AllPodsReady(ctx, cr.client, cr.clusterName, cr.namespace, expectedReplicas)
@@ -273,7 +273,7 @@ func (cr *ClusterReconciler) handleInitializing(ctx context.Context, config *red
 }
 
 // handleConfiguring performs cluster formation: meet, assign slots, set replicas.
-func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	password := cr.getPassword(ctx, config)
 	nodes, err := cr.initNodes(ctx, config, password)
 	if err != nil {
@@ -323,7 +323,7 @@ func (cr *ClusterReconciler) handleConfiguring(ctx context.Context, config *redi
 // The nodes slice must be ordered by StatefulSet ordinal: nodes[0:Primaries] become
 // primaries and the remaining nodes become replicas. It is shared by the initial
 // configuration flow and the fast-scaling path, which both build a cluster from scratch.
-func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.RedkeyClusterConfig, nodes []*redis.Node) bool {
+func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.RedkeyConfig, nodes []*redis.Node) bool {
 	// Step 1: Meet all nodes
 	if err := cr.meetNodes(ctx, nodes); err != nil {
 		cr.logger.Error("Failed to meet nodes", "error", err)
@@ -387,7 +387,7 @@ func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.Re
 }
 
 // handleReady performs a health check on the ready cluster.
-func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyClusterConfig, previousConfig *redisv1.RedkeyClusterConfig) (reconcileSchedule, error) {
+func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.RedkeyConfig, previousConfig *redisv1.RedkeyConfig) (reconcileSchedule, error) {
 	// Build the health node list from current K8s pod state.
 	nodes, err := cr.buildHealthNodes(ctx, config)
 	if err != nil {
@@ -405,7 +405,7 @@ func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.Re
 	}
 
 	// Detect an out-of-band password rotation (the auth Secret was edited in
-	// place, with no new RedkeyClusterConfig) and apply the new password to all
+	// place, with no new RedkeyConfig) and apply the new password to all
 	// nodes via CONFIG SET before health-checking, so the running nodes accept
 	// the rotated credentials instead of failing with WRONGPASS.
 	if err := cr.reconcileAuthRotation(ctx, config, password); err != nil {
@@ -466,7 +466,7 @@ func (cr *ClusterReconciler) handleReady(ctx context.Context, config *redisv1.Re
 
 // --- Node operations ---
 
-func (cr *ClusterReconciler) initNodes(ctx context.Context, config *redisv1.RedkeyClusterConfig, password string) ([]*redis.Node, error) {
+func (cr *ClusterReconciler) initNodes(ctx context.Context, config *redisv1.RedkeyConfig, password string) ([]*redis.Node, error) {
 	totalNodes := int(config.Spec.Primaries + (config.Spec.Primaries * config.Spec.ReplicasPerPrimary))
 	clusterCfg := cr.runtimeConfig.ClusterConfig()
 	maxRetries := clusterCfg.ConnectionMaxRetries
@@ -630,7 +630,7 @@ func (cr *ClusterReconciler) verifyCluster(ctx context.Context, seedNode *redis.
 
 // --- Status updates ---
 
-func (cr *ClusterReconciler) updateClusterStatus(ctx context.Context, config *redisv1.RedkeyClusterConfig, status string) error {
+func (cr *ClusterReconciler) updateClusterStatus(ctx context.Context, config *redisv1.RedkeyConfig, status string) error {
 	config.Status.Status = status
 	if err := cr.client.Status().Update(ctx, config); err != nil {
 		return fmt.Errorf("updating cluster status to %s: %w", status, err)
@@ -640,7 +640,7 @@ func (cr *ClusterReconciler) updateClusterStatus(ctx context.Context, config *re
 
 // updateSubstatus sets the informational substatus field to indicate the current phase
 // within a scaling operation. This is purely observational — it does not affect control flow.
-func (cr *ClusterReconciler) updateSubstatus(ctx context.Context, config *redisv1.RedkeyClusterConfig, substatus string) {
+func (cr *ClusterReconciler) updateSubstatus(ctx context.Context, config *redisv1.RedkeyConfig, substatus string) {
 	if config.Status.Substatus.Status == substatus {
 		return
 	}
@@ -652,7 +652,7 @@ func (cr *ClusterReconciler) updateSubstatus(ctx context.Context, config *redisv
 
 // buildHealthNodes builds the health.Node list for the cluster from the current pod addresses,
 // shared by the periodic health check and the post-operation condition refresh.
-func (cr *ClusterReconciler) buildHealthNodes(ctx context.Context, config *redisv1.RedkeyClusterConfig) ([]health.Node, error) {
+func (cr *ClusterReconciler) buildHealthNodes(ctx context.Context, config *redisv1.RedkeyConfig) ([]health.Node, error) {
 	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
 	if err != nil {
 		return nil, err
@@ -674,7 +674,7 @@ func (cr *ClusterReconciler) buildHealthNodes(ctx context.Context, config *redis
 // conditions on the config, so that reaching Ready/Applied immediately reflects the cluster's health
 // instead of leaving the conditions Unknown until the next handleReady cycle. It is best-effort and
 // non-critical: on any error the next periodic health check populates them.
-func (cr *ClusterReconciler) refreshHealthConditions(ctx context.Context, config *redisv1.RedkeyClusterConfig, password string) {
+func (cr *ClusterReconciler) refreshHealthConditions(ctx context.Context, config *redisv1.RedkeyConfig, password string) {
 	nodes, err := cr.buildHealthNodes(ctx, config)
 	if err != nil || len(nodes) == 0 {
 		cr.logger.Warn("Skipping post-operation health condition refresh (no nodes)", "error", err)
@@ -692,7 +692,7 @@ func (cr *ClusterReconciler) refreshHealthConditions(ctx context.Context, config
 // Remediating while the cluster is not yet fully healthy. It never changes Status/ConfigPhase — a
 // cluster stays Ready while the health-reconciler heals or rebalances. Failures are non-critical:
 // the next reconciliation cycle refreshes the state.
-func (cr *ClusterReconciler) applyHealthStatus(ctx context.Context, config *redisv1.RedkeyClusterConfig, report *health.Report) {
+func (cr *ClusterReconciler) applyHealthStatus(ctx context.Context, config *redisv1.RedkeyConfig, report *health.Report) {
 	setHealthCondition(config, redisv1.ConditionHealthy, report.Healthy, "AllChecksPassed", "SomeChecksFailed")
 	setHealthCondition(config, redisv1.ConditionMembershipHealthy, report.MembershipOK, "MembershipConsistent", "MembershipInconsistent")
 	setHealthCondition(config, redisv1.ConditionSlotsCovered, report.SlotsCoveredOK, "AllSlotsAssigned", "SlotsUncovered")
@@ -713,7 +713,7 @@ func (cr *ClusterReconciler) applyHealthStatus(ctx context.Context, config *redi
 
 // setHealthCondition upserts a boolean health condition on the config, mapping ok=true to
 // ConditionTrue with trueReason and ok=false to ConditionFalse with falseReason.
-func setHealthCondition(config *redisv1.RedkeyClusterConfig, condType string, ok bool, trueReason, falseReason string) {
+func setHealthCondition(config *redisv1.RedkeyConfig, condType string, ok bool, trueReason, falseReason string) {
 	status := metav1.ConditionFalse
 	reason := falseReason
 	if ok {
@@ -728,7 +728,7 @@ func setHealthCondition(config *redisv1.RedkeyClusterConfig, condType string, ok
 	})
 }
 
-func (cr *ClusterReconciler) setConfigPhaseApplied(ctx context.Context, config *redisv1.RedkeyClusterConfig) error {
+func (cr *ClusterReconciler) setConfigPhaseApplied(ctx context.Context, config *redisv1.RedkeyConfig) error {
 	config.Status.ConfigPhase = redisv1.ConfigPhaseApplied
 	if err := cr.client.Status().Update(ctx, config); err != nil {
 		return fmt.Errorf("setting ConfigPhase to Applied: %w", err)
@@ -736,7 +736,7 @@ func (cr *ClusterReconciler) setConfigPhaseApplied(ctx context.Context, config *
 	return nil
 }
 
-func (cr *ClusterReconciler) updateNodeStatus(ctx context.Context, config *redisv1.RedkeyClusterConfig, nodes []*redis.Node) error {
+func (cr *ClusterReconciler) updateNodeStatus(ctx context.Context, config *redisv1.RedkeyConfig, nodes []*redis.Node) error {
 	nodeStatus := make(map[string]*redisv1.RedisNode)
 	for _, node := range nodes {
 		role := "primary"
@@ -754,15 +754,15 @@ func (cr *ClusterReconciler) updateNodeStatus(ctx context.Context, config *redis
 
 // --- Helpers ---
 
-func (cr *ClusterReconciler) getOwner(ctx context.Context) (*redisv1.RedkeyCluster, error) {
-	cluster := &redisv1.RedkeyCluster{}
+func (cr *ClusterReconciler) getOwner(ctx context.Context) (*redisv1.Redkey, error) {
+	cluster := &redisv1.Redkey{}
 	if err := cr.client.Get(ctx, types.NamespacedName{Name: cr.clusterName, Namespace: cr.namespace}, cluster); err != nil {
 		return nil, err
 	}
 	return cluster, nil
 }
 
-func (cr *ClusterReconciler) getPassword(ctx context.Context, config *redisv1.RedkeyClusterConfig) string {
+func (cr *ClusterReconciler) getPassword(ctx context.Context, config *redisv1.RedkeyConfig) string {
 	password, err := kubernetes.GetRedisPassword(ctx, cr.client, config.Spec.Auth.SecretName, cr.namespace)
 	if err != nil {
 		cr.logger.Error("Failed to read auth secret, proceeding without password", "error", err)
@@ -792,7 +792,7 @@ func (cr *ClusterReconciler) getPassword(ctx context.Context, config *redisv1.Re
 // meetMissing must be false for scale-up, whose empty-masters rebalance would otherwise
 // hand slots to a freshly met, not-yet-classified node destined to become a replica;
 // scale-up meets its own new nodes with explicit roles.
-func (cr *ClusterReconciler) healTopology(ctx context.Context, config *redisv1.RedkeyClusterConfig, meetMissing bool) (bool, error) {
+func (cr *ClusterReconciler) healTopology(ctx context.Context, config *redisv1.RedkeyConfig, meetMissing bool) (bool, error) {
 	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
 	if err != nil {
 		return false, fmt.Errorf("getting pod addresses for topology healing: %w", err)
@@ -821,7 +821,7 @@ func (cr *ClusterReconciler) healTopology(ctx context.Context, config *redisv1.R
 // needed, remediates the replica spread. It returns ok=true only once the number of
 // primaries and the replicas-per-primary both match the spec; callers must requeue while ok
 // is false so the cluster never reaches Ready with the wrong topology.
-func (cr *ClusterReconciler) ensureReplicaTopology(ctx context.Context, config *redisv1.RedkeyClusterConfig) (bool, error) {
+func (cr *ClusterReconciler) ensureReplicaTopology(ctx context.Context, config *redisv1.RedkeyConfig) (bool, error) {
 	// A zero-primary cluster has no topology to validate.
 	if config.Spec.Primaries == 0 {
 		return true, nil
@@ -864,7 +864,7 @@ func (cr *ClusterReconciler) ensureReplicaTopology(ctx context.Context, config *
 // This must be called BEFORE any cluster operation (rolling upgrade, scaling)
 // that could create or recycle pods, ensuring all nodes share the same auth
 // throughout the process and avoiding mixed-auth communication failures.
-func (cr *ClusterReconciler) applyAuthToAllNodes(ctx context.Context, config, previousConfig *redisv1.RedkeyClusterConfig) error {
+func (cr *ClusterReconciler) applyAuthToAllNodes(ctx context.Context, config, previousConfig *redisv1.RedkeyConfig) error {
 	newPassword := cr.getPassword(ctx, config)
 
 	// Use the previous config's credentials to connect to existing nodes.
@@ -885,7 +885,7 @@ func (cr *ClusterReconciler) applyAuthToAllNodes(ctx context.Context, config, pr
 //
 // A rotation happens when the auth Secret referenced by the cluster is edited in
 // place: the SecretName does not change, so the operator generates no new
-// RedkeyClusterConfig and handleConfigChange/applyAuthToAllNodes never runs. The
+// RedkeyConfig and handleConfigChange/applyAuthToAllNodes never runs. The
 // running Redis nodes therefore keep the old requirepass while the Secret (and
 // every component that reads it) already holds the new password, which surfaces
 // as WRONGPASS errors during health checks.
@@ -899,7 +899,7 @@ func (cr *ClusterReconciler) applyAuthToAllNodes(ctx context.Context, config, pr
 // updates the ConfigMap so the two converge.
 //
 // currentPassword is the password just read from the Secret.
-func (cr *ClusterReconciler) reconcileAuthRotation(ctx context.Context, config *redisv1.RedkeyClusterConfig, currentPassword string) error {
+func (cr *ClusterReconciler) reconcileAuthRotation(ctx context.Context, config *redisv1.RedkeyConfig, currentPassword string) error {
 	nodePassword, found, err := kubernetes.GetConfigMapPassword(ctx, cr.client, cr.clusterName, cr.namespace)
 	if err != nil {
 		return fmt.Errorf("reading current node password from ConfigMap: %w", err)
@@ -927,7 +927,7 @@ func (cr *ClusterReconciler) reconcileAuthRotation(ctx context.Context, config *
 // oldPassword, then updates the ConfigMap so future pod restarts pick up the
 // correct auth and refreshes the runtime auth secret so other components
 // (metrics, health) use it.
-func (cr *ClusterReconciler) applyAuthCredentials(ctx context.Context, config *redisv1.RedkeyClusterConfig, oldPassword, newPassword string) error {
+func (cr *ClusterReconciler) applyAuthCredentials(ctx context.Context, config *redisv1.RedkeyConfig, oldPassword, newPassword string) error {
 	podAddrs, err := kubernetes.GetPodAddresses(ctx, cr.client, cr.clusterName, cr.namespace)
 	if err != nil {
 		return fmt.Errorf("getting pod addresses for auth config: %w", err)

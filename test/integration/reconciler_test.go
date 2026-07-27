@@ -60,20 +60,20 @@ var _ = Describe("Reconciler (integration)", func() {
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg1), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 			}, timeout, interval).Should(Succeed())
 		})
 
 		It("initialises a config with empty phase to Pending then InProgress", func() {
-			cfg1 := &redisv1.RedkeyClusterConfig{
+			cfg1 := &redisv1.RedkeyConfig{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "rec-init-1",
 					Namespace: testNamespace,
 					Labels:    map[string]string{clusterLabel: clusterName},
 				},
-				Spec: redisv1.RedkeyClusterConfigSpec{
+				Spec: redisv1.RedkeyConfigSpec{
 					Sequence:  1,
 					Primaries: 3,
 					Ephemeral: true,
@@ -88,7 +88,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg1), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 			}, timeout, interval).Should(Succeed())
@@ -103,7 +103,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
 			Consistently(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg1), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 			}, 200*time.Millisecond, interval).Should(Succeed())
@@ -124,11 +124,11 @@ var _ = Describe("Reconciler (integration)", func() {
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
 			Eventually(func(g Gomega) {
-				var fetched2 redisv1.RedkeyClusterConfig
+				var fetched2 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &fetched2)).To(Succeed())
 				g.Expect(fetched2.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 
-				var fetched3 redisv1.RedkeyClusterConfig
+				var fetched3 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg3), &fetched3)).To(Succeed())
 				g.Expect(fetched3.Status.ConfigPhase).To(Equal(redisv1.ConfigPhasePending))
 			}, timeout, interval).Should(Succeed())
@@ -152,15 +152,15 @@ var _ = Describe("Reconciler (integration)", func() {
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
 			Eventually(func(g Gomega) {
-				var fetched2 redisv1.RedkeyClusterConfig
+				var fetched2 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &fetched2)).To(Succeed())
 				g.Expect(fetched2.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseSuperseded))
 
-				var fetched3 redisv1.RedkeyClusterConfig
+				var fetched3 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg3), &fetched3)).To(Succeed())
 				g.Expect(fetched3.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseSuperseded))
 
-				var fetched4 redisv1.RedkeyClusterConfig
+				var fetched4 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg4), &fetched4)).To(Succeed())
 				g.Expect(fetched4.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 			}, timeout, interval).Should(Succeed())
@@ -176,7 +176,7 @@ var _ = Describe("Reconciler (integration)", func() {
 			cfg3 := newSkippableConfig("rec-nontopo-3", 3, "", 7, 1, false)
 			cfg3.Spec.Image = "redis:8" // non-topology change
 			Expect(k8sClient.Create(ctx, cfg3)).To(Succeed())
-			cfg3.Status = redisv1.RedkeyClusterConfigStatus{
+			cfg3.Status = redisv1.RedkeyConfigStatus{
 				ConfigPhase: redisv1.ConfigPhasePending,
 				Nodes:       map[string]*redisv1.RedisNode{},
 			}
@@ -187,11 +187,11 @@ var _ = Describe("Reconciler (integration)", func() {
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
 			Eventually(func(g Gomega) {
-				var fetched2 redisv1.RedkeyClusterConfig
+				var fetched2 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &fetched2)).To(Succeed())
 				g.Expect(fetched2.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 
-				var fetched3 redisv1.RedkeyClusterConfig
+				var fetched3 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg3), &fetched3)).To(Succeed())
 				g.Expect(fetched3.Status.ConfigPhase).To(Equal(redisv1.ConfigPhasePending))
 			}, timeout, interval).Should(Succeed())
@@ -222,11 +222,11 @@ var _ = Describe("Reconciler (integration)", func() {
 			DeferCleanup(stopReconcilerLoop, loopCancel, errCh)
 
 			Consistently(func(g Gomega) {
-				var fetched2 redisv1.RedkeyClusterConfig
+				var fetched2 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg2), &fetched2)).To(Succeed())
 				g.Expect(fetched2.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 
-				var fetched3 redisv1.RedkeyClusterConfig
+				var fetched3 redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg3), &fetched3)).To(Succeed())
 				g.Expect(fetched3.Status.ConfigPhase).To(Equal(redisv1.ConfigPhasePending))
 			}, 200*time.Millisecond, interval).Should(Succeed())

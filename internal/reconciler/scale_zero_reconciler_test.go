@@ -18,13 +18,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func scaleZeroConfig(deletePVC *bool) *redisv1.RedkeyClusterConfig {
-	return &redisv1.RedkeyClusterConfig{
+func scaleZeroConfig(deletePVC *bool) *redisv1.RedkeyConfig {
+	return &redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config-zero",
 			Namespace: "default",
 		},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           2,
 			Primaries:          0,
 			ReplicasPerPrimary: 0,
@@ -32,7 +32,7 @@ func scaleZeroConfig(deletePVC *bool) *redisv1.RedkeyClusterConfig {
 			Image:              "redis:7",
 			DeletePVC:          deletePVC,
 		},
-		Status: redisv1.RedkeyClusterConfigStatus{
+		Status: redisv1.RedkeyConfigStatus{
 			ConfigPhase: redisv1.ConfigPhaseInProgress,
 			Status:      redisv1.ClusterStatusScalingToZero,
 			Nodes:       map[string]*redisv1.RedisNode{},
@@ -61,7 +61,7 @@ func TestHandleScalingToZero_DeletesAllObjects(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts, svc, cm, pdb).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -110,7 +110,7 @@ func TestHandleScalingToZero_MarksConfigApplied(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -121,7 +121,7 @@ func TestHandleScalingToZero_MarksConfigApplied(t *testing.T) {
 	}
 
 	// Verify config phase is Applied
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config-zero", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestHandleScalingToZero_DeletesPVCsWhenEnabled(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, pvc1, pvc2).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -204,7 +204,7 @@ func TestHandleScalingToZero_SkipsPVCsWhenDisabled(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, pvc).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -239,7 +239,7 @@ func TestHandleScalingToZero_SkipsPVCsWhenNil(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, pvc).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -264,7 +264,7 @@ func TestHandleScalingToZero_IdempotentWhenObjectsMissing(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -278,7 +278,7 @@ func TestHandleScalingToZero_IdempotentWhenObjectsMissing(t *testing.T) {
 	}
 
 	// Should still mark Applied
-	var fetched redisv1.RedkeyClusterConfig
+	var fetched redisv1.RedkeyConfig
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-config-zero", Namespace: "default"}, &fetched); err != nil {
 		t.Fatalf("failed to get config: %v", err)
 	}

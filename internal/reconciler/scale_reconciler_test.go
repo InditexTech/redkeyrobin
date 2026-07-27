@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func scalingTestConfig(status string, primaries, replicasPerPrimary int32) *redisv1.RedkeyClusterConfig {
+func scalingTestConfig(status string, primaries, replicasPerPrimary int32) *redisv1.RedkeyConfig {
 	cfg := testClusterConfig(status)
 	cfg.Spec.Primaries = primaries
 	cfg.Spec.ReplicasPerPrimary = replicasPerPrimary
@@ -106,7 +106,7 @@ func TestHandleScalingUp_ScalesStatefulSetAndWaitsForPods(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -136,7 +136,7 @@ func TestHandleScalingUp_RoutedViaReconcile(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -164,7 +164,7 @@ func TestHandleScalingDown_ShrinksStatefulSetWhenNodesAlreadyGone(t *testing.T) 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -198,7 +198,7 @@ func TestHandleFastScaling_DeletesStatefulSetAtWrongSize(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg, sts).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())
@@ -229,7 +229,7 @@ func TestHandleFastScaling_RecreatesObjectsWhenMissing(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(clusterTestScheme).
 		WithObjects(owner, cfg).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	cr := NewClusterReconciler(fakeClient, "test-cluster", "default", config.NewRuntimeConfig())

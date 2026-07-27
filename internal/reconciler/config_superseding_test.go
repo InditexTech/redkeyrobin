@@ -11,12 +11,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// makeFullConfig builds a RedkeyClusterConfig with all spec fields set to
+// makeFullConfig builds a RedkeyConfig with all spec fields set to
 // a consistent baseline so that onlyTopologyChange comparisons are meaningful.
-func makeFullConfig(name string, seq int, phase string, primaries, replicas int32, skip bool) redisv1.RedkeyClusterConfig {
-	return redisv1.RedkeyClusterConfig{
+func makeFullConfig(name string, seq int, phase string, primaries, replicas int32, skip bool) redisv1.RedkeyConfig {
+	return redisv1.RedkeyConfig{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: redisv1.RedkeyClusterConfigSpec{
+		Spec: redisv1.RedkeyConfigSpec{
 			Sequence:           seq,
 			SkipIfSuperseded:   skip,
 			Primaries:          primaries,
@@ -25,12 +25,12 @@ func makeFullConfig(name string, seq int, phase string, primaries, replicas int3
 			Image:              "redis:7",
 			Version:            "7.0",
 		},
-		Status: redisv1.RedkeyClusterConfigStatus{ConfigPhase: phase},
+		Status: redisv1.RedkeyConfigStatus{ConfigPhase: phase},
 	}
 }
 
 func TestApplySuperseding_NotSkippable(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, false), // skipIfSuperseded=false
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, false),
@@ -48,7 +48,7 @@ func TestApplySuperseding_NotSkippable(t *testing.T) {
 }
 
 func TestApplySuperseding_InProgress(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhaseInProgress, 5, 1, true),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, true),
@@ -66,7 +66,7 @@ func TestApplySuperseding_InProgress(t *testing.T) {
 }
 
 func TestApplySuperseding_Applied(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, true),
 	}
 	selected := &configs[0]
@@ -82,7 +82,7 @@ func TestApplySuperseding_Applied(t *testing.T) {
 }
 
 func TestApplySuperseding_SinglePending_NoNext(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, true),
 	}
@@ -99,7 +99,7 @@ func TestApplySuperseding_SinglePending_NoNext(t *testing.T) {
 }
 
 func TestApplySuperseding_TwoConfigs_TopologyOnly(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, true),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, false),
@@ -117,7 +117,7 @@ func TestApplySuperseding_TwoConfigs_TopologyOnly(t *testing.T) {
 }
 
 func TestApplySuperseding_ChainOfThree(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, true),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, true),
@@ -139,7 +139,7 @@ func TestApplySuperseding_ChainOfThree(t *testing.T) {
 }
 
 func TestApplySuperseding_ChainBreaksOnNonTopologyChange(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, true),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, true),
@@ -161,7 +161,7 @@ func TestApplySuperseding_ChainBreaksOnNonTopologyChange(t *testing.T) {
 }
 
 func TestApplySuperseding_MiddleWithoutSkipStopsChain(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, true),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, false), // skipIfSuperseded=false
@@ -183,7 +183,7 @@ func TestApplySuperseding_MiddleWithoutSkipStopsChain(t *testing.T) {
 
 func TestApplySuperseding_NoBaseline(t *testing.T) {
 	// No Applied config exists — first config in the cluster.
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhasePending, 3, 1, true),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, false),
 	}
@@ -201,7 +201,7 @@ func TestApplySuperseding_NoBaseline(t *testing.T) {
 }
 
 func TestApplySuperseding_SelectedHasNonTopologyChangeVsBaseline(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, true),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, true),
@@ -223,7 +223,7 @@ func TestApplySuperseding_SelectedHasNonTopologyChangeVsBaseline(t *testing.T) {
 }
 
 func TestOnlyTopologyChange(t *testing.T) {
-	base := redisv1.RedkeyClusterConfigSpec{
+	base := redisv1.RedkeyConfigSpec{
 		Sequence:           1,
 		SkipIfSuperseded:   false,
 		Primaries:          3,
@@ -276,7 +276,7 @@ func TestOnlyTopologyChange(t *testing.T) {
 // --- findBaseline tests ---
 
 func TestFindBaseline_NoApplied(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhasePending, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, false),
 	}
@@ -289,7 +289,7 @@ func TestFindBaseline_NoApplied(t *testing.T) {
 }
 
 func TestFindBaseline_SingleApplied(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhasePending, 5, 1, false),
 	}
@@ -302,7 +302,7 @@ func TestFindBaseline_SingleApplied(t *testing.T) {
 }
 
 func TestFindBaseline_MultipleApplied(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhaseApplied, 5, 1, false),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, false),
@@ -316,7 +316,7 @@ func TestFindBaseline_MultipleApplied(t *testing.T) {
 }
 
 func TestFindBaseline_AppliedAfterSelected(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhasePending, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhaseApplied, 5, 1, false),
 	}
@@ -329,7 +329,7 @@ func TestFindBaseline_AppliedAfterSelected(t *testing.T) {
 }
 
 func TestFindBaseline_MixedPhases(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhaseSuperseded, 5, 1, false),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhaseApplied, 7, 1, false),
@@ -346,7 +346,7 @@ func TestFindBaseline_MixedPhases(t *testing.T) {
 // --- indexOfConfig tests ---
 
 func TestIndexOfConfig_Found(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, "", 3, 1, false),
 		makeFullConfig("cfg-2", 2, "", 5, 1, false),
 		makeFullConfig("cfg-3", 3, "", 7, 1, false),
@@ -359,7 +359,7 @@ func TestIndexOfConfig_Found(t *testing.T) {
 }
 
 func TestIndexOfConfig_NotFound(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, "", 3, 1, false),
 	}
 	other := makeFullConfig("cfg-99", 99, "", 3, 1, false)
@@ -382,7 +382,7 @@ func TestIndexOfConfig_EmptySlice(t *testing.T) {
 // --- Additional onlyTopologyChange tests ---
 
 func TestOnlyTopologyChange_IdenticalSpecs(t *testing.T) {
-	spec := redisv1.RedkeyClusterConfigSpec{
+	spec := redisv1.RedkeyConfigSpec{
 		Sequence:           1,
 		Primaries:          3,
 		ReplicasPerPrimary: 1,
@@ -396,7 +396,7 @@ func TestOnlyTopologyChange_IdenticalSpecs(t *testing.T) {
 }
 
 func TestOnlyTopologyChange_DifferentRedisConfig(t *testing.T) {
-	a := redisv1.RedkeyClusterConfigSpec{
+	a := redisv1.RedkeyConfigSpec{
 		Sequence:    1,
 		Primaries:   3,
 		RedisConfig: "maxmemory 100mb",
@@ -412,7 +412,7 @@ func TestOnlyTopologyChange_DifferentRedisConfig(t *testing.T) {
 }
 
 func TestOnlyTopologyChange_DifferentStorage(t *testing.T) {
-	a := redisv1.RedkeyClusterConfigSpec{
+	a := redisv1.RedkeyConfigSpec{
 		Sequence:  1,
 		Primaries: 3,
 		Storage:   "10Gi",
@@ -428,7 +428,7 @@ func TestOnlyTopologyChange_DifferentStorage(t *testing.T) {
 }
 
 func TestOnlyTopologyChange_DifferentStorageClassName(t *testing.T) {
-	a := redisv1.RedkeyClusterConfigSpec{
+	a := redisv1.RedkeyConfigSpec{
 		Sequence:         1,
 		Primaries:        3,
 		StorageClassName: "standard",
@@ -444,7 +444,7 @@ func TestOnlyTopologyChange_DifferentStorageClassName(t *testing.T) {
 }
 
 func TestOnlyTopologyChange_OnlyReplicasChange(t *testing.T) {
-	a := redisv1.RedkeyClusterConfigSpec{
+	a := redisv1.RedkeyConfigSpec{
 		Sequence:           1,
 		Primaries:          3,
 		ReplicasPerPrimary: 1,
@@ -464,7 +464,7 @@ func TestOnlyTopologyChange_OnlyReplicasChange(t *testing.T) {
 // --- Additional ApplySuperseding edge cases ---
 
 func TestApplySuperseding_SelectedNotInList(t *testing.T) {
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 	}
 	selected := makeFullConfig("cfg-99", 99, redisv1.ConfigPhasePending, 5, 1, true)
@@ -493,7 +493,7 @@ func TestApplySuperseding_EmptyConfigList(t *testing.T) {
 
 func TestApplySuperseding_SupersededPhaseSelected(t *testing.T) {
 	// A Superseded config with SkipIfSuperseded should still be eligible to start a chain
-	configs := []redisv1.RedkeyClusterConfig{
+	configs := []redisv1.RedkeyConfig{
 		makeFullConfig("cfg-1", 1, redisv1.ConfigPhaseApplied, 3, 1, false),
 		makeFullConfig("cfg-2", 2, redisv1.ConfigPhaseSuperseded, 5, 1, true),
 		makeFullConfig("cfg-3", 3, redisv1.ConfigPhasePending, 7, 1, false),
@@ -511,7 +511,7 @@ func TestApplySuperseding_SupersededPhaseSelected(t *testing.T) {
 }
 
 // namesOf extracts names from a slice of config pointers for test output.
-func namesOf(cfgs []*redisv1.RedkeyClusterConfig) []string {
+func namesOf(cfgs []*redisv1.RedkeyConfig) []string {
 	names := make([]string, len(cfgs))
 	for i, c := range cfgs {
 		names[i] = c.Name

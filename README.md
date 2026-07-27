@@ -36,7 +36,7 @@ Redkey Robin is the runtime component used by the [Redkey Operator](https://gith
 - Reconciles cluster bootstrap and configuration from Kubernetes and Redis state, including cluster formation and topology validation
 - Performs automated health checks and remediation for membership drift, uncovered slots, replica spread issues, cluster checkl findings, and slot imbalance
 - Exposes Prometheus metrics for Redkey and Redis/Valkey state, together with runtime metrics used by Redkey Operator and observability tooling
-- Hot-reloads operational settings from `RedkeyClusterConfig` without restarting the Robin Pod, including reconciliation cadence, metrics collection, auth secret reference, and profiling state
+- Hot-reloads operational settings from `RedkeyConfig` without restarting the Robin Pod, including reconciliation cadence, metrics collection, auth secret reference, and profiling state
 - Provides a metrics HTTP endpoint plus optional `pprof` endpoints for diagnostics and performance analysis
 - Works as the Redis-side runtime companion for Redkey Operator during normal operation, maintenance, and recovery flows
 

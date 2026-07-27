@@ -360,7 +360,7 @@ func TestApplyServiceOverride_GuardRails(t *testing.T) {
 func TestEnsureClusterObjects_AppliesStatefulSetOverride(t *testing.T) {
 	owner := testOwner()
 	config := testConfig()
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		StatefulSet: &redisv1.PartialStatefulSet{
 			Spec: &redisv1.PartialStatefulSetSpec{
 				Template: &redisv1.PartialPodTemplateSpec{
@@ -375,7 +375,7 @@ func TestEnsureClusterObjects_AppliesStatefulSetOverride(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(owner).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	if err := EnsureClusterObjects(context.Background(), fakeClient, config, owner, ""); err != nil {
@@ -398,7 +398,7 @@ func TestEnsureClusterObjects_AppliesStatefulSetOverride(t *testing.T) {
 func TestEnsureClusterObjects_AppliesServiceOverride(t *testing.T) {
 	owner := testOwner()
 	config := testConfig()
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		Service: &redisv1.PartialService{
 			Metadata: metav1.ObjectMeta{Annotations: map[string]string{"team": "infra"}},
 		},
@@ -407,7 +407,7 @@ func TestEnsureClusterObjects_AppliesServiceOverride(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(owner).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	if err := EnsureClusterObjects(context.Background(), fakeClient, config, owner, ""); err != nil {
@@ -433,7 +433,7 @@ func TestEnsureClusterObjects_NoOverrideBackwardCompatible(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(owner).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 
 	if err := EnsureClusterObjects(context.Background(), fakeClient, config, owner, ""); err != nil {
@@ -468,7 +468,7 @@ func TestReconcileService_UpdatesOnDrift(t *testing.T) {
 	}
 
 	// Now add an override and reconcile again — the existing Service must be updated.
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		Service: &redisv1.PartialService{
 			Spec: &redisv1.PartialServiceSpec{
 				Ports: []corev1.ServicePort{{Name: "metrics", Port: 9121, TargetPort: intstr.FromInt(9121)}},
@@ -494,7 +494,7 @@ func TestReconcileService_UpdatesOnDrift(t *testing.T) {
 func TestReconcileService_RemovingOverrideReverts(t *testing.T) {
 	owner := testOwner()
 	config := testConfig()
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		Service: &redisv1.PartialService{
 			Spec: &redisv1.PartialServiceSpec{
 				Ports: []corev1.ServicePort{{Name: "metrics", Port: 9121, TargetPort: intstr.FromInt(9121)}},
@@ -530,12 +530,12 @@ func TestReconcileService_RemovingOverrideReverts(t *testing.T) {
 
 // createClusterStatefulSet creates the cluster objects and returns the fake client
 // with an existing StatefulSet ready to be updated.
-func createClusterStatefulSet(t *testing.T, config *redisv1.RedkeyClusterConfig, owner *redisv1.RedkeyCluster) client.Client {
+func createClusterStatefulSet(t *testing.T, config *redisv1.RedkeyConfig, owner *redisv1.Redkey) client.Client {
 	t.Helper()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(owner).
-		WithStatusSubresource(&redisv1.RedkeyClusterConfig{}).
+		WithStatusSubresource(&redisv1.RedkeyConfig{}).
 		Build()
 	if err := EnsureClusterObjects(context.Background(), fakeClient, config, owner, ""); err != nil {
 		t.Fatalf("EnsureClusterObjects failed: %v", err)
@@ -561,7 +561,7 @@ func TestUpdateStatefulSetTemplate_SyncsTopLevelMetadata(t *testing.T) {
 	fakeClient := createClusterStatefulSet(t, config, owner)
 
 	// Add an override after creation and run the update path used by upgrades.
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		StatefulSet: &redisv1.PartialStatefulSet{
 			Metadata: metav1.ObjectMeta{
 				Labels:      map[string]string{"inditex.dev/test": "test"},
@@ -599,7 +599,7 @@ func TestUpdateStatefulSetTemplate_MergesPodTemplateMetadata(t *testing.T) {
 	config.Spec.Annotations = &specAnnotations
 	fakeClient := createClusterStatefulSet(t, config, owner)
 
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		StatefulSet: &redisv1.PartialStatefulSet{
 			Spec: &redisv1.PartialStatefulSetSpec{
 				Template: &redisv1.PartialPodTemplateSpec{
@@ -657,7 +657,7 @@ func TestUpdateStatefulSetTemplate_AppliesPodSpecOverride(t *testing.T) {
 	wantServiceName := existing.Spec.ServiceName
 
 	grace := int64(10)
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		StatefulSet: &redisv1.PartialStatefulSet{
 			Spec: &redisv1.PartialStatefulSetSpec{
 				Template: &redisv1.PartialPodTemplateSpec{
@@ -726,7 +726,7 @@ func TestUpdateStatefulSetTemplate_AppliesPodSpecOverride(t *testing.T) {
 func TestUpdateStatefulSetTemplate_RemovingOverrideReverts(t *testing.T) {
 	owner := testOwner()
 	config := testConfig()
-	config.Spec.Override = &redisv1.RedkeyClusterOverrideSpec{
+	config.Spec.Override = &redisv1.RedkeyOverrideSpec{
 		StatefulSet: &redisv1.PartialStatefulSet{
 			Metadata: metav1.ObjectMeta{Labels: map[string]string{"inditex.dev/test": "test"}},
 			Spec: &redisv1.PartialStatefulSetSpec{

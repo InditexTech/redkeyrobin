@@ -22,9 +22,9 @@ import (
 var _ = Describe("Cluster Lifecycle (integration)", func() {
 	AfterEach(func() {
 		cleanup()
-		// Clean up RedkeyCluster
-		var cluster redisv1.RedkeyCluster
-		_ = k8sClient.Delete(ctx, &redisv1.RedkeyCluster{
+		// Clean up Redkey
+		var cluster redisv1.Redkey
+		_ = k8sClient.Delete(ctx, &redisv1.Redkey{
 			ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: testNamespace},
 		})
 		_ = cluster // suppress unused
@@ -53,13 +53,13 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 
 	Describe("New cluster creation", func() {
 		It("transitions from empty status to Initializing and creates K8s objects", func() {
-			// Create the RedkeyCluster owner
-			owner := &redisv1.RedkeyCluster{
+			// Create the Redkey owner
+			owner := &redisv1.Redkey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      clusterName,
 					Namespace: testNamespace,
 				},
-				Spec: redisv1.RedkeyClusterSpec{
+				Spec: redisv1.RedkeySpec{
 					Primaries:          3,
 					ReplicasPerPrimary: 0,
 					Ephemeral:          true,
@@ -80,14 +80,14 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 
 			// Config should transition to InProgress
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.ConfigPhase).To(Equal(redisv1.ConfigPhaseInProgress))
 			}, timeout, interval).Should(Succeed())
 
 			// Status should reach Initializing (K8s objects created)
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 			}, timeout, interval).Should(Succeed())
@@ -114,13 +114,13 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 			}, timeout, interval).Should(Succeed())
 		})
 
-		It("creates objects with owner references pointing to RedkeyCluster", func() {
-			owner := &redisv1.RedkeyCluster{
+		It("creates objects with owner references pointing to Redkey", func() {
+			owner := &redisv1.Redkey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      clusterName,
 					Namespace: testNamespace,
 				},
-				Spec: redisv1.RedkeyClusterSpec{
+				Spec: redisv1.RedkeySpec{
 					Primaries:          3,
 					ReplicasPerPrimary: 0,
 					Ephemeral:          true,
@@ -139,7 +139,7 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 
 			// Wait for Initializing status (objects created)
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 			}, timeout, interval).Should(Succeed())
@@ -149,16 +149,16 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: testNamespace}, &sts)).To(Succeed())
 			Expect(sts.OwnerReferences).To(HaveLen(1))
 			Expect(sts.OwnerReferences[0].Name).To(Equal(clusterName))
-			Expect(sts.OwnerReferences[0].Kind).To(Equal("RedkeyCluster"))
+			Expect(sts.OwnerReferences[0].Kind).To(Equal("Redkey"))
 		})
 
 		It("stays in Initializing while pods are not ready", func() {
-			owner := &redisv1.RedkeyCluster{
+			owner := &redisv1.Redkey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      clusterName,
 					Namespace: testNamespace,
 				},
-				Spec: redisv1.RedkeyClusterSpec{
+				Spec: redisv1.RedkeySpec{
 					Primaries:          3,
 					ReplicasPerPrimary: 0,
 					Ephemeral:          true,
@@ -177,14 +177,14 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 
 			// Wait for Initializing
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 			}, timeout, interval).Should(Succeed())
 
 			// It should stay in Initializing (pods not ready in envtest)
 			Consistently(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 			}, 500*time.Millisecond, 100*time.Millisecond).Should(Succeed())
@@ -206,12 +206,12 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 				_ = k8sClient.Delete(ctx, secret)
 			})
 
-			owner := &redisv1.RedkeyCluster{
+			owner := &redisv1.Redkey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      clusterName,
 					Namespace: testNamespace,
 				},
-				Spec: redisv1.RedkeyClusterSpec{
+				Spec: redisv1.RedkeySpec{
 					Primaries:          3,
 					ReplicasPerPrimary: 0,
 					Ephemeral:          true,
@@ -231,7 +231,7 @@ var _ = Describe("Cluster Lifecycle (integration)", func() {
 
 			// Should still reach Initializing even with auth
 			Eventually(func(g Gomega) {
-				var fetched redisv1.RedkeyClusterConfig
+				var fetched redisv1.RedkeyConfig
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(cfg), &fetched)).To(Succeed())
 				g.Expect(fetched.Status.Status).To(Equal(redisv1.ClusterStatusInitializing))
 			}, timeout, interval).Should(Succeed())
