@@ -114,7 +114,7 @@ func (c *Collector) collect(ctx context.Context) {
 
 	password, err := c.getPassword(ctx)
 	if err != nil {
-		c.logger.Error("Failed to get Redis password", "error", err)
+		c.logger.Error("Failed to get Redis password")
 		return
 	}
 
