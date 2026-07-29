@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+// SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -7,311 +7,104 @@ package redis
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
-
-	"github.com/inditextech/redkeyrobin/internal/util"
 )
 
-// RedisSlotRange represents a range of Redis slots.
-type RedisSlotRange struct {
-	Start int `json:"start"`
-	End   int `json:"end"`
+// Node represents a Redis cluster node managed by Robin.
+type Node struct {
+	// Name is the pod/StatefulSet ordinal name (e.g. "mycluster-0").
+	Name string
+	// Addr is the node address in host:port format.
+	Addr string
+	// IP is the node's IP address.
+	IP string
+	// ID is the cluster node ID obtained from CLUSTER MYID.
+	ID string
+	// Flags contains the node's cluster flags (e.g. "master", "slave", "myself,master").
+	Flags string
+	// PrimaryID is the ID of the primary this node replicates, or "-" if it is a primary.
+	PrimaryID string
+	// Slots is the slot assignment string (e.g. "0-5460").
+	Slots string
+
+	client *Client
 }
 
-// RedisNode represents a RedKey cluster node.
-type RedisNode struct {
-	Name       string           `json:"name"`
-	ID         string           `json:"id"`
-	Addr       string           `json:"-"`
-	IP         string           `json:"ip"`
-	Flags      string           `json:"flags"`
-	Slots      []RedisSlotRange `json:"slots"`
-	PrimaryID  string           `json:"primaryId"`
-	Failures   int              `json:"failures"`
-	Sent       int              `json:"sent"`
-	Recv       int              `json:"recv"`
-	LinkStatus string           `json:"linkStatus"`
-	MaxRetries int              `json:"-"`
-	Backoff    time.Duration    `json:"-"`
-	Migrating  map[int]string   `json:"migrating,omitempty"`
-	Importing  map[int]string   `json:"importing,omitempty"`
-
-	clientFactory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error)
-}
-
-// Default client factory (global, no closure)
-func defaultClientFactory(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error) {
-	redisClient := NewRedisClient(ctx, addr, os.Getenv("REDISAUTH"), 0)
-	if err := redisClient.CheckConnection(maxRetries, backoff); err != nil {
-		return nil, err
-	}
-	return redisClient, nil
-}
-
-// NewRedisNode creates a new RedisNode with default client factory
-func NewRedisNode(name, addr string, maxRetries int, backoff time.Duration) *RedisNode {
-	return &RedisNode{
-		Name:          name,
-		Addr:          addr,
-		MaxRetries:    maxRetries,
-		Backoff:       backoff,
-		clientFactory: defaultClientFactory,
+// NewNode creates a new Node with the given name and address.
+func NewNode(name, addr, password string) *Node {
+	return &Node{
+		Name:   name,
+		Addr:   addr,
+		client: NewClient(addr, password),
 	}
 }
 
-// NewFakeRedisNode creates a new RedisNode with a custom client factory (for testing)
-func NewFakeRedisNode(name string, factory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error)) *RedisNode {
-	return &RedisNode{
-		Name:          name,
-		clientFactory: factory,
-	}
-}
-
-// WithClientFactory allows to configure a custom function to obtain clients (used for testing)
-func (rn *RedisNode) WithClientFactory(factory func(ctx context.Context, addr string, maxRetries int, backoff time.Duration) (RedisClientInterface, error)) *RedisNode {
-	rn.clientFactory = factory
-	return rn
-}
-
-// String returns a formatted string of the Redis node.
-func (rn *RedisNode) String() string {
-	return fmt.Sprintf("Node(ID: %s, Name: %s, IP: %s)", rn.ID, rn.Name, rn.IP)
-}
-
-// ----------------------------------------------------------------------------------------------------
-// ---------------------------------------- GETTERS AND SETTERS ---------------------------------------
-// ----------------------------------------------------------------------------------------------------
-
-// GetNumberOfSlots returns the number of slots of the Redis node.
-func (rn *RedisNode) GetNumberOfSlots() int {
-	slots := 0
-
-	for _, slotRange := range rn.Slots {
-		slots += slotRange.End - slotRange.Start + 1
+// Init connects to the node, verifies connectivity with retries, and retrieves
+// the cluster node ID. It should be called once after creating the node.
+func (n *Node) Init(ctx context.Context, maxRetries int, backoff time.Duration) error {
+	if err := n.client.CheckConnection(ctx, maxRetries, backoff); err != nil {
+		return fmt.Errorf("node %s: %w", n.Name, err)
 	}
 
-	return slots
-}
-
-// SetID sets the ID of the Redis node.
-func (rn *RedisNode) SetID(id string) {
-	rn.ID = id
-	rn.ResetSlots()
-}
-
-// SetIP sets the IP of the Redis node.
-func (rn *RedisNode) SetIP(ip string) {
-	rn.IP = ip
-	rn.ResetSlots()
-}
-
-// ----------------------------------------------------------------------------------------------------
-// ---------------------------------------------- ASKERS ----------------------------------------------
-// ----------------------------------------------------------------------------------------------------
-
-// IsPrimary returns true if the Redis node is a primary.
-func (rn *RedisNode) IsPrimary() bool {
-	return rn.hasFlag("master")
-}
-
-// IsReplica returns true if the Redis node is a replica.
-func (rn *RedisNode) IsReplica() bool {
-	return rn.hasFlag("slave")
-}
-
-// IsConnected returns true if the Redis node is connected.
-func (rn *RedisNode) IsConnected() bool {
-	return rn.LinkStatus == "connected"
-}
-
-// IsDisconnected returns true if the Redis node is disconnected.
-func (rn *RedisNode) IsDisconnected() bool {
-	return rn.LinkStatus == "disconnected"
-}
-
-// HasSlots returns true if the Redis node has slots.
-func (rn *RedisNode) HasSlots() bool {
-	return rn.GetNumberOfSlots() > 0
-}
-
-// ShouldBeRemoved returns true if the Redis node should be removed.
-func (rn *RedisNode) ShouldBeRemoved() bool {
-	return rn.hasFlag("fail") || rn.hasFlag("noaddr")
-}
-
-// ----------------------------------------------------------------------------------------------------
-// --------------------------------------------- PUBLIC  ----------------------------------------------
-// ----------------------------------------------------------------------------------------------------
-
-// Init initializes the Redis node.
-func (rn *RedisNode) Init(ctx context.Context) error {
-	redisClient, err := rn.getClient(ctx)
+	id, err := n.client.ClusterMyID(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("node %s: %w", n.Name, err)
 	}
-	defer redisClient.Close()
+	n.ID = id
 
-	// Get node info
-	nodeID, err := redisClient.GetMyID()
-	if err != nil {
-		return err
-	}
-
-	nodeIP, err := util.GetIPFromAddress(rn.Addr)
-	if err != nil {
-		return err
+	// Resolve IP from address
+	if idx := strings.Index(n.Addr, ":"); idx > 0 {
+		n.IP = n.Addr[:idx]
+	} else {
+		n.IP = n.Addr
 	}
 
-	rn.ID = nodeID
-	rn.IP = nodeIP
 	return nil
 }
 
-func (rn *RedisNode) InitStandalone(ctx context.Context) error {
-	nodeIP, err := util.GetIPFromAddress(rn.Addr)
+// RefreshInfo updates the node's metadata from the CLUSTER NODES output
+// obtained from the node itself.
+func (n *Node) RefreshInfo(ctx context.Context) error {
+	nodes, err := n.client.GetClusterNodes(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("node %s: %w", n.Name, err)
 	}
 
-	rn.IP = nodeIP
-	return nil
-}
-
-// CheckConnection checks the connection to the Redis node.
-func (rn *RedisNode) CheckConnection(ctx context.Context) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return err
+	for _, cn := range nodes {
+		if cn.ID == n.ID || strings.Contains(cn.Flags, "myself") {
+			n.Flags = cn.Flags
+			n.PrimaryID = cn.Primary
+			n.Slots = cn.Slots
+			if cn.IP != "" {
+				n.IP = cn.IP
+			}
+			return nil
+		}
 	}
-	defer redisClient.Close()
-	return nil
+
+	return fmt.Errorf("node %s: could not find self (ID=%s) in CLUSTER NODES output", n.Name, n.ID)
 }
 
-// UpdateInfo updates the Redis node information.
-func (rn *RedisNode) UpdateInfo(nodeInfo RedisNode) {
-	if nodeInfo.IP != "" {
-		rn.IP = nodeInfo.IP
-	}
-	rn.Flags = nodeInfo.Flags
-	rn.Slots = nodeInfo.Slots
-	rn.PrimaryID = nodeInfo.PrimaryID
-	rn.Failures = nodeInfo.Failures
-	rn.Sent = nodeInfo.Sent
-	rn.Recv = nodeInfo.Recv
-	rn.LinkStatus = nodeInfo.LinkStatus
-	rn.Migrating = nodeInfo.Migrating
-	rn.Importing = nodeInfo.Importing
+// IsPrimary returns true if the node has the "master" flag.
+func (n *Node) IsPrimary() bool {
+	return strings.Contains(n.Flags, "master")
 }
 
-// ResetSlots resets the Redis node slots.
-func (rn *RedisNode) ResetSlots() {
-	rn.Slots = []RedisSlotRange{}
+// IsReplica returns true if the node has the "slave" flag.
+func (n *Node) IsReplica() bool {
+	return strings.Contains(n.Flags, "slave")
 }
 
-// GetClusterNodes gets the cluster nodes known by the Redis node.
-func (rn *RedisNode) GetClusterNodes(ctx context.Context) ([]RedisNode, error) {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer redisClient.Close()
-
-	return redisClient.GetNodesInfo()
+// Client returns the underlying Redis client for direct command execution.
+func (n *Node) Client() *Client {
+	return n.client
 }
 
-// ReplicateNode replicates the Redis node.
-func (rn *RedisNode) ReplicateNode(ctx context.Context, primary RedisNode) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer redisClient.Close()
-
-	return redisClient.ClusterReplicate(primary.ID)
-}
-
-// Reset resets the Redis node.
-func (rn *RedisNode) Reset(ctx context.Context) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer redisClient.Close()
-
-	return redisClient.ClusterReset(false)
-}
-
-// MeetNode meets the Redis node with the current node.
-func (rn *RedisNode) MeetNode(ctx context.Context, node RedisNode) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer redisClient.Close()
-
-	return redisClient.ClusterMeet(node.IP, RedisPort)
-}
-
-// ForgetNode forgets the Redis node in the current node.
-func (rn *RedisNode) ForgetNode(ctx context.Context, node RedisNode) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer redisClient.Close()
-
-	return redisClient.ClusterForget(node.ID)
-}
-
-// AddSlots adds slots to the Redis node.
-func (rn *RedisNode) AddSlots(ctx context.Context, slots ...int) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer redisClient.Close()
-
-	return redisClient.ClusterAddSlots(slots...)
-}
-
-// Failover triggers a failover in the Redis node.
-func (rn *RedisNode) Failover(ctx context.Context) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer redisClient.Close()
-
-	return redisClient.ClusterFailover()
-}
-
-// StabilizeSlot sets a slot as stable in the Redis node.
-func (rn *RedisNode) StabilizeSlot(ctx context.Context, nodeIP string, slot int) error {
-	redisClient, err := rn.getClient(ctx)
-	if err != nil {
-		return nil
-	}
-	defer redisClient.Close()
-
-	cmd := redisClient.StabilizeSlot(ctx, nodeIP, slot)
-	if cmd.Err != nil {
-		return fmt.Errorf("error stabilizing slot: %v", cmd.Err)
+// Close closes the underlying Redis client connection.
+func (n *Node) Close() error {
+	if n.client != nil {
+		return n.client.Close()
 	}
 	return nil
-}
-
-// ----------------------------------------------------------------------------------------------------
-// --------------------------------------------- PRIVATE ----------------------------------------------
-// ----------------------------------------------------------------------------------------------------
-
-// GetClient returns a Redis client for the node.
-func (rn *RedisNode) getClient(ctx context.Context) (RedisClientInterface, error) {
-	return rn.clientFactory(ctx, rn.Addr, rn.MaxRetries, rn.Backoff)
-}
-
-// hasFlag checks if the Redis node has a specific flag.
-func (rn *RedisNode) hasFlag(flag string) bool {
-	return strings.Contains(rn.Flags, flag)
 }

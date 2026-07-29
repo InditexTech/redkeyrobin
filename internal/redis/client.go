@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+// SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -7,432 +7,428 @@ package redis
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/util"
-	redisgo "github.com/redis/go-redis/v9"
+	goredis "github.com/redis/go-redis/v9"
 )
 
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
 const (
-	RedisPort          = 6379
-	SectionServer      = "server"
-	SectionClients     = "clients"
-	SectionMemory      = "memory"
-	SectionPersistence = "persistence"
-	SectionStats       = "stats"
-	SectionReplication = "replication"
-	SectionCPU         = "cpu"
-	SectionCluster     = "cluster"
-	SectionKeyspace    = "keyspace"
-	SectionCmdStats    = "commandstats"
-	SectionErrorStats  = "errorstats"
-	SectionLatency     = "latencystats"
+	// DefaultPort is the default Redis port.
+	DefaultPort = 6379
 )
 
-// Label keys for metrics.
-const (
-	ClusterState                       = "cluster_state"
-	ClusterSlotsAssigned               = "cluster_slots_assigned"
-	ClusterSlotsOk                     = "cluster_slots_ok"
-	ClusterSlotsPFail                  = "cluster_slots_pfail"
-	ClusterSlotsFail                   = "cluster_slots_fail"
-	ClusterKnownNodes                  = "cluster_known_nodes"
-	ClusterSize                        = "cluster_size"
-	ClusterCurrentEpoch                = "cluster_current_epoch"
-	ClusterMyEpoch                     = "cluster_my_epoch"
-	ClusterStatsMMS                    = "cluster_stats_messages_meet_sent"
-	ClusterStatsMMR                    = "cluster_stats_messages_meet_received"
-	ClusterStatsMS                     = "cluster_stats_messages_sent"
-	ClusterStatsMR                     = "cluster_stats_messages_received"
-	ClusterStatsMPS                    = "cluster_stats_messages_ping_sent"
-	ClusterStatsMPR                    = "cluster_stats_messages_ping_received"
-	ClusterStatsMPongS                 = "cluster_stats_messages_pong_sent"
-	ClusterStatsMPongR                 = "cluster_stats_messages_pong_received"
-	ClusterCheckErrors                 = "cluster_check_errors"
-	ClusterCheckCommandOutputCode      = "cluster_check_command_output_code"
-	ClusterCheckWarnings               = "cluster_check_warnings"
-	ClusterCheckSlotCoverageMessage    = "cluster_check_slot_coverage_message"
-	ClusterCheckAgreementMessage       = "cluster_check_agreement_message"
-	ClusterCheckPerformedUsingPod      = "cluster_check_performed_using_pod"
-	ClusterStatsMessagesUpdateSent     = "cluster_stats_messages_update_sent"
-	ClusterStatsMessagesUpdateReceived = "cluster_stats_messages_update_received"
-	ClusterStatsMessagesFailReceived   = "cluster_stats_messages_fail_received"
-	TotalClusterLinksBufEx             = "total_cluster_links_buffer_limit_exceeded"
-)
-
-// -----------------------------------------------------------------------------
-// Redis Client
-// -----------------------------------------------------------------------------
-
-// RedisClientInterface defines the interface for RedisClient.
-type RedisClientInterface interface {
-	// Close closes the Redis connection.
-	Close() error
-	// CheckConnection pings the Redis server until a connection is established.
-	CheckConnection(maxRetries int, backoff time.Duration) error
-	// GetInfo retrieves and parses the Redis INFO output for the given IP.
-	GetInfo() (*RedisInfo, error)
-	// GetClusterInfo retrieves and parses cluster information from Redis.
-	GetClusterInfo() (*ClusterInfo, error)
-	// GetNodesInfo retrieves and parses the cluster nodes information.
-	GetNodesInfo() ([]RedisNode, error)
-	// GetMyID retrieves the ID of the current Redis node.
-	GetMyID() (string, error)
-	// ClusterForgetNode removes a node from the cluster.
-	ClusterForgetNode(nodeID string) error
-	// ClusterMeet instructs the current node to meet the specified node.
-	ClusterMeet(ip string, port int) error
-	// ClusterReplicate instructs the current node to
-	ClusterReplicate(nodeID string) error
-	// ClusterReset instructs the current node to reset.
-	ClusterReset(hard bool) error
-	// ClusterForget removes a node in the current node from the cluster.
-	ClusterForget(nodeID string) error
-	// ClusterAddSlots adds the specified slots to the current node.
-	ClusterAddSlots(slots ...int) error
-	// ClusterFailover triggers a manual failover of the current node.
-	ClusterFailover() error
-	// ClusterCheck executes "redis-cli --cluster check <addr>" and parses its output.
-	ClusterCheck(ctx context.Context) (*ClusterCheckResult, error)
-	// ClusterFix executes "redis-cli --cluster fix <addr>" asynchrously and returns the command reference.
-	ClusterFix(ctx context.Context) *RedisCLICommand
-	// ReshardNode executes "redis-cli --cluster reshard <addr> --cluster-from <source> --cluster-to <target> --cluster-slots <slots> --cluster-yes" asynchronously and returns the command reference.
-	ReshardNode(ctx context.Context, source, target RedisNode, slots int) *RedisCLICommand
-	// ClusterRebalance executes "redis-cli --cluster rebalance <addr> --cluster-weight <weight> --cluster-yes" asynchronously and returns the command reference.
-	ClusterRebalance(ctx context.Context, weights map[string]int) *RedisCLICommand
-	// StabilizeSlot executes "redis-cli -h <nodeIP> cluster setslot <slot> stable" asynchronously and returns the command reference.
-	StabilizeSlot(ctx context.Context, nodeIp string, slot int) *RedisCLICommand
+// Client wraps a go-redis client for a single Redis node.
+type Client struct {
+	client   *goredis.Client
+	addr     string
+	password string
 }
 
-// RedisClient encapsulates a connection to Redis.
-type RedisClient struct {
-	logger *slog.Logger
-	client *redisgo.Client
-	ctx    context.Context
+// NewClient creates a new Redis client connected to the given address.
+// Pool is limited to a single connection since Robin uses clients sequentially.
+func NewClient(addr, password string) *Client {
+	opts := &goredis.Options{
+		Addr:         addr,
+		Password:     password,
+		PoolSize:     1,
+		MaxIdleConns: 1,
+		DialTimeout:  5 * time.Second,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
+	return &Client{
+		client:   goredis.NewClient(opts),
+		addr:     addr,
+		password: password,
+	}
 }
 
-// RedisInfo represents structured Redis INFO output.
-type RedisInfo struct {
-	Server       map[string]string
-	Clients      map[string]int64
-	Memory       map[string]string
-	Persistence  map[string]string
-	Stats        map[string]string
-	Replication  map[string]string
-	CPU          map[string]float64
-	Cluster      map[string]string
-	Keyspace     map[string]string
-	CommandStats map[string]string
-	ErrorStats   map[string]string
-	LatencyStats map[string]string
+// GetInfo executes INFO ALL and returns the raw response.
+// Falls back to INFO (no section) if the server doesn't support section arguments.
+func (c *Client) GetInfo(ctx context.Context) (string, error) {
+	result, err := c.client.Info(ctx, "all").Result()
+	if err != nil {
+		// Fallback: some servers (e.g. miniredis) don't support INFO <section>.
+		result, err = c.client.Info(ctx).Result()
+		if err != nil {
+			return "", fmt.Errorf("INFO on %s: %w", c.addr, err)
+		}
+	}
+	return result, nil
 }
 
-// ClusterInfo represents structured RedKey cluster information.
+// ReplicaLinkUp reports whether this node is a replica whose link to its primary is
+// established (master_link_status:up in INFO replication). It returns false for a
+// primary or for a replica that has not yet completed its initial sync. This is used
+// to guard HA before recycling: a replica that has not synced cannot safely take over.
+func (c *Client) ReplicaLinkUp(ctx context.Context) (bool, error) {
+	result, err := c.client.Info(ctx, "replication").Result()
+	if err != nil {
+		// Fallback: some servers (e.g. miniredis) don't support INFO <section>.
+		result, err = c.client.Info(ctx).Result()
+		if err != nil {
+			return false, fmt.Errorf("INFO replication on %s: %w", c.addr, err)
+		}
+	}
+	for line := range strings.SplitSeq(result, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if ok && key == "master_link_status" {
+			return value == "up", nil
+		}
+	}
+	return false, nil
+}
+
+// IsReplica reports whether this node currently runs as a replica (role:slave in INFO
+// replication). During a rolling upgrade a drained primary can be automatically converted
+// into a read-only replica of the node that absorbed its slots (Redis cluster replica
+// migration); callers use this to detect that case before attempting a write such as
+// FLUSHALL, which a read-only replica rejects.
+func (c *Client) IsReplica(ctx context.Context) (bool, error) {
+	result, err := c.client.Info(ctx, "replication").Result()
+	if err != nil {
+		// Fallback: some servers (e.g. miniredis) don't support INFO <section>.
+		result, err = c.client.Info(ctx).Result()
+		if err != nil {
+			return false, fmt.Errorf("INFO replication on %s: %w", c.addr, err)
+		}
+	}
+	for line := range strings.SplitSeq(result, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if ok && key == "role" {
+			return value == "slave", nil
+		}
+	}
+	return false, nil
+}
+
+// Save executes a synchronous SAVE, persisting the current dataset to disk (RDB). It is
+// used before recycling a drained node in a persistent cluster so the restarted pod
+// reloads the up-to-date (e.g. flushed) dataset instead of a stale pre-reshard snapshot.
+func (c *Client) Save(ctx context.Context) error {
+	if err := c.client.Save(ctx).Err(); err != nil {
+		return fmt.Errorf("SAVE on %s: %w", c.addr, err)
+	}
+	return nil
+}
+
+// ClusterInfo holds parsed CLUSTER INFO fields.
 type ClusterInfo struct {
-	State                        string
-	SlotsAssigned                int
-	SlotsOK                      int
-	SlotsPFail                   int
-	SlotsFail                    int
-	KnownNodes                   int
-	ClusterSize                  int
-	CurrentEpoch                 int
-	MyEpoch                      int
-	MessagesPingSent             int
-	MessagesPongSent             int
-	MessagesMeetSent             int
-	MessagesSent                 int
-	MessagesPingReceived         int
-	MessagesPongReceived         int
-	MessagesMeetReceived         int
-	MessagesReceived             int
-	TotalClusterLinksBufferLimit int
-	MessagesUpdateSent           int
-	MessagesUpdateReceived       int
-	MessagesFailReceived         int
+	State       string
+	SlotsOK     int
+	SlotsFail   int
+	KnownNodes  int
+	ClusterSize int
+	raw         map[string]string
 }
 
-// NewRedisClient creates a new RedisClient for the given address.
-func NewRedisClient(ctx context.Context, addr, password string, db int) *RedisClient {
-	client := redisgo.NewClient(&redisgo.Options{
-		Addr:     fmt.Sprintf("%s:%d", addr, RedisPort),
-		Password: password,
-		DB:       db,
-	})
-	return &RedisClient{
-		logger: util.GetLogger("redis-client"),
-		client: client,
-		ctx:    ctx,
-	}
+// Raw returns all parsed key-value pairs from CLUSTER INFO.
+func (ci *ClusterInfo) Raw() map[string]string {
+	return ci.raw
 }
 
-// Close closes the Redis connection.
-func (rc *RedisClient) Close() error {
-	return rc.client.Close()
-}
-
-// CheckConnection pings the Redis server until a connection is established.
-func (rc *RedisClient) CheckConnection(maxRetries int, backoff time.Duration) error {
-	if maxRetries <= 0 {
-		return fmt.Errorf("maxRetries must be greater than 0")
-	}
-	if backoff <= 0 {
-		return fmt.Errorf("backoff must be greater than 0")
-	}
-	for range maxRetries {
-		if _, err := rc.client.Ping(rc.ctx).Result(); err == nil {
-			return nil
-		}
-		time.Sleep(backoff)
-	}
-	return fmt.Errorf("failed to connect after %d retries", maxRetries)
-}
-
-// GetInfo retrieves and parses the Redis INFO output for the given IP.
-func (rc *RedisClient) GetInfo() (*RedisInfo, error) {
-	info, err := rc.client.Info(rc.ctx, "all").Result()
+// GetClusterInfo executes CLUSTER INFO and returns the parsed result.
+func (c *Client) GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
+	result, err := c.client.ClusterInfo(ctx).Result()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get info from %s: %v", rc.client.Options().Addr, err)
+		return nil, fmt.Errorf("CLUSTER INFO on %s: %w", c.addr, err)
 	}
 
-	// Parse the response into a structured format
-	return parseRedisInfo(info), nil
-}
-
-// GetClusterInfo retrieves and parses cluster information from Redis.
-func (rc *RedisClient) GetClusterInfo() (*ClusterInfo, error) {
-	info, err := rc.client.ClusterInfo(rc.ctx).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cluster info from %s: %v", rc.client.Options().Addr, err)
-	}
-	if len(info) == 0 {
-		return nil, fmt.Errorf("empty cluster info response")
-	}
-
-	// Parse response into a structured format
-	clusterInfo := &ClusterInfo{}
-	lines := strings.Split(strings.TrimSpace(info), "\n")
-
-	for _, line := range lines {
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			rc.logger.Info("Skipping malformed cluster info", "line", line)
+	info := &ClusterInfo{raw: make(map[string]string)}
+	for line := range strings.SplitSeq(strings.TrimSpace(result), "\n") {
+		line = strings.TrimSpace(line)
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
 			continue
 		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		info.raw[key] = value
 
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		// Map values to struct fields
 		switch key {
-		case ClusterState:
-			clusterInfo.State = value
-		case ClusterSlotsAssigned:
-			clusterInfo.SlotsAssigned = util.ParseInt(value)
-		case ClusterSlotsOk:
-			clusterInfo.SlotsOK = util.ParseInt(value)
-		case ClusterSlotsPFail:
-			clusterInfo.SlotsPFail = util.ParseInt(value)
-		case ClusterSlotsFail:
-			clusterInfo.SlotsFail = util.ParseInt(value)
-		case ClusterKnownNodes:
-			clusterInfo.KnownNodes = util.ParseInt(value)
-		case ClusterSize:
-			clusterInfo.ClusterSize = util.ParseInt(value)
-		case ClusterCurrentEpoch:
-			clusterInfo.CurrentEpoch = util.ParseInt(value)
-		case ClusterMyEpoch:
-			clusterInfo.MyEpoch = util.ParseInt(value)
-		case ClusterStatsMMS:
-			clusterInfo.MessagesMeetSent = util.ParseInt(value)
-		case ClusterStatsMMR:
-			clusterInfo.MessagesMeetReceived = util.ParseInt(value)
-		case ClusterStatsMS:
-			clusterInfo.MessagesSent = util.ParseInt(value)
-		case ClusterStatsMR:
-			clusterInfo.MessagesReceived = util.ParseInt(value)
-		case ClusterStatsMPS:
-			clusterInfo.MessagesPingSent = util.ParseInt(value)
-		case ClusterStatsMPR:
-			clusterInfo.MessagesPingReceived = util.ParseInt(value)
-		case ClusterStatsMPongS:
-			clusterInfo.MessagesPongSent = util.ParseInt(value)
-		case ClusterStatsMPongR:
-			clusterInfo.MessagesPongReceived = util.ParseInt(value)
-		case TotalClusterLinksBufEx:
-			clusterInfo.TotalClusterLinksBufferLimit = util.ParseInt(value)
-		case ClusterStatsMessagesUpdateSent:
-			clusterInfo.MessagesUpdateSent = util.ParseInt(value)
-		case ClusterStatsMessagesUpdateReceived:
-			clusterInfo.MessagesUpdateReceived = util.ParseInt(value)
-		case ClusterStatsMessagesFailReceived:
-			clusterInfo.MessagesFailReceived = util.ParseInt(value)
-		default:
+		case "cluster_state":
+			info.State = value
+		case "cluster_slots_ok":
+			info.SlotsOK, _ = strconv.Atoi(value)
+		case "cluster_slots_fail":
+			info.SlotsFail, _ = strconv.Atoi(value)
+		case "cluster_known_nodes":
+			info.KnownNodes, _ = strconv.Atoi(value)
+		case "cluster_size":
+			info.ClusterSize, _ = strconv.Atoi(value)
 		}
 	}
-
-	return clusterInfo, nil
+	return info, nil
 }
 
-// GetNodesInfo retrieves and parses the cluster nodes information.
-func (rc *RedisClient) GetNodesInfo() ([]RedisNode, error) {
-	result, err := rc.client.ClusterNodes(rc.ctx).Result()
+// ClusterNode represents a single node from CLUSTER NODES output.
+type ClusterNode struct {
+	ID       string
+	Addr     string
+	IP       string
+	Flags    string
+	Primary  string
+	PingSent int
+	PongRecv int
+	Epoch    int
+	State    string
+	Slots    string
+}
+
+// GetClusterNodes executes CLUSTER NODES and returns the parsed result.
+func (c *Client) GetClusterNodes(ctx context.Context) ([]ClusterNode, error) {
+	result, err := c.client.ClusterNodes(ctx).Result()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cluster nodes info from %s: %v", rc.client.Options().Addr, err)
+		return nil, fmt.Errorf("CLUSTER NODES on %s: %w", c.addr, err)
 	}
-	if len(result) == 0 {
-		return nil, fmt.Errorf("empty cluster nodes response")
-	}
+	return ParseClusterNodesOutput(result), nil
+}
 
-	// Split response into lines
-	lines := strings.Split(strings.TrimSpace(result), "\n")
-
-	var nodes []RedisNode
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) < 8 {
-			rc.logger.Info("Skipping malformed", "line", line)
+// ParseClusterNodesOutput parses the raw text output of CLUSTER NODES into a slice of ClusterNode.
+func ParseClusterNodesOutput(output string) []ClusterNode {
+	var nodes []ClusterNode
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 8 {
 			continue
 		}
 
-		// Extract Node Details
-		nodeID := fields[0]
-		ipPort := fields[1]
-		flags := fields[2]
-		primaryID := fields[3] // "-" if primary, otherwise Primary ID
-		sent := util.ParseInt(fields[4])
-		recv := util.ParseInt(fields[5])
-		linkStatus := fields[7]
-
-		// Extract slot information (if available)
-		slots := []RedisSlotRange{}
-		if len(fields) > 8 {
-			slots = parseRedisSlotRange(fields[8:]...)
+		// addr format is ip:port@cport or ip:port
+		addr := parts[1]
+		ip := addr
+		if before, _, ok := strings.Cut(addr, ":"); ok {
+			ip = before
 		}
 
-		// Retrieve failure count
-		failures := 0
-		failureStr, err := rc.client.ClusterCountFailureReports(rc.ctx, nodeID).Result()
-		if err == nil {
-			failures = int(failureStr)
+		pingSent, _ := strconv.Atoi(parts[4])
+		pongRecv, _ := strconv.Atoi(parts[5])
+		epoch, _ := strconv.Atoi(parts[6])
+
+		slots := ""
+		if len(parts) > 8 {
+			slots = strings.Join(parts[8:], " ")
 		}
 
-		importing := make(map[int]string)
-		migrating := make(map[int]string)
-		if strings.Contains(line, "myself") && (strings.Contains(line, "-<-") || strings.Contains(line, "->-")) {
-			if strings.Contains(line, "<") {
-				slotStr := strings.Split(line, "-<-")
-				slotId, _ := strconv.Atoi(strings.Split(slotStr[0], "[")[1])
-				importing[slotId] = slotStr[1][0 : len(slotStr[1])-1]
-			} else if strings.Contains(line, ">") {
-				slotStr := strings.Split(line, "->-")
-				slotId, _ := strconv.Atoi(strings.Split(slotStr[0], "[")[1])
-				migrating[slotId] = slotStr[1][0 : len(slotStr[1])-1]
+		nodes = append(nodes, ClusterNode{
+			ID:       parts[0],
+			Addr:     addr,
+			IP:       ip,
+			Flags:    parts[2],
+			Primary:  parts[3],
+			PingSent: pingSent,
+			PongRecv: pongRecv,
+			Epoch:    epoch,
+			State:    parts[7],
+			Slots:    slots,
+		})
+	}
+	return nodes
+}
+
+// CheckConnection pings Redis with retry and backoff.
+func (c *Client) CheckConnection(ctx context.Context, maxRetries int, backoff time.Duration) error {
+	var lastErr error
+	for i := range maxRetries {
+		if err := c.client.Ping(ctx).Err(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if i < maxRetries-1 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
 			}
 		}
-
-		// Construct Node struct
-		node := RedisNode{
-			ID:         nodeID,
-			IP:         strings.Split(ipPort, ":")[0], // Extract only IP
-			Flags:      flags,
-			Slots:      slots,
-			PrimaryID:  primaryID,
-			Failures:   failures,
-			Sent:       sent,
-			Recv:       recv,
-			LinkStatus: linkStatus,
-			Migrating:  migrating,
-			Importing:  importing,
-		}
-
-		nodes = append(nodes, node)
 	}
-
-	return nodes, nil
+	return fmt.Errorf("failed to connect to %s after %d retries: %w", c.addr, maxRetries, lastErr)
 }
 
-// GetMyID retrieves the ID of the current Redis node.
-func (rc *RedisClient) GetMyID() (string, error) {
-	result, err := rc.client.Do(rc.ctx, "CLUSTER", "MYID").Result()
-	if err != nil {
-		return "", fmt.Errorf("failed to get cluster my ID from %s: %v", rc.client.Options().Addr, err)
-	}
-
-	return result.(string), nil
+// Close closes the Redis client connection.
+func (c *Client) Close() error {
+	return c.client.Close()
 }
 
-// ClusterForgetNode removes a node from the cluster.
-func (rc *RedisClient) ClusterForgetNode(nodeID string) error {
-	_, err := rc.client.ClusterForget(rc.ctx, nodeID).Result()
+// Addr returns the address of the Redis node.
+func (c *Client) Addr() string {
+	return c.addr
+}
+
+// Password returns the configured password (may be empty).
+func (c *Client) Password() string {
+	return c.password
+}
+
+// ClusterMyID executes CLUSTER MYID and returns the node's unique cluster ID.
+func (c *Client) ClusterMyID(ctx context.Context) (string, error) {
+	result, err := c.client.Do(ctx, "CLUSTER", "MYID").Text()
 	if err != nil {
-		return fmt.Errorf("failed to forget node %s: %v", nodeID, err)
+		return "", fmt.Errorf("CLUSTER MYID on %s: %w", c.addr, err)
+	}
+	return strings.TrimSpace(result), nil
+}
+
+// ClusterMeet sends CLUSTER MEET to introduce a node to the cluster.
+func (c *Client) ClusterMeet(ctx context.Context, ip string, port int) error {
+	err := c.client.ClusterMeet(ctx, ip, fmt.Sprintf("%d", port)).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER MEET %s:%d on %s: %w", ip, port, c.addr, err)
 	}
 	return nil
 }
 
-// ClusterMeet instructs the current node to meet the specified node.
-func (rc *RedisClient) ClusterMeet(ip string, port int) error {
-	_, err := rc.client.ClusterMeet(rc.ctx, ip, strconv.Itoa(port)).Result()
+// ClusterAddSlots assigns slots to the current node.
+func (c *Client) ClusterAddSlots(ctx context.Context, slots ...int) error {
+	err := c.client.ClusterAddSlots(ctx, slots...).Err()
 	if err != nil {
-		return fmt.Errorf("failed to meet node %s: %v", ip, err)
+		return fmt.Errorf("CLUSTER ADDSLOTS on %s: %w", c.addr, err)
 	}
 	return nil
 }
 
-// ClusterReplicate instructs the current node to replicate the specified primary.
-func (rc *RedisClient) ClusterReplicate(nodeID string) error {
-	_, err := rc.client.ClusterReplicate(rc.ctx, nodeID).Result()
+// ClusterReplicate makes the current node a replica of the given primary node ID.
+func (c *Client) ClusterReplicate(ctx context.Context, primaryID string) error {
+	err := c.client.ClusterReplicate(ctx, primaryID).Err()
 	if err != nil {
-		return fmt.Errorf("failed to replicate node %s: %v", nodeID, err)
+		return fmt.Errorf("CLUSTER REPLICATE %s on %s: %w", primaryID, c.addr, err)
 	}
 	return nil
 }
 
-// ClusterReset instructs the current node to reset.
-func (rc *RedisClient) ClusterReset(hard bool) error {
-	var err error
-
+// ClusterReset resets the cluster node. If hard is true, performs a HARD reset.
+func (c *Client) ClusterReset(ctx context.Context, hard bool) error {
+	mode := "SOFT"
 	if hard {
-		_, err = rc.client.ClusterResetHard(rc.ctx).Result()
-	} else {
-		_, err = rc.client.ClusterResetSoft(rc.ctx).Result()
+		mode = "HARD"
 	}
+	err := c.client.Do(ctx, "CLUSTER", "RESET", mode).Err()
 	if err != nil {
-		return fmt.Errorf("failed to reset cluster node: %v", err)
+		return fmt.Errorf("CLUSTER RESET %s on %s: %w", mode, c.addr, err)
 	}
 	return nil
 }
 
-// ClusterForget removes a node in the current node from the cluster.
-func (rc *RedisClient) ClusterForget(nodeID string) error {
-	_, err := rc.client.ClusterForget(rc.ctx, nodeID).Result()
+// ClusterFailoverTakeover force-promotes this replica to a primary without coordinating with its
+// master (CLUSTER FAILOVER TAKEOVER). Unlike a normal failover it ignores the master's reachability
+// and the replica validity factor, so it can promote a replica whose master is dead and whose
+// automatic failover is stuck. It bumps the config epoch and claims the master's slots.
+func (c *Client) ClusterFailoverTakeover(ctx context.Context) error {
+	err := c.client.Do(ctx, "CLUSTER", "FAILOVER", "TAKEOVER").Err()
 	if err != nil {
-		return fmt.Errorf("failed to forget node %s: %v", nodeID, err)
+		return fmt.Errorf("CLUSTER FAILOVER TAKEOVER on %s: %w", c.addr, err)
 	}
 	return nil
 }
 
-// ClusterAddSlots adds the specified slots to the current node.
-func (rc *RedisClient) ClusterAddSlots(slots ...int) error {
-	_, err := rc.client.ClusterAddSlots(rc.ctx, slots...).Result()
+// ClusterForget removes a node from the cluster's node table.
+func (c *Client) ClusterForget(ctx context.Context, nodeID string) error {
+	err := c.client.ClusterForget(ctx, nodeID).Err()
 	if err != nil {
-		return fmt.Errorf("failed to add slots %v: %v", slots, err)
+		return fmt.Errorf("CLUSTER FORGET %s on %s: %w", nodeID, c.addr, err)
 	}
 	return nil
 }
 
-// ClusterFailover triggers a manual failover of the current node.
-func (rc *RedisClient) ClusterFailover() error {
-	_, err := rc.client.ClusterFailover(rc.ctx).Result()
+// ClusterSetSlotStable marks a slot as stable, clearing any importing/migrating state.
+func (c *Client) ClusterSetSlotStable(ctx context.Context, slot int) error {
+	err := c.client.Do(ctx, "CLUSTER", "SETSLOT", fmt.Sprintf("%d", slot), "STABLE").Err()
 	if err != nil {
-		return fmt.Errorf("failed to failover node: %v", err)
+		return fmt.Errorf("CLUSTER SETSLOT %d STABLE on %s: %w", slot, c.addr, err)
 	}
 	return nil
+}
+
+// ClusterSetSlotNode assigns a slot to the given node, forcing configuration agreement.
+func (c *Client) ClusterSetSlotNode(ctx context.Context, slot int, nodeID string) error {
+	err := c.client.Do(ctx, "CLUSTER", "SETSLOT", fmt.Sprintf("%d", slot), "NODE", nodeID).Err()
+	if err != nil {
+		return fmt.Errorf("CLUSTER SETSLOT %d NODE %s on %s: %w", slot, nodeID, c.addr, err)
+	}
+	return nil
+}
+
+// ShutdownSave instructs the node to persist its dataset and shut down cleanly.
+// Redis closes the connection as part of SHUTDOWN, so the "connection closed" /
+// EOF responses returned by go-redis are treated as success.
+func (c *Client) ShutdownSave(ctx context.Context) error {
+	err := c.client.Do(ctx, "SHUTDOWN", "SAVE").Err()
+	if err == nil || isShutdownConnError(err) {
+		return nil
+	}
+	return fmt.Errorf("SHUTDOWN SAVE on %s: %w", c.addr, err)
+}
+
+// isShutdownConnError reports whether the error returned by a SHUTDOWN command is the
+// expected connection teardown rather than a genuine failure.
+func isShutdownConnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "connection closed") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "use of closed network connection")
+}
+
+// HasInFlightSlots reports whether any of the given nodes currently has slots in a
+// migrating ("[<slot>->-<id>]") or importing ("[<slot>-<-<id>]") state. A rebalance is
+// only considered complete once no node reports in-flight slots.
+func HasInFlightSlots(nodes []ClusterNode) bool {
+	for _, n := range nodes {
+		if strings.Contains(n.Slots, "[") {
+			return true
+		}
+	}
+	return false
+}
+
+// TotalClusterSlots is the fixed number of hash slots in a Redis cluster.
+const TotalClusterSlots = 16384
+
+// SlotsFullyCovered reports whether the given nodes' masters collectively own every one
+// of the 16384 hash slots. In-flight (migrating/importing) slot tokens such as
+// "[<slot>->-<id>]" are ignored, since those describe a transfer in progress rather than
+// stable ownership. A gap in coverage (for example after an ephemeral primary is deleted
+// and rejoins empty with a new ID) makes redis-cli refuse to rebalance, so this check is
+// used to decide whether a cluster fix is required before rebalancing.
+func SlotsFullyCovered(nodes []ClusterNode) bool {
+	covered := make([]bool, TotalClusterSlots)
+	for _, n := range nodes {
+		if !strings.Contains(n.Flags, "master") {
+			continue
+		}
+		for _, token := range strings.Fields(n.Slots) {
+			// Skip in-flight migration/importing tokens ("[...]"); only stable
+			// ownership entries count toward coverage.
+			if strings.HasPrefix(token, "[") {
+				continue
+			}
+			ranges, err := ParseSlotRanges(token)
+			if err != nil {
+				continue
+			}
+			for _, r := range ranges {
+				for s := r.Start; s <= r.End && s < TotalClusterSlots; s++ {
+					if s >= 0 {
+						covered[s] = true
+					}
+				}
+			}
+		}
+	}
+	for _, c := range covered {
+		if !c {
+			return false
+		}
+	}
+	return true
 }

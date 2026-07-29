@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+// SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -8,71 +8,57 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
-// Test that Run() captures non-zero exit codes and command output.
 func TestRedisCLICommand_Run_ExitNonZero(t *testing.T) {
-	ctx := context.Background()
+	cmd := newCLICommand(context.Background(), "sh", []string{"-c", "echo hello; echo err >&2; exit 2"}, nil)
 
-	// This command prints to stdout and stderr then exits with code 2.
-	cmd := "echo hello; echo err >&2; exit 2"
-	rcc := NewRedisCLICommand(ctx, cmd)
+	cmd.Run()
 
-	rcc.Run()
-
-	if rcc.Err == nil {
-		t.Fatalf("expected non-nil Err for command that exits non-zero")
+	if cmd.Err == nil {
+		t.Fatal("expected non-nil error")
 	}
-
-	if rcc.ExitCode != 2 {
-		t.Fatalf("expected ExitCode 2, got %d", rcc.ExitCode)
+	if cmd.ExitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d", cmd.ExitCode)
 	}
-
-	stdout := rcc.GetStdout()
-	stderr := rcc.GetStderr()
-	combined := rcc.GetCombinedOutput()
-
-	if !strings.Contains(stdout, "hello") {
-		t.Fatalf("stdout did not contain expected text; stdout=%q", stdout)
+	if !strings.Contains(cmd.GetStdout(), "hello") {
+		t.Fatalf("expected stdout to contain hello, got %q", cmd.GetStdout())
 	}
-	if !strings.Contains(stderr, "err") {
-		t.Fatalf("stderr did not contain expected text; stderr=%q", stderr)
-	}
-	if !strings.Contains(combined, "hello") || !strings.Contains(combined, "err") {
-		t.Fatalf("combined output missing parts; combined=%q", combined)
+	if !strings.Contains(cmd.GetStderr(), "err") {
+		t.Fatalf("expected stderr to contain err, got %q", cmd.GetStderr())
 	}
 }
 
-// Test that Start()+Wait() captures non-zero exit codes and command output.
 func TestRedisCLICommand_Wait_ExitNonZero(t *testing.T) {
-	ctx := context.Background()
+	cmd := newCLICommand(context.Background(), "sh", []string{"-c", "echo out; echo err >&2; exit 3"}, nil)
 
-	// This command prints to stdout and stderr then exits with code 3.
-	cmd := "echo out; echo err >&2; exit 3"
-	rcc := NewRedisCLICommand(ctx, cmd)
+	cmd.Start()
+	cmd.Wait()
 
-	rcc.Start()
-	rcc.Wait()
-
-	if rcc.Err == nil {
-		t.Fatalf("expected non-nil Err for command that exits non-zero (Wait)")
+	if cmd.Err == nil {
+		t.Fatal("expected non-nil error")
 	}
-
-	if rcc.ExitCode != 3 {
-		t.Fatalf("expected ExitCode 3, got %d", rcc.ExitCode)
+	if cmd.ExitCode != 3 {
+		t.Fatalf("expected exit code 3, got %d", cmd.ExitCode)
 	}
-
-	stdout := rcc.GetStdout()
-	stderr := rcc.GetStderr()
-	combined := rcc.GetCombinedOutput()
-
-	if !strings.Contains(stdout, "out") {
-		t.Fatalf("stdout did not contain expected text; stdout=%q", stdout)
+	if !strings.Contains(cmd.GetCombinedOutput(), "out") || !strings.Contains(cmd.GetCombinedOutput(), "err") {
+		t.Fatalf("unexpected combined output %q", cmd.GetCombinedOutput())
 	}
-	if !strings.Contains(stderr, "err") {
-		t.Fatalf("stderr did not contain expected text; stderr=%q", stderr)
+}
+
+func TestRedisCLICommand_Run_RespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	cmd := newCLICommand(ctx, "sh", []string{"-c", "sleep 1"}, nil)
+	start := time.Now()
+	cmd.Run()
+
+	if time.Since(start) > 500*time.Millisecond {
+		t.Fatalf("expected command to stop shortly after cancellation, took %v", time.Since(start))
 	}
-	if !strings.Contains(combined, "out") || !strings.Contains(combined, "err") {
-		t.Fatalf("combined output missing parts; combined=%q", combined)
+	if cmd.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit code on cancellation, got %d", cmd.ExitCode)
 	}
 }

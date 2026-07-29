@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+// SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,845 +6,334 @@ package redis
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"testing"
 	"time"
 
-	"github.com/go-redis/redismock/v9"
-	"github.com/inditextech/redkeyrobin/internal/util"
-	redisgo "github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/assert"
+	"github.com/alicebob/miniredis/v2"
 )
 
-// TestNewRedisClient verifies the creation of a new RedisClient.
-func TestNewRedisClient(t *testing.T) {
-	ctx := context.Background()
-	rc := NewRedisClient(ctx, "localhost", "", 0)
+func TestCheckConnection_Success(t *testing.T) {
+	mr := miniredis.RunT(t)
 
-	assert.NotNil(t, rc)
-	assert.Equal(t, "localhost:6379", rc.client.Options().Addr)
-	assert.Equal(t, "", rc.client.Options().Password)
-	assert.Equal(t, 0, rc.client.Options().DB)
-}
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
 
-// TestCheckConnection tests the CheckConnection
-func TestCheckConnection(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		maxRetries         int
-		backoff            time.Duration
-		expectedError      error
-	}{
-		{
-			name: "bad max retries",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				return client, mock
-			},
-			maxRetries:    0,
-			expectedError: fmt.Errorf("maxRetries must be greater than 0"),
-		},
-		{
-			name: "bad backoff",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				return client, mock
-			},
-			maxRetries:    1,
-			backoff:       time.Duration(-1),
-			expectedError: fmt.Errorf("backoff must be greater than 0"),
-		},
-		{
-			name: "failed to connect",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectPing().SetErr(errors.New("failed ping"))
-				return client, mock
-			},
-			maxRetries:    1,
-			backoff:       time.Microsecond * 10,
-			expectedError: fmt.Errorf("failed to connect after 1 retries"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectPing().SetVal("PONG")
-				return client, mock
-			},
-			maxRetries:    1,
-			backoff:       time.Microsecond * 10,
-			expectedError: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				client: client,
-				ctx:    context.Background(),
-			}
-
-			err := rc.CheckConnection(tt.maxRetries, tt.backoff)
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	err := c.CheckConnection(context.Background(), 3, 10*time.Millisecond)
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
 	}
 }
 
-// TestCheckConnection tests the GetInfo
-func TestGetInfo(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedError      error
-		expectedVersion    string
-	}{
-		{
-			name: "failed to get info",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectInfo("all").SetErr(fmt.Errorf("failed info"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to get info from localhost:6379: failed info"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				infoOutput := "# Server\nredis_version:6.2.5\n"
-				mock.ExpectInfo("all").SetVal(infoOutput)
-				return client, mock
-			},
-			expectedVersion: "6.2.5",
-			expectedError:   nil,
-		},
+func TestCheckConnection_FailsAfterRetries(t *testing.T) {
+	// Connect to a non-existent address.
+	c := NewClient("127.0.0.1:1", "")
+	c.client.Options().MaxRetries = 0 // Disable go-redis internal retries for speed.
+	defer func() { _ = c.Close() }()
+
+	start := time.Now()
+	err := c.CheckConnection(context.Background(), 3, 50*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error for unreachable address")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				client: client,
-				ctx:    context.Background(),
-			}
-
-			redisInfo, err := rc.GetInfo()
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-				assert.Nil(t, redisInfo)
-			} else {
-				assert.Nil(t, err)
-				assert.NotNil(t, redisInfo)
-				assert.Equal(t, tt.expectedVersion, redisInfo.Server["redis_version"])
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	// Should have waited at least 2 backoff periods (between retries 1-2 and 2-3).
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("expected at least 100ms for 3 retries with 50ms backoff, got %v", elapsed)
 	}
 }
 
-// TestGetClusterInfo test the GetClusterInfo
-func TestGetClusterInfo(t *testing.T) {
-	tests := []struct {
-		name                string
-		getRedisClientMock  func() (*redisgo.Client, redismock.ClientMock)
-		expectedClusterInfo *ClusterInfo
-		expectedError       error
-	}{
-		{
-			name: "failed to get cluster info",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectClusterInfo().SetErr(fmt.Errorf("failed cluster info"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to get cluster info from localhost:6379: failed cluster info"),
-		},
-		{
-			name: "empty cluster info",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectClusterInfo().SetVal(``)
-				return client, mock
-			},
-			expectedError: fmt.Errorf("empty cluster info response"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectClusterInfo().SetVal(`
-cluster_state:ok
-cluster_slots_assigned:16384
-cluster_slots_ok:16384
-cluster_slots_pfail:0
-cluster_slots_fail:0
-cluster_known_nodes:5
-cluster_size:5
-cluster_current_epoch:13877
-cluster_my_epoch:13877
-cluster_stats_messages_ping_sent:19544
-cluster_stats_messages_pong_sent:52643
-cluster_stats_messages_meet_sent:187
-cluster_stats_messages_update_sent:6
-cluster_stats_messages_sent:72380
-cluster_stats_messages_ping_received:19675
-cluster_stats_messages_pong_received:72169
-cluster_stats_messages_meet_received:188
-cluster_stats_messages_fail_received:1
-cluster_stats_messages_update_received:4
-cluster_stats_messages_received:92037
-total_cluster_links_buffer_limit_exceeded:0
-fail-line
-`)
-				return client, mock
-			},
-			expectedClusterInfo: &ClusterInfo{
-				State:                  "ok",
-				SlotsAssigned:          16384,
-				SlotsOK:                16384,
-				SlotsPFail:             0,
-				SlotsFail:              0,
-				KnownNodes:             5,
-				ClusterSize:            5,
-				CurrentEpoch:           13877,
-				MyEpoch:                13877,
-				MessagesPingSent:       19544,
-				MessagesPongSent:       52643,
-				MessagesMeetSent:       187,
-				MessagesUpdateSent:     6,
-				MessagesSent:           72380,
-				MessagesPingReceived:   19675,
-				MessagesPongReceived:   72169,
-				MessagesMeetReceived:   188,
-				MessagesFailReceived:   1,
-				MessagesUpdateReceived: 4,
-				MessagesReceived:       92037,
-			},
-			expectedError: nil,
-		},
+func TestCheckConnection_RespectsContextCancellation(t *testing.T) {
+	// Connect to a non-existent address so retries will fail.
+	c := NewClient("127.0.0.1:1", "")
+	c.client.Options().MaxRetries = 0
+	defer func() { _ = c.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel after a short delay — should abort before all retries complete.
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	err := c.CheckConnection(ctx, 10, 100*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error when context is cancelled")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
-
-			clusterInfo, err := rc.GetClusterInfo()
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-				assert.Nil(t, clusterInfo)
-			} else {
-				assert.Nil(t, err)
-				assert.NotNil(t, clusterInfo)
-				assert.Equal(t, tt.expectedClusterInfo, clusterInfo)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	// Should have returned much sooner than 10*100ms = 1s.
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("expected early exit on context cancel, took %v", elapsed)
 	}
 }
 
-// TestCheckConnection tests the GetInfo
-func TestGetNodesInfo(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedNodesInfo  []RedisNode
-		expectedError      error
-	}{
-		{
-			name: "failed to get cluster nodes info",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectClusterNodes().SetErr(errors.New("failed cluster nodes"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to get cluster nodes info from localhost:6379: failed cluster nodes"),
-		},
-		{
-			name: "empty cluster nodes info",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectClusterNodes().SetVal(``)
-				return client, mock
-			},
-			expectedError: fmt.Errorf("empty cluster nodes response"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectClusterNodes().SetVal(`
-222d03eb91487e6542cff1e105d911deb37a5ddd 10.253.43.143:6379@16379 master - 0 1740670560026 13876 connected 9828-10923 12560-13103 14744-16383
-77e5805a3550270e5cf23ed42bc2d0577426d876 10.252.6.201:6379@16379 myself,master - 0 1740670560000 13877 disconnected 2456-3275 4912-6277 7914-7917 8738-9553 9558-9827
-bb1704c223955cf9a533142e4569f7aba510b1ea 10.252.26.193:6379@16379 slave 77e5805a3550270e5cf23ed42bc2d0577426d876 0 1740670561031 13846 connected 0 1-815 9554-9557 10924-11739 13104-14743
-e420256dda2dbfb8db95658397ca8af3c3889b31 10.253.21.209:6379@16379 myself,slave - 0 1740670562035 13852 connected 816-1635 3276-4091 6278-7097 11740-12559
-0d691cdfe68b44134f8cdbca0d81563754a5aa6f 10.252.8.20:6379@16379 noaddr - 0 1740670559023 13874 connected 
-malformed-line
-`)
-				mock.ExpectClusterCountFailureReports("222d03eb91487e6542cff1e105d911deb37a5ddd").SetVal(100)
-				return client, mock
-			},
-			expectedNodesInfo: []RedisNode{
-				{
-					ID:    "222d03eb91487e6542cff1e105d911deb37a5ddd",
-					IP:    "10.253.43.143",
-					Flags: "master",
-					Slots: []RedisSlotRange{
-						{
-							Start: 9828,
-							End:   10923,
-						},
-						{
-							Start: 12560,
-							End:   13103,
-						},
-						{
-							Start: 14744,
-							End:   16383,
-						},
-					},
-					PrimaryID:  "-",
-					Failures:   100,
-					Sent:       0,
-					Recv:       1740670560026,
-					LinkStatus: "connected",
-					Migrating:  map[int]string{},
-					Importing:  map[int]string{},
-				},
-				{
-					ID:    "77e5805a3550270e5cf23ed42bc2d0577426d876",
-					IP:    "10.252.6.201",
-					Flags: "myself,master",
-					Slots: []RedisSlotRange{
-						{
-							Start: 2456,
-							End:   3275,
-						},
-						{
-							Start: 4912,
-							End:   6277,
-						},
-						{
-							Start: 7914,
-							End:   7917,
-						},
-						{
-							Start: 8738,
-							End:   9553,
-						},
-						{
-							Start: 9558,
-							End:   9827,
-						},
-					},
-					PrimaryID:  "-",
-					Failures:   0,
-					Sent:       0,
-					Recv:       1740670560000,
-					LinkStatus: "disconnected",
-					Migrating:  map[int]string{},
-					Importing:  map[int]string{},
-				},
-				{
-					ID:    "bb1704c223955cf9a533142e4569f7aba510b1ea",
-					IP:    "10.252.26.193",
-					Flags: "slave",
-					Slots: []RedisSlotRange{
-						{
-							Start: 0,
-							End:   0,
-						},
-						{
-							Start: 1,
-							End:   815,
-						},
-						{
-							Start: 9554,
-							End:   9557,
-						},
-						{
-							Start: 10924,
-							End:   11739,
-						},
-						{
-							Start: 13104,
-							End:   14743,
-						},
-					},
-					PrimaryID:  "77e5805a3550270e5cf23ed42bc2d0577426d876",
-					Failures:   0,
-					Sent:       0,
-					Recv:       1740670561031,
-					LinkStatus: "connected",
-					Migrating:  map[int]string{},
-					Importing:  map[int]string{},
-				},
-				{
-					ID:    "e420256dda2dbfb8db95658397ca8af3c3889b31",
-					IP:    "10.253.21.209",
-					Flags: "myself,slave",
-					Slots: []RedisSlotRange{
-						{
-							Start: 816,
-							End:   1635,
-						},
-						{
-							Start: 3276,
-							End:   4091,
-						},
-						{
-							Start: 6278,
-							End:   7097,
-						},
-						{
-							Start: 11740,
-							End:   12559,
-						},
-					},
-					PrimaryID:  "-",
-					Failures:   0,
-					Sent:       0,
-					Recv:       1740670562035,
-					LinkStatus: "connected",
-					Migrating:  map[int]string{},
-					Importing:  map[int]string{},
-				},
-				{
-					ID:         "0d691cdfe68b44134f8cdbca0d81563754a5aa6f",
-					IP:         "10.252.8.20",
-					Flags:      "noaddr",
-					Slots:      []RedisSlotRange{},
-					PrimaryID:  "-",
-					Failures:   0,
-					Sent:       0,
-					Recv:       1740670559023,
-					LinkStatus: "connected",
-					Migrating:  map[int]string{},
-					Importing:  map[int]string{},
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
+func TestCheckConnection_SucceedsOnRetry(t *testing.T) {
+	mr := miniredis.RunT(t)
+	addr := mr.Addr()
 
-			nodesInfo, err := rc.GetNodesInfo()
+	// Close the server, then restart after a short delay.
+	mr.Close()
 
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-				assert.Nil(t, nodesInfo)
-			} else {
-				assert.Nil(t, err)
-				assert.NotNil(t, nodesInfo)
-				assert.Equal(t, tt.expectedNodesInfo, nodesInfo)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	c := NewClient(addr, "")
+	c.client.Options().MaxRetries = 0
+	defer func() { _ = c.Close() }()
+
+	// Restart miniredis after 80ms so a later retry succeeds.
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		_ = mr.Restart()
+	}()
+
+	err := c.CheckConnection(context.Background(), 5, 50*time.Millisecond)
+	if err != nil {
+		t.Fatalf("expected success after server restart, got %v", err)
 	}
 }
 
-// TestGetMyID tests the GetMyID
-func TestGetMyID(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedID         string
-		expectedError      error
-	}{
-		{
-			name: "failed to get my ID",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("CLUSTER", "MYID").SetErr(fmt.Errorf("failed ID"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to get cluster my ID from localhost:6379: failed ID"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("CLUSTER", "MYID").SetVal("theawesomeid")
-				return client, mock
-			},
-			expectedID:    "theawesomeid",
-			expectedError: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
+func TestGetInfo_FailsOnClosedServer(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
 
-			redisID, err := rc.GetMyID()
+	mr.Close()
 
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-				assert.Equal(t, redisID, "")
-			} else {
-				assert.Nil(t, err)
-				assert.Equal(t, tt.expectedID, redisID)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	_, err := c.GetInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error when server is closed")
 	}
 }
 
-func TestClusterForgetNode(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedError      error
-	}{
-		{
-			name: "failed to forget node",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "forget", "node1").SetErr(fmt.Errorf("failed forget"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to forget node node1: failed forget"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "forget", "node1").SetVal("theawesomeid")
-				return client, mock
-			},
-			expectedError: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
+func TestAddr(t *testing.T) {
+	c := NewClient("10.0.0.1:6379", "")
+	defer func() { _ = c.Close() }()
 
-			err := rc.ClusterForgetNode("node1")
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	if c.Addr() != "10.0.0.1:6379" {
+		t.Fatalf("expected '10.0.0.1:6379', got %q", c.Addr())
 	}
 }
 
-func TestClusterMeet(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedError      error
-	}{
-		{
-			name: "failed to meet node",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "meet", "node1", "1234").SetErr(fmt.Errorf("failed meet"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to meet node node1: failed meet"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "meet", "node1", "1234").SetVal("theawesomeid")
-				return client, mock
-			},
-			expectedError: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
+func TestPassword(t *testing.T) {
+	c := NewClient("10.0.0.1:6379", "secret")
+	defer func() { _ = c.Close() }()
 
-			err := rc.ClusterMeet("node1", 1234)
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	if c.Password() != "secret" {
+		t.Fatalf("expected 'secret', got %q", c.Password())
 	}
 }
 
-func TestClusterReplicate(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedError      error
-	}{
-		{
-			name: "failed to replicate node",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "replicate", "node1").SetErr(fmt.Errorf("failed replicate"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to replicate node node1: failed replicate"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "replicate", "node1").SetVal("theawesomeid")
-				return client, mock
-			},
-			expectedError: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
+func TestPassword_Empty(t *testing.T) {
+	c := NewClient("10.0.0.1:6379", "")
+	defer func() { _ = c.Close() }()
 
-			err := rc.ClusterReplicate("node1")
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	if c.Password() != "" {
+		t.Fatalf("expected empty, got %q", c.Password())
 	}
 }
 
-func TestClusterReset(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		hard               bool
-		expectedError      error
-	}{
-		{
-			name: "failed to reset node",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "reset", "soft").SetErr(fmt.Errorf("failed reset"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to reset cluster node: failed reset"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "reset", "hard").SetVal("theawesomeid")
-				return client, mock
-			},
-			hard:          true,
-			expectedError: nil,
-		},
+func TestClose(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+
+	// Should succeed
+	err := c.Close()
+	if err != nil {
+		t.Fatalf("unexpected error on Close: %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
 
-			err := rc.ClusterReset(tt.hard)
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	// After close, operations should fail
+	_, err = c.GetInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error after closing client")
 	}
 }
 
-func TestClusterForget(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedError      error
-	}{
-		{
-			name: "failed to forge node",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "forget", "node1").SetErr(fmt.Errorf("failed forget"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to forget node node1: failed forget"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "forget", "node1").SetVal("theawesomeid")
-				return client, mock
-			},
-			expectedError: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
+func TestGetClusterInfo_FailsOnNonCluster(t *testing.T) {
+	// miniredis doesn't support CLUSTER INFO, so it should return an error
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
 
-			err := rc.ClusterForget("node1")
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	_, err := c.GetClusterInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
 	}
 }
 
-func TestClusterAddSlots(t *testing.T) {
-	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedError      error
-	}{
-		{
-			name: "failed to replicate node",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "addslots", 1, 2, 3).SetErr(fmt.Errorf("failed slots"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to add slots [1 2 3]: failed slots"),
-		},
-		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "addslots", 1, 2, 3).SetVal("theawesomeid")
-				return client, mock
-			},
-			expectedError: nil,
-		},
+func TestGetClusterNodes_ReturnsEmptyOnStandalone(t *testing.T) {
+	// miniredis supports CLUSTER NODES but returns empty for standalone
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	nodes, err := c.GetClusterNodes(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
-			}
-
-			err := rc.ClusterAddSlots(1, 2, 3)
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
+	// Standalone returns empty node list
+	if len(nodes) > 1 {
+		t.Fatalf("expected 0 or 1 nodes from standalone, got %d", len(nodes))
 	}
 }
 
-func TestClusterFailover(t *testing.T) {
+func TestClusterMyID_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	_, err := c.ClusterMyID(context.Background())
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterMeet_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterMeet(context.Background(), "10.0.0.1", 6379)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterAddSlots_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterAddSlots(context.Background(), 0, 1, 2)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterReplicate_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterReplicate(context.Background(), "some-node-id")
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterReset_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterReset(context.Background(), false)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterForget_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterForget(context.Background(), "some-node-id")
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestGetInfo_Success(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	info, err := c.GetInfo(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info == "" {
+		t.Fatal("expected non-empty INFO response")
+	}
+}
+
+func TestClusterSetSlotStable_FailsOnNonCluster(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	err := c.ClusterSetSlotStable(context.Background(), 100)
+	if err == nil {
+		t.Fatal("expected error from miniredis which doesn't support cluster commands")
+	}
+}
+
+func TestClusterSetSlotStable_FailsOnClosedServer(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c := NewClient(mr.Addr(), "")
+	defer func() { _ = c.Close() }()
+
+	mr.Close()
+
+	err := c.ClusterSetSlotStable(context.Background(), 0)
+	if err == nil {
+		t.Fatal("expected error when server is closed")
+	}
+}
+
+func TestParseClusterNodesOutput_ExtractsIP(t *testing.T) {
 	tests := []struct {
-		name               string
-		getRedisClientMock func() (*redisgo.Client, redismock.ClientMock)
-		expectedError      error
+		name      string
+		line      string
+		wantIP    string
+		wantAddr  string
+		wantSlots string
 	}{
 		{
-			name: "failed to replicate node",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "failover").SetErr(fmt.Errorf("failed failover"))
-				return client, mock
-			},
-			expectedError: fmt.Errorf("failed to failover node: failed failover"),
+			name:      "normal address with cport",
+			line:      "abc123 10.244.0.45:6379@16379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:    "10.244.0.45",
+			wantAddr:  "10.244.0.45:6379@16379",
+			wantSlots: "0-5460",
 		},
 		{
-			name: "success",
-			getRedisClientMock: func() (*redisgo.Client, redismock.ClientMock) {
-				client, mock := redismock.NewClientMock()
-				mock.ExpectDo("cluster", "failover").SetVal("theawesomeid")
-				return client, mock
-			},
-			expectedError: nil,
+			name:      "address without cport",
+			line:      "abc123 10.244.0.45:6379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:    "10.244.0.45",
+			wantAddr:  "10.244.0.45:6379",
+			wantSlots: "0-5460",
+		},
+		{
+			name:      "empty IP with cport",
+			line:      "abc123 :6379@16379 master - 0 1716710000000 1 connected 0-5460",
+			wantIP:    "",
+			wantAddr:  ":6379@16379",
+			wantSlots: "0-5460",
+		},
+		{
+			name:      "empty IP without cport",
+			line:      "abc123 :6379 master - 0 1716710000000 1 connected",
+			wantIP:    "",
+			wantAddr:  ":6379",
+			wantSlots: "",
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, mock := tt.getRedisClientMock()
-			rc := &RedisClient{
-				logger: util.GetLogger("redis-cluster"),
-				client: client,
-				ctx:    context.Background(),
+			nodes := ParseClusterNodesOutput(tt.line)
+			if len(nodes) != 1 {
+				t.Fatalf("expected 1 node, got %d", len(nodes))
 			}
-
-			err := rc.ClusterFailover()
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.Nil(t, err)
+			if nodes[0].IP != tt.wantIP {
+				t.Errorf("IP = %q, want %q", nodes[0].IP, tt.wantIP)
 			}
-			assert.NoError(t, mock.ExpectationsWereMet())
+			if nodes[0].Addr != tt.wantAddr {
+				t.Errorf("Addr = %q, want %q", nodes[0].Addr, tt.wantAddr)
+			}
+			if nodes[0].Slots != tt.wantSlots {
+				t.Errorf("Slots = %q, want %q", nodes[0].Slots, tt.wantSlots)
+			}
 		})
 	}
 }

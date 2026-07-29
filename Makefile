@@ -1,70 +1,37 @@
-# SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+# SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# Setting SHELL to bash allows bash commands to be executed by recipes.
+# Options are set to exit when a recipe line exits non-zero or a piped command fails.
+SHELL = /usr/bin/env bash -o pipefail
+.SHELLFLAGS = -ec
+
 .DEFAULT_GOAL := help
-SHELL := /bin/bash
 
-NAME                 := redkeyrobin
-VERSION              := 0.1.0
-REDIS_CLIENT_VERSION := 8.2.3
-GOLANG_VERSION       := 1.25.7
-DELVE_VERSION        := 1.25
-PACKAGE              := github.com/inditextech/$(NAME)
+# NAME defines the name of the project, which is used in various targets for building and tagging images, as well as in the help output to provide context about the project.
+NAME := redkey-robin
 
-# Image URL to use for building/pushing image.
-IMAGE_TAG_BASE ?= localhost:5001/redkey-robin
-IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
+# VERSION defines the version of the project.
+VERSION ?= 0.2.0
 
-# .............................................................................
-# DONT TOUCH THIS SECTION
-# .............................................................................
-# Build specific information
-COMMIT?=$(shell git rev-parse HEAD)
-DATE?=$(shell date +%FT%T%z)
 
-# Go related variables.
-GO = go
-GOFMT = gofmt
-GOLINT = staticcheck
+## Tool Versions and Configuration
 
-# go source files, ignore vendor directory
-SRC = $(shell find . -path ./vendor -prune -o -name '*.go' -print)
-M = $(shell printf "\033[34;1m▶\033[0m")
+# GOLANG_VERSION defines the Go version used in the Dockerfile for building the Robin controller image.
+GOLANG_VERSION := 1.26.5
 
-MODULE=$(shell go list -m)
-GO_COMPILE_FLAGS='-X $(MODULE)/cmd/server.GitCommit=$(COMMIT) -X $(MODULE)/cmd/server.BuildDate=$(DATE) -X $(MODULE)/cmd/server.VersionBuild=$(VERSION)'
+# REDIS_CLIENT_VERSION defines the version of the Redis client library used in the project. This variable is used in the Dockerfile to ensure that the correct version of the Redis client is included in the built image.
+REDIS_CLIENT_VERSION := 8.8.0
 
-# Test coverage files
-TEST_COVERAGE_PROFILE_OUTPUT = ".local/coverage.out"
-TEST_REPORT_OUTPUT = ".local/test_report.ndjson"
-TEST_REPORT_OUTPUT_E2E = ".local/test_report_e2e.ndjson"
+# CONTAINER_TOOL defines the container tool to be used for building images.
+# Be aware that the target commands are only tested with Docker which is
+# scaffolded by default. However, you might want to replace it to use other
+# tools. (i.e. podman)
+CONTAINER_TOOL ?= docker
 
-# .............................................................................
-# / END SECTION
-# .............................................................................
-
-# .............................................................................
-# / IMPORTANT VARIABLES
-# .............................................................................
-# CHANNELS define the bundle channels used in the bundle.
-# Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
-# To re-generate a bundle for other specific channels without changing the standard setup, you can:
-# - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=preview,fast,stable)
-# - use environment variables to overwrite this value (e.g export CHANNELS="preview,fast,stable")
-ifneq ($(origin CHANNELS), undefined)
-BUNDLE_CHANNELS := --channels=$(CHANNELS)
-endif
-
-# DEFAULT_CHANNEL defines the default channel used in the bundle.
-# Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
-# To re-generate a bundle for any other default channel without changing the default setup, you can:
-# - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
-# - use environment variables to overwrite this value (e.g export DEFAULT_CHANNEL="stable")
-ifneq ($(origin DEFAULT_CHANNEL), undefined)
-BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
-endif
-BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
+# OPERATOR_DIR defines the sibling operator checkout used by the local image build.
+OPERATOR_DIR ?= ../redkeyoperator
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -73,189 +40,196 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-# Image URL to use for building/pushing image targets when using `dev` deployment profile.
-# We always use version 0.1.0 for this purpose.
-IMG_DEV ?= redkey-robin:0.1.0-dev
 
-# Image URL to use for deploying the operator pod when using `debug` deployment profile.
-# A base golang image is used with Delve installed, in order to be able to remotely debug the manager.
-IMG_DEBUG ?= delve:1.24.0
+## Images configuration
 
-# Image REF in bundle image
-# Can be overwritten with make bundle IMAGE_REF=<some-registry>/<project-name-bundle>:<tag>
-IMAGE_REF ?= $(IMG)
+# REGISTRY_NAME defines the name of the local registry container used for testing with Kind.
+# This value is used in the Makefile to check if the registry container is running and to configure the
+# local registry in the Kind cluster.
+REGISTRY_NAME ?= kind-registry
 
-# Allowed deploying profiles.
-PROFILES := dev debug pro
+# REGISTRY_PORT defines the port of the local registry used for testing with Kind. This value is used
+# in the Makefile to construct the image tags for the bundle and catalog images, and to configure the
+# local registry in the Kind cluster.
+REGISTRY_PORT ?= 5005
 
-# Namespace where redkey robin is deployed.
-NAMESPACE ?= redkey-operator
+# IMAGE_TAG_BASE defines the docker.io namespace and part of the image name for remote images.
+# This variable is used to construct full image tags for bundle and catalog images.
+#
+# For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
+# inditex.dev/redkeyoperator-bundle:$VERSION and inditex.dev/redkeyoperator-catalog:$VERSION.
+IMAGE_TAG_BASE ?= localhost:$(REGISTRY_PORT)/$(NAME)
 
-# Deploying profile used to generate the manifest files to deploy the operator.
-# The files to generate the manifests are kustomized from the directory config/deploy-profile/<PROFILE>.
-# By default, `dev` profile is used. It can be overwritten (e.g. make process-manifests PROFILE=debug).
-# Only the values defined in `PROFILES` are allowed.
-PROFILE ?= dev
-ifeq ($(filter $(PROFILE),$(PROFILES)), )
-$(error The profile specified ($(PROFILE)) is not supported)
-endif
-# .............................................................................
-# / END SECTION
-# .............................................................................
+# Image URL to use for building/pushing image targets.
+IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
 
-# .............................................................................
-# PUBLIC TARGETS
-# .............................................................................
 
-# The help target prints out all targets with their descriptions organized
-# beneath their categories. The categories are represented by '##@' and the
-# target descriptions by '##'. The awk commands is responsible for reading the
-# entire set of makefiles included in this invocation, looking for lines of the
-# file as xyz: ## something, and then pretty-format the target and help. Then,
-# if there's a line with ##@ something, that gets pretty-printed as a category.
-# More info on the usage of ANSI control characters for terminal formatting:
-# https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
-# More info on the awk command:
-# http://linuxcommand.org/lc3_adv_awk.php
+.PHONY: all
+all: build
+
+##@ General
 
 .PHONY: help
 help: ##	Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ General
-.PHONY: verify
-verify: deps tidy checkfmt lint vet build test-cov ## Check the code
+##@ CI
 
-deps: ## Installs dependencies
-	$(info $(M) installing dependencies...)
-	GONOSUMDB=honnef.co/go/* GONOPROXY=honnef.co/go/* $(GO) install honnef.co/go/tools/cmd/staticcheck@v0.6.1
+.PHONY: verify
+verify: tidy fmt vet lint build test-all ## Run all verification steps (fmt, vet, lint, unit and integration tests).
 
 .PHONY: version
-version:: ## Print the current version of the project.
+version: ## Print the current version of the project.
 	@echo "$(VERSION)"
 
-.PHONY: version-next
-version-next:: ## Bump to next development version
-	@echo "Bumping to next development version"
-	sed -ri 's/(.*)(VERSION\s*:=\s*)([0-9]+)\.([0-9]+)\.([0-9]+)(.*)/echo "\1\2\3.$$((\4+1)).0-SNAPSHOT\6"/ge' Makefile
 
-.PHONY: version-set
-version-set:: ## Set the project version to the given version, using the NEW_VERSION environment variable
-	@echo "Setting version to $(NEW_VERSION)"
-	sed -ri 's/(.*)(VERSION\s*:=\s*)([0-9]+\.[0-9]+\.[0-9]+)(-SNAPSHOT)(.*)/echo "\1\2$(NEW_VERSION)\5"/ge' Makefile
-
-.PHONY: checkfmt
-checkfmt: ## Check format validation
-	$(info $(M) running gofmt checking code style...)
-	@fmtRes=$$($(GOFMT) -d $(SRC)); \
-	if [ -n "$${fmtRes}" ]; then \
-		echo "gofmt checking failed!"; echo "$${fmtRes}"; echo; \
-		echo "Please ensure you are using $$($(GO) version) for formatting code."; \
-		exit 1; \
-	fi
-
-.PHONY: fmt
-fmt: ## Run gofmt on all source files
-	$(info $(M) running go fmt...)
-	$(GOFMT) -l -w $(SRC)
-
-.PHONY: lint
-lint: deps ## Run golint
-	$(info $(M) running staticcheck...)
-	$(GOLINT) ./...
-
-.PHONY: vet
-vet: ## Run go vet
-	$(info $(M) running go vet...)
-	$(GO) vet ./...
-
-.PHONY: clean
-clean: ## Clean the build artifacts and Go cache
-	$(info $(M) cleaning generated files...)
-	rm -rf ./target
-	rm -rf ./bin
-	$(GO) clean --modcache
-
-
-##@ Build
-.PHONY: build
-build: ##	Build program binary
-	$(info $(M) building executable...)
-	$(GO) build \
-			-ldflags $(GO_COMPILE_FLAGS) \
-			-tags release \
-			-o bin/robin \
-			./cmd/main.go
-
-.PHONY: update-packages
-update-packages: ##	Run go get -u
-	$(info $(M) running go get -u...)
-	$(GO) get -u
-
+##@ Development
 
 .PHONY: tidy
 tidy: ##	Run go mod tidy
-	$(info $(M) running go mod tidy...)
-	$(GO) mod tidy
+	go mod tidy
 
+.PHONY: fmt
+fmt: ## Run go fmt against code.
+	go fmt ./...
+
+.PHONY: vet
+vet: ## Run go vet
+	go vet ./...
+
+.PHONY: lint
+lint: golangci-lint ## Run golangci-lint linter
+	$(GOLANGCI_LINT) run
+
+.PHONY: lint-fix
+lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
+	$(GOLANGCI_LINT) run --fix
+
+.PHONY: lint-config
+lint-config: golangci-lint ## Verify golangci-lint linter configuration
+	$(GOLANGCI_LINT) config verify
+
+# We use count=1 to disable test caching and force the tests to run every time.
+.PHONY: test
+test: fmt vet ## Run unit tests.
+	go test $$(go list ./... | grep -v /e2e | grep -v /test/integration) -coverprofile cover.out -count=1
+
+.PHONY: coverage
+coverage: test ## HTML coverage from unit tests only.
+	go tool cover -html=cover.out -o coverage.html
+
+# We use count=1 to disable test caching and force the tests to run every time.
+.PHONY: test-integration
+test-integration: fmt vet setup-envtest ## Run integration tests (envtest).
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./test/integration/ -v -count=1
+
+.PHONY: test-all
+test-all: test test-integration ## Run all tests (unit + integration).
+
+.PHONY: clean
+clean: ## Clean de build artifacts, installed tools, Go cache and generated files.
+	chmod -R u+w $(LOCALBIN) 2>/dev/null || true
+	rm -rf bin
+	rm -rf $(LOCALBIN)
+	rm -rf cover.out coverage.html
+	go clean --modcache
+
+
+##@ Build
+
+.PHONY: build
+build: ##	Build program binary
+	go build -o bin/robin cmd/main.go
+
+# By default, Robin will be run with info log level. To run Robin with debug log level, set the LOG_DEBUG variable to true:
+# - make run LOG_DEBUG=true
+LOG_DEBUG ?= false
+
+NAMESPACE ?= redkey-operator
+CLUSTER_NAME ?= redkey-sample
 .PHONY: run
 run: ##	Execute the program locally
-	$(info $(M) running app...)
-	CONFIGMAP_PATH=./config_test/configmap.local.yml SECRET_PATH=./config_test/secrets.local.yml $(GO) run ./cmd/main.go
+	go run ./cmd/main.go --cluster-name=$(CLUSTER_NAME) --namespace=$(NAMESPACE) $(if $(filter true,$(LOG_DEBUG)),--log-level=debug)
 
-dev-build: ##	Build robin binary.
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -o bin/robin ./cmd/main.go
+# If you wish to build the manager image targeting other platforms you can use the --platform flag.
+# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
+# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+.PHONY: docker-build
+docker-build: test-all ## Build docker image using a sibling operator checkout (uses `${IMG}` image name).
+	DOCKER_BUILDKIT=1 $(CONTAINER_TOOL) build \
+		--build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) \
+		-t ${IMG} \
+		--build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} \
+		--build-arg GOLANG_VERSION=${GOLANG_VERSION} \
+		--no-cache .
 
-docker-build: ##	Build docker image with the manager (uses `${IMG}` image name).
-	docker build -t ${IMG} --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} .
+.PHONY: docker-push
+docker-push: ##	Push docker image (uses `${IMG}` image name).
+	$(CONTAINER_TOOL) push ${IMG}
 
-docker-push: ##	Push docker image with the manager (uses `${IMG}` image name).
-	docker push ${IMG}
+# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
+# architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
+# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
+# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
+# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
+PLATFORMS ?= linux/amd64,linux/arm64
+.PHONY: docker-buildx
+docker-buildx: test-all ## Build and push docker image for the manager for cross-platform support
+	- $(CONTAINER_TOOL) buildx create --name redkeyrobin-builder
+	$(CONTAINER_TOOL) buildx use redkeyrobin-builder
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) --tag ${IMG} .
+	- $(CONTAINER_TOOL) buildx rm redkeyrobin-builder
 
-dev-docker-build:  ##	Build docker image with the manager for development (uses `${IMG_DEV}` image name).
-	docker build -t ${IMG_DEV} --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} .
 
-dev-docker-push: ##	Push docker image with the manager for development (uses `${IMG_DEV}` image name).
-	docker push ${IMG_DEV}
+##@ Dependencies
 
-debug-docker-build: ##	Build docker image for debugging from debug.Dockerfile (uses `${IMG_DEBUG}` image name).
-	docker build -t ${IMG_DEBUG} -f debug.Dockerfile --build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} --build-arg GOLANG_VERSION=${GOLANG_VERSION} --build-arg DELVE_VERSION=${DELVE_VERSION} .
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
 
-debug-docker-push: ##	Push docker image for debugging from debug.Dockerfile (uses `${IMG_DEBUG}` image name).
-	docker push ${IMG_DEBUG}
+## Tool Binaries
+ENVTEST ?= $(LOCALBIN)/setup-envtest
+GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
+## Tool Versions
+#ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
+ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
+#ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
+ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
+GOLANGCI_LINT_VERSION ?= v2.1.0
 
-##@ Deployment
-REDKEY_ROBIN=$(shell kubectl -n ${NAMESPACE} get po -l='redis.redkeycluster.operator/component=robin' -o=jsonpath='{.items[0].metadata.name}')
-dev-deploy: ##		Build a new robin binary, copy the file to the webhook pod and run it.
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -gcflags="all=-N -l" -C robin -o ../bin/robin  main.go
-	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.redkeycluster.operator/component=robin
-	kubectl cp ./bin/robin $(REDKEY_ROBIN):/robin -n ${NAMESPACE}
-	kubectl exec -it po/$(REDKEY_ROBIN) -n ${NAMESPACE} exec /robin
+.PHONY: setup-envtest
+setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
+	@echo "Setting up envtest binaries for Kubernetes version $(ENVTEST_K8S_VERSION)..."
+	@$(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path || { \
+		echo "Error: Failed to set up envtest binaries for version $(ENVTEST_K8S_VERSION)."; \
+		exit 1; \
+	}
 
-debug: ##		Build a new robin binary, copy the file to the pod and run it in debug mode (listening on port 40000 for Delve connections).
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -gcflags="all=-N -l" -o bin/robin  ./cmd/main.go
-	kubectl wait -n ${NAMESPACE} --for=condition=ready pod -l redis.redkeycluster.operator/component=robin
-	kubectl cp ./bin/robin $(REDKEY_ROBIN):/robin -n ${NAMESPACE}
-	kubectl exec -it po/$(REDKEY_ROBIN) -n ${NAMESPACE} -- dlv --listen=:40000 --headless=true --api-version=2 --accept-multiclient exec /robin --continue
+.PHONY: envtest
+envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
+$(ENVTEST): $(LOCALBIN)
+	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
 
-port-forward: ##		Port forwarding of port 40000 to port 40002 for debugging robin with Delve.
-	kubectl port-forward pod/$(REDKEY_ROBIN) 40002:40000 -n ${NAMESPACE}
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+$(GOLANGCI_LINT): $(LOCALBIN)
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
-port-forward-metrics: ##		Port forwarding of port 8080 for debugging the manager with Delve.
-	kubectl port-forward pod/$(REDKEY_ROBIN) 8080:8080 -n ${NAMESPACE}
-
-.PHONY: test-sonar
-test-sonar: ## Execute the application test for Sonar (coverage + test report)
-	$(info $(M) running tests and generating sonar report...)
-	$(eval TEST_COVERAGE_PROFILE_OUTPUT_DIRNAME=$(shell dirname $(TEST_COVERAGE_PROFILE_OUTPUT)))
-	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT)))
-	mkdir -p $(TEST_COVERAGE_PROFILE_OUTPUT_DIRNAME) $(TEST_REPORT_OUTPUT_DIRNAME)
-	$(GO) test ./internal/*/ -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -json > $(TEST_REPORT_OUTPUT)
-
-.PHONY: test-cov
-test-cov: ## Execute the application test with coverage
-	$(info $(M) running tests and generating coverage report...)
-	$(eval TEST_REPORT_OUTPUT_DIRNAME=$(shell dirname $(TEST_REPORT_OUTPUT)))
-	mkdir -p $(TEST_REPORT_OUTPUT_DIRNAME)
-	$(GO) test ./internal/*/ -coverprofile=$(TEST_COVERAGE_PROFILE_OUTPUT) -covermode=count
+# go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
+# $1 - target path with name of binary
+# $2 - package url which can be installed
+# $3 - specific version of package
+define go-install-tool
+@[ -f "$(1)-$(3)" ] || { \
+set -e; \
+package=$(2)@$(3) ;\
+echo "Downloading $${package}" ;\
+rm -f $(1) || true ;\
+GOBIN=$(LOCALBIN) go install $${package} ;\
+mv $(1) $(1)-$(3) ;\
+} ;\
+ln -sf $(1)-$(3) $(1)
+endef

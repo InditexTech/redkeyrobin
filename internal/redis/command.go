@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
+// SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL, S.A. (INDITEX, S.A.)
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -8,11 +8,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
-	"sync"
+	"sort"
+	"time"
 )
 
-// RedisCommand represents a Redis command.
+const commandWaitDelay = 100 * time.Millisecond
+
+// RedisCommand represents a Redis command execution.
 type RedisCommand interface {
 	Run()
 	Start()
@@ -24,18 +29,18 @@ type RedisCommand interface {
 	Error() error
 }
 
-// RedisBaseCommand represents a base Redis command.
+// RedisBaseCommand stores common command execution state.
 type RedisBaseCommand struct {
 	ExitCode int
 	Err      error
 }
 
-// ExitCode returns the error of the Redis command.
+// Error returns the execution error.
 func (rbc *RedisBaseCommand) Error() error {
 	return rbc.Err
 }
 
-// RedisCLICommand represents a Redis CLI command.
+// RedisCLICommand represents a redis-cli process execution.
 type RedisCLICommand struct {
 	RedisBaseCommand
 	cmd    *exec.Cmd
@@ -43,12 +48,22 @@ type RedisCLICommand struct {
 	stderr *bytes.Buffer
 }
 
-// NewRedisCLICommand creates a new Redis CLI command.
-func NewRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
-	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+// NewRedisCLICommand creates a new redis-cli command with the provided arguments and environment.
+func NewRedisCLICommand(ctx context.Context, args []string, env map[string]string) *RedisCLICommand {
+	return newCLICommand(ctx, "redis-cli", args, env)
+}
+
+func newCLICommand(ctx context.Context, executable string, args []string, env map[string]string) *RedisCLICommand {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cmd := exec.CommandContext(ctx, executable, args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = commandWaitDelay
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), formatCommandEnv(env)...)
+	}
 
 	return &RedisCLICommand{
 		cmd:    cmd,
@@ -57,10 +72,28 @@ func NewRedisCLICommand(ctx context.Context, command string) *RedisCLICommand {
 	}
 }
 
-// Run executes the Redis CLI command synchronously and captures the exit code.
+// SetStdin sets the standard input for the command. It must be called before Run or Start.
+func (rcc *RedisCLICommand) SetStdin(r io.Reader) {
+	rcc.cmd.Stdin = r
+}
+
+func formatCommandEnv(env map[string]string) []string {
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	formatted := make([]string, 0, len(keys))
+	for _, key := range keys {
+		formatted = append(formatted, key+"="+env[key])
+	}
+	return formatted
+}
+
+// Run executes the command synchronously.
 func (rcc *RedisCLICommand) Run() {
 	if err := rcc.cmd.Run(); err != nil {
-		// preserve original error while attaching command output
 		rcc.Err = fmt.Errorf("%w: %s", err, rcc.GetCombinedOutput())
 	} else {
 		rcc.Err = nil
@@ -69,22 +102,23 @@ func (rcc *RedisCLICommand) Run() {
 	rcc.checkStatusCode()
 }
 
-// Start executes the Redis CLI command asynchronously.
+// Start executes the command asynchronously.
 func (rcc *RedisCLICommand) Start() {
 	rcc.Err = rcc.cmd.Start()
+	if rcc.Err != nil {
+		rcc.checkStatusCode()
+	}
 }
 
-// CheckStatusCode captures the exit code of the Redis CLI command.
 func (rcc *RedisCLICommand) checkStatusCode() {
 	exitCode := -1
 	if rcc.cmd.ProcessState != nil {
 		exitCode = rcc.cmd.ProcessState.ExitCode()
 	}
-
 	rcc.ExitCode = exitCode
 }
 
-// Wait waits for the Redis CLI command to finish and captures any errors.
+// Wait waits for the asynchronous command to finish.
 func (rcc *RedisCLICommand) Wait() {
 	if err := rcc.cmd.Wait(); err != nil {
 		rcc.Err = fmt.Errorf("%w: %s", err, rcc.GetCombinedOutput())
@@ -95,107 +129,36 @@ func (rcc *RedisCLICommand) Wait() {
 	rcc.checkStatusCode()
 }
 
-// Cancel cancels the Redis CLI command.
+// Cancel cancels the running command.
 func (rcc *RedisCLICommand) Cancel() {
+	if rcc.cmd.Cancel != nil {
+		_ = rcc.cmd.Cancel()
+		return
+	}
 	if rcc.cmd.Process != nil {
-		rcc.cmd.Cancel()
+		_ = rcc.cmd.Process.Kill()
 	}
 }
 
-// GetStdout returns the standard output of the Redis CLI command.
+// GetStdout returns the standard output.
 func (rcc *RedisCLICommand) GetStdout() string {
 	return rcc.stdout.String()
 }
 
-// GetStderr returns the standard error of the Redis CLI command.
+// GetStderr returns the standard error.
 func (rcc *RedisCLICommand) GetStderr() string {
 	return rcc.stderr.String()
 }
 
-// GetCombinedOutput returns the combined output (both stdout and stderr) of the Redis CLI command.
+// GetCombinedOutput returns the combined output.
 func (rcc *RedisCLICommand) GetCombinedOutput() string {
 	return rcc.GetStdout() + rcc.GetStderr()
 }
 
+// Error returns the combined command output when execution failed.
 func (rcc *RedisCLICommand) Error() error {
 	if rcc.Err == nil {
 		return nil
 	}
 	return fmt.Errorf("%s", rcc.GetCombinedOutput())
-}
-
-// RedisLibraryCommand represents a Redis library command.
-type RedisLibraryCommand struct {
-	RedisBaseCommand
-	ctx    context.Context
-	wg     sync.WaitGroup
-	cmd    func(context.Context) error
-	cancel context.CancelFunc
-}
-
-// NewRedisLibraryCommand creates a new Redis library command.
-func NewRedisLibraryCommand(ctx context.Context, cmd func(context.Context) error) *RedisLibraryCommand {
-	ctx, cancel := context.WithCancel(ctx)
-
-	return &RedisLibraryCommand{
-		ctx:    ctx,
-		cmd:    cmd,
-		cancel: cancel,
-		wg:     sync.WaitGroup{},
-	}
-}
-
-// Run executes the Redis library command synchronously and captures the exit code.
-func (rlc *RedisLibraryCommand) Run() {
-	rlc.Start()
-	rlc.Wait()
-}
-
-// Start executes the Redis library command asynchronously.
-func (rlc *RedisLibraryCommand) Start() {
-	rlc.wg.Add(1)
-	go func() {
-		defer rlc.wg.Done()
-		rlc.Err = rlc.cmd(rlc.ctx)
-	}()
-}
-
-// Wait waits for the Redis library command to finish and captures any errors.
-func (rlc *RedisLibraryCommand) Wait() {
-	rlc.wg.Wait()
-	rlc.checkStatusCode()
-}
-
-// Cancel cancels the Redis library command.
-func (rlc *RedisLibraryCommand) Cancel() {
-	rlc.cancel()
-}
-
-// GetStdout returns the standard output of the Redis library command.
-func (rlc *RedisLibraryCommand) GetStdout() string {
-	return ""
-}
-
-// GetStderr returns the standard error of the Redis library command.
-func (rlc *RedisLibraryCommand) GetStderr() string {
-	return ""
-}
-
-// GetCombinedOutput returns the combined output (both stdout and stderr) of the Redis library command.
-func (rlc *RedisLibraryCommand) GetCombinedOutput() string {
-	return ""
-}
-
-// CheckStatusCode captures the exit code of the Redis library command.
-func (rlc *RedisLibraryCommand) checkStatusCode() {
-	rlc.ExitCode = 0
-
-	if rlc.Err != nil {
-		rlc.ExitCode = 1
-		return
-	}
-	if rlc.ctx.Err() != nil {
-		rlc.Err = rlc.ctx.Err()
-		rlc.ExitCode = 1
-	}
 }
