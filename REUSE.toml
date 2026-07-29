@@ -13,7 +13,9 @@ path = [
     "api/openapi-rest.yml",
     "local/configmap.yml",
     "docs/images/redkey-robin-architecture.png",
+    "docs/images/redkey-logo-512.png",
     ".go-version",
+    ".vscode/launch.json",
 ]
 SPDX-FileCopyrightText = "2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
 SPDX-License-Identifier = "Apache-2.0"
