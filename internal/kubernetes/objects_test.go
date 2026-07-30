@@ -206,8 +206,8 @@ func TestBuildStatefulSet_WithStorage(t *testing.T) {
 	if sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted != appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
 		t.Fatalf("expected WhenDeleted=Delete, got '%s'", sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
 	}
-	if sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled != appsv1.RetainPersistentVolumeClaimRetentionPolicyType {
-		t.Fatalf("expected WhenScaled=Retain, got '%s'", sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+	if sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled != appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
+		t.Fatalf("expected WhenScaled=Delete, got '%s'", sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
 	}
 
 	// Check data volume mount
@@ -236,6 +236,9 @@ func TestBuildStatefulSet_RetainPVC(t *testing.T) {
 
 	if sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted != appsv1.RetainPersistentVolumeClaimRetentionPolicyType {
 		t.Fatalf("expected WhenDeleted=Retain, got '%s'", sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+	}
+	if sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled != appsv1.RetainPersistentVolumeClaimRetentionPolicyType {
+		t.Fatalf("expected WhenScaled=Retain, got '%s'", sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
 	}
 }
 
