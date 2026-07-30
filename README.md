@@ -6,11 +6,11 @@ SPDX-License-Identifier: Apache-2.0
 
 # Redkey Robin
 
-![Redkey logo](docs/images/redkey-logo-512.png)
+![Redkey logo](docs/images/redkey-logo-256.png)
 
-Redis-side orchestration runtime for Redkey clusters on Kubernetes.
+Redis-side orchestration runtime for Redkey instances on Kubernetes.
 
-Redkey Robin is the runtime component used by the [Redkey Operator](https://github.com/InditexTech/redkeyoperator) to execute Redis-side cluster orchestration, health supervision, and metrics collection. It is deployed by the operator as a `Deployment` and works as the in-cluster companion for each managed Redkey cluster.
+Redkey Robin is the runtime component used by the [Redkey Operator](https://github.com/InditexTech/redkeyoperator) to execute Redis-side orchestration, health supervision, and metrics collection. It is deployed by the operator as a `Deployment` and works as the in-cluster companion for each managed Redkey instance, whether it runs in cluster or standalone mode.
 
 [![GitHub License](https://img.shields.io/github/license/InditexTech/redkeyrobin)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/InditexTech/redkeyrobin)](https://github.com/InditexTech/redkeyrobin/releases)
@@ -33,8 +33,8 @@ Redkey Robin is the runtime component used by the [Redkey Operator](https://gith
 
 ## Key Features
 
-- Reconciles cluster bootstrap and configuration from Kubernetes and Redis state, including cluster formation and topology validation
-- Performs automated health checks and remediation for membership drift, uncovered slots, replica spread issues, cluster checkl findings, and slot imbalance
+- Reconciles bootstrap and configuration from Kubernetes and Redis state, covering cluster formation and topology validation in cluster mode and single-node setup in standalone mode
+- Performs automated health checks and remediation, including cluster-mode concerns such as membership drift, uncovered slots, replica spread issues, cluster check findings, and slot imbalance
 - Exposes Prometheus metrics for Redkey and Redis/Valkey state, together with runtime metrics used by Redkey Operator and observability tooling
 - Hot-reloads operational settings from `RedkeyConfig` without restarting the Robin Pod, including reconciliation cadence, metrics collection, auth secret reference, and profiling state
 - Provides a metrics HTTP endpoint plus optional `pprof` endpoints for diagnostics and performance analysis
