@@ -330,6 +330,22 @@ func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.Re
 		return false
 	}
 
+	// Restore fast-path: when the nodes come back with persisted cluster state that already
+	// covers all slots — e.g. scaling a storage cluster back up from zero with deletePVC=false —
+	// the cluster is already formed. Its slot ownership may no longer match the ordinal layout
+	// this function would impose (a replica promoted during an earlier failover now owns a
+	// primary's slots), so running assignSlots would issue ADDSLOTS against the ordinal layout and
+	// fail with "slot already busy" against the persisted owner, looping forever. Detect the
+	// already-formed cluster (all 16384 slots covered and state ok) and skip formation; the health
+	// reconciler will rebalance roles later if needed. A fresh cluster has no slots and state
+	// "fail", so this never short-circuits a genuine from-scratch formation.
+	if formed, err := cr.clusterAlreadyFormed(ctx, nodes[0]); err != nil {
+		cr.logger.Warn("Failed to check whether cluster is already formed, proceeding with formation", "error", err)
+	} else if formed {
+		cr.logger.Info("Cluster already formed from persisted state, skipping slot assignment")
+		return true
+	}
+
 	// Step 2: Assign slots to primaries
 	primaries := nodes[:config.Spec.Primaries]
 	if err := cr.assignSlots(ctx, primaries); err != nil {
@@ -608,6 +624,18 @@ func (cr *ClusterReconciler) setReplicas(ctx context.Context, primaries, replica
 			"replica", replica.Name, "primary", primary.Name)
 	}
 	return nil
+}
+
+// clusterAlreadyFormed reports whether the cluster reachable from seedNode is already fully
+// formed: its state is ok and all slots are covered. This is true when nodes are restored from
+// persisted PVCs (e.g. scaling a storage cluster back up from zero), letting formCluster skip
+// from-scratch slot assignment that would otherwise conflict with the persisted ownership.
+func (cr *ClusterReconciler) clusterAlreadyFormed(ctx context.Context, seedNode *redis.Node) (bool, error) {
+	info, err := seedNode.Client().GetClusterInfo(ctx)
+	if err != nil {
+		return false, err
+	}
+	return info.State == "ok" && info.SlotsOK == clusterTotalSlots, nil
 }
 
 func (cr *ClusterReconciler) verifyCluster(ctx context.Context, seedNode *redis.Node) (bool, error) {
