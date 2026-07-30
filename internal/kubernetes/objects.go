@@ -571,15 +571,17 @@ func addStorage(sts *appsv1.StatefulSet, config *redisv1.RedkeyConfig, owner *re
 
 	sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{pvc}
 
-	// PVC retention policy: delete PVCs when StatefulSet is deleted if deletePVC is true
-	deletePVC := config.Spec.DeletePVC != nil && *config.Spec.DeletePVC
-	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
-	if deletePVC {
-		whenDeleted = appsv1.DeletePersistentVolumeClaimRetentionPolicyType
+	// PVC retention policy. When deletePVC is true, PVCs are deleted both when the StatefulSet is
+	// deleted (scale-to-zero / cluster deletion) AND when it is scaled DOWN to a smaller size >0,
+	// so the removed ordinals' volumes don't linger with stale, inconsistent slot/node data. When
+	// deletePVC is false, PVCs are retained in both cases to preserve data.
+	retention := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
+	if config.Spec.DeletePVC != nil && *config.Spec.DeletePVC {
+		retention = appsv1.DeletePersistentVolumeClaimRetentionPolicyType
 	}
 	sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
-		WhenDeleted: whenDeleted,
-		WhenScaled:  appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+		WhenDeleted: retention,
+		WhenScaled:  retention,
 	}
 
 	// Add data volume mount

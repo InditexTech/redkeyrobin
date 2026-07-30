@@ -330,6 +330,25 @@ func (cr *ClusterReconciler) formCluster(ctx context.Context, config *redisv1.Re
 		return false
 	}
 
+	// Restore fast-path: when the nodes come back with persisted cluster state that already makes
+	// up a fully formed cluster — e.g. scaling a storage cluster back up from zero with
+	// deletePVC=false — the cluster is already formed. Its slot ownership may no longer match the
+	// ordinal layout this function would impose (a replica promoted during an earlier failover now
+	// owns a primary's slots), so running assignSlots would issue ADDSLOTS against the ordinal
+	// layout and fail with "slot already busy" against the persisted owner, looping forever. Detect
+	// the already-formed cluster and skip formation; the health reconciler will rebalance roles
+	// later if needed. The check requires the FULL desired topology (the right number of
+	// slot-serving primaries AND attached replicas), so a half-formed initial cluster whose slots
+	// were assigned but whose replicas have not been attached yet is NOT short-circuited (otherwise
+	// its replicas would never be attached). A fresh cluster has no slots and state "fail", so this
+	// never short-circuits a genuine from-scratch formation.
+	if formed, err := cr.clusterAlreadyFormed(ctx, config, nodes); err != nil {
+		cr.logger.Warn("Failed to check whether cluster is already formed, proceeding with formation", "error", err)
+	} else if formed {
+		cr.logger.Info("Cluster already formed from persisted state, skipping slot assignment")
+		return true
+	}
+
 	// Step 2: Assign slots to primaries
 	primaries := nodes[:config.Spec.Primaries]
 	if err := cr.assignSlots(ctx, primaries); err != nil {
@@ -608,6 +627,44 @@ func (cr *ClusterReconciler) setReplicas(ctx context.Context, primaries, replica
 			"replica", replica.Name, "primary", primary.Name)
 	}
 	return nil
+}
+
+// clusterAlreadyFormed reports whether the given nodes already make up a fully formed cluster that
+// matches the desired topology: cluster state ok, all slots covered, exactly `Primaries`
+// slot-serving primaries, and exactly `Primaries * ReplicasPerPrimary` attached replicas. This is
+// true when nodes are restored from persisted PVCs (e.g. scaling a storage cluster back up from
+// zero), letting formCluster skip from-scratch slot assignment that would otherwise conflict with
+// the persisted ownership.
+//
+// It deliberately requires the REPLICA topology to be complete too: a half-formed cluster whose
+// slots are assigned but whose replicas have not been attached yet (e.g. an initial formation that
+// assigned slots on one pass but deferred setReplicas until gossip converged) must NOT
+// short-circuit, otherwise its replicas would never be attached.
+func (cr *ClusterReconciler) clusterAlreadyFormed(ctx context.Context, config *redisv1.RedkeyConfig, nodes []*redis.Node) (bool, error) {
+	info, err := nodes[0].Client().GetClusterInfo(ctx)
+	if err != nil {
+		return false, err
+	}
+	if info.State != "ok" || info.SlotsOK != clusterTotalSlots {
+		return false, nil
+	}
+
+	if err := cr.refreshRoles(ctx, nodes); err != nil {
+		return false, err
+	}
+	primariesWithSlots := 0
+	replicas := 0
+	for _, n := range nodes {
+		switch {
+		case n.IsReplica():
+			replicas++
+		case n.Slots != "":
+			primariesWithSlots++
+		}
+	}
+	expectedPrimaries := int(config.Spec.Primaries)
+	expectedReplicas := int(config.Spec.Primaries) * int(config.Spec.ReplicasPerPrimary)
+	return primariesWithSlots == expectedPrimaries && replicas == expectedReplicas, nil
 }
 
 func (cr *ClusterReconciler) verifyCluster(ctx context.Context, seedNode *redis.Node) (bool, error) {
