@@ -13,6 +13,7 @@ path = [
     "api/openapi-rest.yml",
     "local/configmap.yml",
     "docs/images/redkey-robin-architecture.png",
+    "docs/images/redkey-logo-256.png",
     "docs/images/redkey-logo-512.png",
     ".go-version",
     ".vscode/launch.json",
