@@ -1,7 +1,7 @@
 version = 1
-SPDX-PackageName = "redkeyrobin"
+SPDX-PackageName = "redkey-robin"
 SPDX-PackageSupplier = "2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
-SPDX-PackageDownloadLocation = "https://github.com/InditexTech/redkeyrobin"
+SPDX-PackageDownloadLocation = "https://github.com/InditexTech/redkey-robin"
 
 [[annotations]]
 path = [

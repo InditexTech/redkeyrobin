@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-module github.com/inditextech/redkeyrobin
+module github.com/inditextech/redkey-robin
 
 go 1.26.5
 
-replace github.com/inditextech/redkeyoperator => ../redkeyoperator
+replace github.com/inditextech/redkey-operator => ../redkey-operator
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
-	github.com/inditextech/redkeyoperator v0.0.0-00010101000000-000000000000
+	github.com/inditextech/redkey-operator v0.0.0-00010101000000-000000000000
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/prometheus/client_golang v1.24.1

@@ -62,9 +62,9 @@ jobs:
       - name: Checkout operator API
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
-          repository: InditexTech/redkeyoperator
+          repository: InditexTech/redkey-operator
           ref: ${{ env.OPERATOR_REF }}
-          path: redkeyoperator
+          path: redkey-operator
 
       - name: Login into ${{ env.REGISTRY }}
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
@@ -81,4 +81,4 @@ jobs:
 
       - name: Build and push multi-arch Robin image
         run: |
-          make docker-buildx IMAGE_TAG_BASE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} OPERATOR_DIR=redkeyoperator
+          make docker-buildx IMAGE_TAG_BASE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} OPERATOR_DIR=redkey-operator

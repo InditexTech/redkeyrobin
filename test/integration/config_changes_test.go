@@ -13,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
 )
 
 // createAppliedConfig creates a config in Applied phase with Ready status,

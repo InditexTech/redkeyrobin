@@ -16,11 +16,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/health"
-	"github.com/inditextech/redkeyrobin/internal/kubernetes"
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
+	"github.com/inditextech/redkey-robin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/health"
+	"github.com/inditextech/redkey-robin/internal/kubernetes"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 const (

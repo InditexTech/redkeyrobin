@@ -14,13 +14,13 @@ Welcome to the support section of our open-source project! We’re excited to ha
 Before asking for help, please review the documentation provided for this project. It includes installation instructions, usage guides, and API documentation. The documentation is available at:
 
 - [Documentation Link](./docs/)
-- [Wikis](https://github.com/InditexTech/redkeyrobin/wiki)
+- [Wikis](https://github.com/InditexTech/redkey-robin/wiki)
 
 ### 2. **Search the Issues**
 
 Often, your issue might have already been reported and solved by others. Please search the issues section of this repository to see if your problem has already been discussed:
 
-- [Issues Section](https://github.com/InditexTech/redkeyrobin/issues)
+- [Issues Section](https://github.com/InditexTech/redkey-robin/issues)
 
 ### 3. **Community and Discussion**
 

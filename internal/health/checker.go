@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 const (

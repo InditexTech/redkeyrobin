@@ -9,7 +9,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
 )
 
 // ScaleDirection represents the direction of a topology change.

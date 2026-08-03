@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/health"
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkey-robin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/health"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 // --- remediateClusterCheck tests ---

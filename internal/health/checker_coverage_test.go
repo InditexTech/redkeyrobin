@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 // --- replicaSpreadOK tests ---

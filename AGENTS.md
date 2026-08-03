@@ -31,7 +31,7 @@ Today, Robin focuses on orchestration of `RedkeyConfig` progression rather than 
 | Language | Go 1.26.5 |
 | Runtime style | Standalone controller-style daemon |
 | Kubernetes client | [controller-runtime](https://sigs.k8s.io/controller-runtime) v0.24.0 |
-| API dependency | `github.com/inditextech/redkeyoperator/api/v1beta1` via local `replace ../redkeyoperator` |
+| API dependency | `github.com/inditextech/redkey-operator/api/v1beta1` via local `replace ../redkey-operator` |
 | Metrics | [Prometheus client_golang](https://github.com/prometheus/client_golang) |
 | Testing | Go `testing`, [Ginkgo v2](https://github.com/onsi/ginkgo) + [Gomega](https://github.com/onsi/gomega), [envtest](https://sigs.k8s.io/controller-runtime/tools/setup-envtest) |
 | Linting | [golangci-lint](https://github.com/golangci/golangci-lint) v2.1.0 |
@@ -54,8 +54,8 @@ Key paths to understand before changing code:
 Operational assumptions:
 
 - Robin is a single-cluster runtime: one process instance is scoped to one `Redkey`.
-- The sibling checkout at `../redkeyoperator` is part of the expected local layout and provides the CRD/API types used by this module.
-- Integration tests load CRDs from `../redkeyoperator/config/crd/bases`.
+- The sibling checkout at `../redkey-operator` is part of the expected local layout and provides the CRD/API types used by this module.
+- Integration tests load CRDs from `../redkey-operator/config/crd/bases`.
 
 ---
 
@@ -82,7 +82,7 @@ This repository does not use Maven. There is no `pom.xml` or `mvnw` in Robin, so
 - Go 1.26+
 - Make
 - Docker or Podman (only needed for image build targets)
-- Access to the sibling `../redkeyoperator` checkout, because this module imports its API types through a local `replace`
+- Access to the sibling `../redkey-operator` checkout, because this module imports its API types through a local `replace`
 
 ### Dependency and formatting tasks
 
@@ -174,7 +174,7 @@ Requires the envtest binaries to be present. The target installs them automatica
 make test-integration
 ```
 
-Integration tests use CRDs from the sibling operator repository at `../redkeyoperator/config/crd/bases` and run against envtest, not a real cluster.
+Integration tests use CRDs from the sibling operator repository at `../redkey-operator/config/crd/bases` and run against envtest, not a real cluster.
 
 ### All tests (unit + integration)
 
@@ -298,11 +298,11 @@ Resources that own background goroutines or pooled Redis connections expose an i
 
 ```shell
 # E2E with replicas (the critical path):
-cd ../redkeyoperator && go test ./test/e2e/ -v -ginkgo.v \
+cd ../redkey-operator && go test ./test/e2e/ -v -ginkgo.v \
   -ginkgo.label-filter="upgrade" -ginkgo.focus="with replicas" -timeout 20m
 
 # E2E without replicas:
-cd ../redkeyoperator && go test ./test/e2e/ -v -ginkgo.v \
+cd ../redkey-operator && go test ./test/e2e/ -v -ginkgo.v \
   -ginkgo.label-filter="upgrade" -ginkgo.focus="without replicas" -timeout 15m
 ```
 
@@ -322,7 +322,7 @@ The Kind cluster uses a local registry at `localhost:5005`. Both robin and opera
 
 - Use `go mod tidy` after adding or removing dependencies.
 - Do not vendor dependencies; the project relies on the Go module cache.
-- Preserve the local `replace github.com/inditextech/redkeyoperator => ../redkeyoperator` unless the repository layout is intentionally changed.
+- Preserve the local `replace github.com/inditextech/redkey-operator => ../redkey-operator` unless the repository layout is intentionally changed.
 
 ---
 

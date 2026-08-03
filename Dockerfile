@@ -39,20 +39,21 @@ RUN git clone https://github.com/redis/redis.git && \
 WORKDIR /app
 
 # Copy the sibling operator checkout provided as a named build context.
-COPY --from=redkeyoperator . /redkeyoperator
+COPY --from=redkey-operator . /redkey-operator
 
 # Copy Go module files and download dependencies first for better caching
 COPY go.mod go.sum ./
 
 # Use the local operator checkout as a replace directive and download dependencies.
-RUN go mod edit -replace github.com/inditextech/redkeyoperator=/redkeyoperator && \
+RUN go mod edit -replace github.com/inditextech/redkey-operator=/redkey-operator && \
     go mod download
 
 # Copy the entire source code
 COPY . .
 
 # Build the Go application with version information
-RUN go build -ldflags "-X main.version=0.2.0" -o robin ./cmd/
+ARG VERSION=dev
+RUN go build -ldflags "-X main.version=${VERSION}" -o robin ./cmd/
 
 
 ### Final stage
@@ -62,6 +63,8 @@ FROM debian:trixie-slim AS final
 
 # Install some useful tools
 RUN apt update && apt upgrade -y && apt install -y curl procps
+
+LABEL org.opencontainers.image.source="https://github.com/inditextech/redkey-robin"
 
 # Create a non-root user
 RUN groupadd --gid 10000 robin && useradd --uid 10000 -g robin robin

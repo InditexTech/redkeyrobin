@@ -8,7 +8,7 @@ import (
 	"context"
 	"sort"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

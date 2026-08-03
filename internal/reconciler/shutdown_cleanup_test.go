@@ -7,7 +7,7 @@ package reconciler
 import (
 	"testing"
 
-	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/config"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
