@@ -22,10 +22,10 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/health"
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
+	"github.com/inditextech/redkey-robin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/health"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 func TestCollector_CollectNode(t *testing.T) {

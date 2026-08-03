@@ -22,7 +22,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
 )
 
 var (
@@ -52,7 +52,7 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "redkeyoperator", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "redkey-operator", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
 		BinaryAssetsDirectory: getFirstFoundEnvTestBinaryDir(),
 	}

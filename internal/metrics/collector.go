@@ -18,10 +18,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/health"
-	"github.com/inditextech/redkeyrobin/internal/kubernetes"
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkey-robin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/health"
+	"github.com/inditextech/redkey-robin/internal/kubernetes"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 const (

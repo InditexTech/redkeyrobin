@@ -20,10 +20,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	robinconfig "github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/metrics"
-	"github.com/inditextech/redkeyrobin/internal/reconciler"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
+	robinconfig "github.com/inditextech/redkey-robin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/metrics"
+	"github.com/inditextech/redkey-robin/internal/reconciler"
 )
 
 const (

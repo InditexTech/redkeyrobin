@@ -10,24 +10,24 @@ SPDX-License-Identifier: Apache-2.0
 
 Redis-side orchestration runtime for Redkey instances on Kubernetes.
 
-Redkey Robin is the runtime component used by the [Redkey Operator](https://github.com/InditexTech/redkeyoperator) to execute Redis-side orchestration, health supervision, and metrics collection. It is deployed by the operator as a `Deployment` and works as the in-cluster companion for each managed Redkey instance, whether it runs in cluster or standalone mode.
+Redkey Robin is the runtime component used by the [Redkey Operator](https://github.com/InditexTech/redkey-operator) to execute Redis-side orchestration, health supervision, and metrics collection. It is deployed by the operator as a `Deployment` and works as the in-cluster companion for each managed Redkey instance, whether it runs in cluster or standalone mode.
 
-[![GitHub License](https://img.shields.io/github/license/InditexTech/redkeyrobin)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/InditexTech/redkeyrobin)](https://github.com/InditexTech/redkeyrobin/releases)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/InditexTech/redkeyrobin)](go.mod)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/InditexTech/redkeyrobin/ci.yml?branch=main)](https://github.com/InditexTech/redkeyrobin/actions)
+[![GitHub License](https://img.shields.io/github/license/InditexTech/redkey-robin)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/InditexTech/redkey-robin)](https://github.com/InditexTech/redkey-robin/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/InditexTech/redkey-robin)](go.mod)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/InditexTech/redkey-robin/ci.yml?branch=main)](https://github.com/InditexTech/redkey-robin/actions)
 
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![Operator SDK](https://img.shields.io/badge/Operator%20SDK-326CE5?style=flat&logo=kubernetes&logoColor=white)](https://sdk.operatorframework.io/)
 [![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://golang.org/)
 [![REUSE Compliance](https://img.shields.io/badge/REUSE-compliant-green)](https://reuse.software/)
 
-[![GitHub Issues](https://img.shields.io/github/issues/InditexTech/redkeyrobin)](https://github.com/InditexTech/redkeyrobin/issues)
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/InditexTech/redkeyrobin)](https://github.com/InditexTech/redkeyrobin/pulls)
-[![GitHub Stars](https://img.shields.io/github/stars/InditexTech/redkeyrobin?style=social)](https://github.com/InditexTech/redkeyrobin/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/InditexTech/redkeyrobin?style=social)](https://github.com/InditexTech/redkeyrobin/network/members)
+[![GitHub Issues](https://img.shields.io/github/issues/InditexTech/redkey-robin)](https://github.com/InditexTech/redkey-robin/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/InditexTech/redkey-robin)](https://github.com/InditexTech/redkey-robin/pulls)
+[![GitHub Stars](https://img.shields.io/github/stars/InditexTech/redkey-robin?style=social)](https://github.com/InditexTech/redkey-robin/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/InditexTech/redkey-robin?style=social)](https://github.com/InditexTech/redkey-robin/network/members)
 
-[📖 Redkey Documentation](https://github.com/InditexTech/redkeyoperator/tree/main/docs) • [🛠 Developer Guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/developer-guide/development-guide.md) • [🤝 Contributing](./CONTRIBUTING.md) • [📝 License](./LICENSE)
+[📖 Redkey Documentation](https://github.com/InditexTech/redkey-operator/tree/main/docs) • [🛠 Developer Guide](https://github.com/InditexTech/redkey-operator/blob/main/docs/developer-guide/development-guide.md) • [🤝 Contributing](./CONTRIBUTING.md) • [📝 License](./LICENSE)
 
 ---
 
@@ -42,20 +42,20 @@ Redkey Robin is the runtime component used by the [Redkey Operator](https://gith
 
 ## Getting Started
 
-Redkey Robin is intended to be deployed and configured through [Redkey Operator](https://github.com/InditexTech/redkeyoperator), not as a standalone component.
+Redkey Robin is intended to be deployed and configured through [Redkey Operator](https://github.com/InditexTech/redkey-operator), not as a standalone component.
 
-For development, build, deployment, and debugging workflows, follow the [Redkey Operator developer guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/developer-guide/development-guide.md) in the operator repository.
+For development, build, deployment, and debugging workflows, follow the [Redkey Operator developer guide](https://github.com/InditexTech/redkey-operator/blob/main/docs/developer-guide/development-guide.md) in the operator repository.
 
 ## Documentation
 
-The canonical documentation for both Redkey Operator and Redkey Robin lives in the `redkeyoperator` repository:
+The canonical documentation for both Redkey Operator and Redkey Robin lives in the `redkey-operator` repository:
 
-- [Documentation index](https://github.com/InditexTech/redkeyoperator/blob/main/docs/README.md)
-- [Redkey Robin guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/operator-guide/robin.md)
-- [Cluster health checks and remediation](https://github.com/InditexTech/redkeyoperator/blob/main/docs/cluster-health-checks.md)
-- [Dynamic configuration and hot reload](https://github.com/InditexTech/redkeyoperator/blob/main/docs/operator-guide/dynamic-configuration.md)
-- [Metrics reference](https://github.com/InditexTech/redkeyoperator/blob/main/docs/metrics.md)
-- [Observability guide](https://github.com/InditexTech/redkeyoperator/blob/main/docs/observability.md)
+- [Documentation index](https://github.com/InditexTech/redkey-operator/blob/main/docs/README.md)
+- [Redkey Robin guide](https://github.com/InditexTech/redkey-operator/blob/main/docs/operator-guide/robin.md)
+- [Cluster health checks and remediation](https://github.com/InditexTech/redkey-operator/blob/main/docs/cluster-health-checks.md)
+- [Dynamic configuration and hot reload](https://github.com/InditexTech/redkey-operator/blob/main/docs/operator-guide/dynamic-configuration.md)
+- [Metrics reference](https://github.com/InditexTech/redkey-operator/blob/main/docs/metrics.md)
+- [Observability guide](https://github.com/InditexTech/redkey-operator/blob/main/docs/observability.md)
 
 ## Contributing
 

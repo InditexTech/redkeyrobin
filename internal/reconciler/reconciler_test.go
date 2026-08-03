@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/config"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
+	"github.com/inditextech/redkey-robin/internal/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"

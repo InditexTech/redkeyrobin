@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"testing"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/config"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
+	"github.com/inditextech/redkey-robin/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

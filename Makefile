@@ -31,7 +31,7 @@ REDIS_CLIENT_VERSION := 8.8.0
 CONTAINER_TOOL ?= docker
 
 # OPERATOR_DIR defines the sibling operator checkout used by the local image build.
-OPERATOR_DIR ?= ../redkeyoperator
+OPERATOR_DIR ?= ../redkey-operator
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -57,7 +57,7 @@ REGISTRY_PORT ?= 5005
 # This variable is used to construct full image tags for bundle and catalog images.
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# inditex.dev/redkeyoperator-bundle:$VERSION and inditex.dev/redkeyoperator-catalog:$VERSION.
+# inditex.dev/redkey-operator-bundle:$VERSION and inditex.dev/redkey-operator-catalog:$VERSION.
 IMAGE_TAG_BASE ?= localhost:$(REGISTRY_PORT)/$(NAME)
 
 # Image URL to use for building/pushing image targets.
@@ -157,10 +157,11 @@ run: ##	Execute the program locally
 .PHONY: docker-build
 docker-build: test-all ## Build docker image using a sibling operator checkout (uses `${IMG}` image name).
 	DOCKER_BUILDKIT=1 $(CONTAINER_TOOL) build \
-		--build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) \
+		--build-context redkey-operator=$(abspath $(OPERATOR_DIR)) \
 		-t ${IMG} \
 		--build-arg REDIS_CLIENT_VERSION=${REDIS_CLIENT_VERSION} \
 		--build-arg GOLANG_VERSION=${GOLANG_VERSION} \
+		--build-arg VERSION=$(VERSION) \
 		--no-cache .
 
 .PHONY: docker-push
@@ -176,10 +177,10 @@ docker-push: ##	Push docker image (uses `${IMG}` image name).
 PLATFORMS ?= linux/amd64,linux/arm64
 .PHONY: docker-buildx
 docker-buildx: test-all ## Build and push docker image for the manager for cross-platform support
-	- $(CONTAINER_TOOL) buildx create --name redkeyrobin-builder
-	$(CONTAINER_TOOL) buildx use redkeyrobin-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-context redkeyoperator=$(abspath $(OPERATOR_DIR)) --tag ${IMG} .
-	- $(CONTAINER_TOOL) buildx rm redkeyrobin-builder
+	- $(CONTAINER_TOOL) buildx create --name redkey-robin-builder
+	$(CONTAINER_TOOL) buildx use redkey-robin-builder
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-context redkey-operator=$(abspath $(OPERATOR_DIR)) --build-arg VERSION=$(VERSION) --tag ${IMG} --tag $(IMAGE_TAG_BASE):latest .
+	- $(CONTAINER_TOOL) buildx rm redkey-robin-builder
 
 
 ##@ Dependencies

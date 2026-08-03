@@ -4,7 +4,7 @@
 
 package reconciler
 
-import redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
+import redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
 
 // DetermineStatusTransition decides the next cluster status based on the detected changes.
 // It returns the new status string, or an empty string if no status transition is needed

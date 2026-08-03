@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/config"
-	"github.com/inditextech/redkeyrobin/internal/health"
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	"github.com/inditextech/redkey-robin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/health"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 // RedisClientFactory creates Redis clients for a given address and password.

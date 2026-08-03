@@ -12,7 +12,7 @@ import (
 	"net/http/pprof"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

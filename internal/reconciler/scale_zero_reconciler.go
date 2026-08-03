@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/kubernetes"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
+	"github.com/inditextech/redkey-robin/internal/kubernetes"
 )
 
 // handleScalingToZero deletes all cluster objects managed by Robin (StatefulSet, Service,

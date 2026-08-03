@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inditextech/redkeyrobin/internal/config"
+	"github.com/inditextech/redkey-robin/internal/config"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

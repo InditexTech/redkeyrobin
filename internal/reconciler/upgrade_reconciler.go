@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	redisv1 "github.com/inditextech/redkeyoperator/api/v1beta1"
-	"github.com/inditextech/redkeyrobin/internal/kubernetes"
-	"github.com/inditextech/redkeyrobin/internal/redis"
+	redisv1 "github.com/inditextech/redkey-operator/api/v1beta1"
+	"github.com/inditextech/redkey-robin/internal/kubernetes"
+	"github.com/inditextech/redkey-robin/internal/redis"
 )
 
 // handleUpgrading is the entry point for the Upgrading status. It decides between
