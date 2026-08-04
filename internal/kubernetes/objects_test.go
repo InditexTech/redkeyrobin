@@ -849,6 +849,30 @@ func TestBuildRedisConf_ClusterDefaultsApplied(t *testing.T) {
 	}
 }
 
+func TestBuildRedisConf_DataDirByStorage(t *testing.T) {
+	// Ephemeral clusters have no mounted data volume, so Redis must write nodes.conf to
+	// /tmp (writable by the container's runtime UID). Persistent clusters use the PVC at /data.
+	cases := []struct {
+		name      string
+		ephemeral bool
+		wantDir   string
+	}{
+		{"ephemeral", true, "/tmp"},
+		{"persistent", false, "/data"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := buildRedisConf("", "", tc.ephemeral, 0, false)
+			if !contains(conf, "dir "+tc.wantDir+"\n") {
+				t.Errorf("expected 'dir %s' in redis.conf, got:\n%s", tc.wantDir, conf)
+			}
+			if !contains(conf, "cluster-config-file "+tc.wantDir+"/nodes.conf") {
+				t.Errorf("expected 'cluster-config-file %s/nodes.conf' in redis.conf, got:\n%s", tc.wantDir, conf)
+			}
+		})
+	}
+}
+
 func TestBuildRedisConf_RequireFullCoverageNo(t *testing.T) {
 	conf := buildRedisConf("", "", true, 0, false)
 	if !contains(conf, "cluster-require-full-coverage no") {

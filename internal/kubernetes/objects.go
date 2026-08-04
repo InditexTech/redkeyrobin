@@ -293,7 +293,6 @@ func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyConfig,
 // operation during slot migrations (upgrades, scaling) and partial-failure scenarios.
 //
 //   - cluster-enabled yes: required for Redis Cluster mode.
-//   - cluster-config-file nodes.conf: persistent cluster topology metadata.
 //   - cluster-node-timeout 5000: time (ms) before a node is considered unreachable.
 //   - cluster-require-full-coverage no: allows the cluster to continue serving requests
 //     even when some hash slots are temporarily uncovered (e.g., during reshard).
@@ -309,7 +308,6 @@ func buildConfigMap(clusterName, namespace string, config *redisv1.RedkeyConfig,
 //     replication/sync traffic and can leave replicas in a cluster configured without them.
 var clusterDefaults = []string{
 	"cluster-enabled yes",
-	"cluster-config-file nodes.conf",
 	"cluster-node-timeout 5000",
 	"cluster-require-full-coverage no",
 	"cluster-allow-reads-when-down yes",
@@ -325,10 +323,21 @@ var standaloneDefaults = []string{
 
 func buildRedisConf(userConfig, password string, ephemeral bool, replicasPerPrimary int32, standalone bool) string {
 	var lines []string
+
+	// Redis writes nodes.conf (cluster topology metadata) into `dir`. Ephemeral clusters have no
+	// mounted data volume, so use /tmp — always writable by the container's runtime UID under
+	// restrictive PodSecurity/SCC. Persistent clusters use the PVC mounted at /data.
+	dataDir := "/data"
+	if ephemeral {
+		dataDir = "/tmp"
+	}
+	lines = append(lines, "dir "+dataDir)
+
 	if standalone {
 		lines = append(lines, standaloneDefaults...)
 	} else {
 		lines = append(lines, clusterDefaults...)
+		lines = append(lines, "cluster-config-file "+dataDir+"/nodes.conf")
 	}
 
 	if ephemeral {
