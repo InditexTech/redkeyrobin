@@ -179,7 +179,7 @@ PLATFORMS ?= linux/amd64,linux/arm64
 docker-buildx: test-all ## Build and push docker image for the manager for cross-platform support
 	- $(CONTAINER_TOOL) buildx create --name redkey-robin-builder
 	$(CONTAINER_TOOL) buildx use redkey-robin-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-context redkey-operator=$(abspath $(OPERATOR_DIR)) --build-arg VERSION=$(VERSION) --tag ${IMG} --tag $(IMAGE_TAG_BASE):latest .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --annotation "index:org.opencontainers.image.description=Redkey Robin" --build-context redkey-operator=$(abspath $(OPERATOR_DIR)) --build-arg VERSION=$(VERSION) --tag ${IMG} --tag $(IMAGE_TAG_BASE):latest .
 	- $(CONTAINER_TOOL) buildx rm redkey-robin-builder
 
 
