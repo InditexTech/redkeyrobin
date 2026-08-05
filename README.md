@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Redkey Robin
 
-![Redkey logo](docs/images/redkey-logo-256.png)
+![Redkey Robin](docs/images/redkey-horizontal-color-2000.png)
 
 Redis-side orchestration runtime for Redkey instances on Kubernetes.
 
