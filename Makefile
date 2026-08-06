@@ -22,7 +22,7 @@ VERSION ?= 0.2.0
 GOLANG_VERSION := 1.26.5
 
 # REDIS_CLIENT_VERSION defines the version of the Redis client library used in the project. This variable is used in the Dockerfile to ensure that the correct version of the Redis client is included in the built image.
-REDIS_CLIENT_VERSION := 8.8.0
+REDIS_CLIENT_VERSION := 8.10.0
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is

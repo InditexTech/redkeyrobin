@@ -24,7 +24,7 @@ WORKDIR /redis-client
 RUN apt update && apt upgrade -y && apt install -y git
 
 # Define the desired Redis client version
-ARG REDIS_CLIENT_VERSION=8.8.0
+ARG REDIS_CLIENT_VERSION=8.10.0
 
 # Clone the Redis repository, checkout the desired version and build redis-cli
 RUN git clone https://github.com/redis/redis.git && \
