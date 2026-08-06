@@ -120,7 +120,7 @@ make docker-buildx             # cross-platform build (linux/amd64 + linux/arm64
 
 Override the image tag with `IMG=<registry>/<name>:<tag>`.
 
-The image bundles a `redis-cli` built from a pinned Redis version, controlled by `REDIS_CLIENT_VERSION` in the `Makefile` (with a matching default `ARG REDIS_CLIENT_VERSION` in the `Dockerfile`). Whenever the Redis server version is bumped in the samples or Helm charts, align `REDIS_CLIENT_VERSION` to the same version so the bundled `redis-cli` matches the deployed Redis server.
+The image bundles a `redis-cli` built from a pinned Redis version, controlled by `REDIS_CLIENT_VERSION` in the `Makefile` (with a matching default `ARG REDIS_CLIENT_VERSION` in the `Dockerfile`). Whenever the Redis server version is bumped in the samples or Helm charts, align `REDIS_CLIENT_VERSION` to the same version so the bundled `redis-cli` matches the deployed Redis server. Likewise, keep the `defaultRedisImage` fallback in `internal/kubernetes/objects.go` (used when a cluster does not specify an image) aligned with that same Redis version.
 
 ### Fast verification
 
